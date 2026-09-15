@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { ModelMessage } from 'ai';
+import type { ModelInfo } from '../models/registry.js';
 
 export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
 
@@ -31,6 +32,11 @@ class SessionStore {
   approvalPending = false;
   verbose = false;
   showLastReasoning = false;
+  pickerOpen = false;
+  models: ModelInfo[] = [];
+  modelsNote = '';
+  favorites: string[] = [];
+  recents: string[] = [];
   tokensIn = 0;
   tokensOut = 0;
   cost = 0;
@@ -166,6 +172,41 @@ class SessionStore {
     this.transcript = this.transcript.map((entry) =>
       entry.kind === 'tool' && entry.id === id ? { ...entry, data: { ...entry.data, ...patch } } : entry
     );
+    this.emit();
+  }
+
+  setModel(model: string): void {
+    this.model = model;
+    this.emit();
+  }
+
+  setModels(models: ModelInfo[], note: string): void {
+    this.models = models;
+    this.modelsNote = note;
+    this.emit();
+  }
+
+  setFavorites(models: string[]): void {
+    this.favorites = models;
+    this.emit();
+  }
+
+  setRecents(models: string[]): void {
+    this.recents = models.slice(0, 10);
+    this.emit();
+  }
+
+  openPicker(): void {
+    if (this.status === 'working' || this.approvalPending) {
+      this.addNotice('The model picker opens between tasks.');
+      return;
+    }
+    this.pickerOpen = true;
+    this.emit();
+  }
+
+  closePicker(): void {
+    this.pickerOpen = false;
     this.emit();
   }
 

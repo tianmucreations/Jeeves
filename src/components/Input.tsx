@@ -9,10 +9,15 @@ export function Input() {
   const s = useSession();
 
   useInput((input, key) => {
+    if (s.pickerOpen) return;
     if (s.approvalPending) {
       const answer = input.toLowerCase();
       if (answer === 'y') answerApproval(true);
       else if (answer === 'n') answerApproval(false);
+      return;
+    }
+    if (key.ctrl && input === 'm') {
+      s.openPicker();
       return;
     }
     if (key.ctrl && input === 'r') {

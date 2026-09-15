@@ -3,13 +3,16 @@ import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
 import { buildTurnMessages } from './context.js';
 import { toggleVerbose } from '../commands/verbose.js';
+import { isToolCapable } from '../models/filter.js';
 
 export async function runTurn(input: string): Promise<void> {
   if (input.startsWith('/') && input.length > 1 && !input.startsWith('/ ')) {
     if (input === '/verbose') {
       session.addNotice(toggleVerbose());
+    } else if (input === '/model') {
+      session.openPicker();
     } else {
-      session.addNotice('Unknown command. Try /verbose.');
+      session.addNotice('Unknown command. Try /model or /verbose.');
     }
     return;
   }
@@ -21,10 +24,13 @@ export async function runTurn(input: string): Promise<void> {
   try {
     const provider = getActiveProvider();
     const messages = buildTurnMessages(session.history, input);
+    // Models without tool support get a tool-free chat mode automatically (spec 4.2).
+    const currentModel = session.models.find((model) => model.id === session.model);
+    const tools = !currentModel || isToolCapable(currentModel) ? getTools() : {};
     const result = await provider.stream({
       modelId: session.model,
       messages,
-      tools: getTools(),
+      tools,
       onToken: (token) => {
         if (assistantId === null) assistantId = session.startAssistant();
         session.appendToken(assistantId, token);
