@@ -20,7 +20,11 @@ export function Input() {
       return;
     }
     if (key.tab) {
-      s.cycleFooterMetric();
+      s.tabFooter();
+      return;
+    }
+    if (key.escape) {
+      s.escapeFooter();
       return;
     }
     if (key.return) {

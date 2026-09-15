@@ -34,7 +34,8 @@ class SessionStore {
   tokensIn = 0;
   tokensOut = 0;
   cost = 0;
-  footerMetric = 0;
+  footerExpanded: string | null = null;
+  hiddenMetrics: string[] = [];
   creditUsed: number | null = null;
   creditRemaining: number | null = null;
   creditLimit: number | null = null;
@@ -191,8 +192,32 @@ class SessionStore {
     return this.turnEvents.filter((event) => event.t >= cutoff).reduce((sum, event) => sum + event.tokens, 0);
   }
 
-  cycleFooterMetric(): void {
-    this.footerMetric = (this.footerMetric + 1) % 5;
+  setHiddenMetrics(metrics: string[]): void {
+    this.hiddenMetrics = metrics;
+    this.emit();
+  }
+
+  // Tab is an optional zoom-in: it expands one metric into a wide bar, cycling
+  // through them and wrapping back to the always-visible compact view.
+  tabFooter(): void {
+    const all = ['session', 'context', 'today', 'credit', 'speed'];
+    const visible = all.filter((metric) => !this.hiddenMetrics.includes(metric));
+    if (visible.length === 0) {
+      this.footerExpanded = null;
+      this.emit();
+      return;
+    }
+    if (this.footerExpanded === null) {
+      this.footerExpanded = visible[0];
+    } else {
+      const index = visible.indexOf(this.footerExpanded);
+      this.footerExpanded = visible[index + 1] ?? null;
+    }
+    this.emit();
+  }
+
+  escapeFooter(): void {
+    this.footerExpanded = null;
     this.emit();
   }
 

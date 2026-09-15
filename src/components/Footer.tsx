@@ -1,25 +1,21 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useSession, DEFAULT_CONTEXT_TOKENS } from '../state/session.js';
-import { UsageBar } from './UsageBar.js';
+import { UsageBar, usageFraction, usageColor } from './UsageBar.js';
 
-// The five Tab-cycled metrics in plain-English labels; anything the provider does
-// not report falls back to the context percentage (spec 2.4).
-interface MetricBar {
-  label: string;
-  value: number;
-  max: number;
-  unit?: string;
-  suffix: string;
+export function shortModelName(model: string): string {
+  const short = model.split('/').pop();
+  return short && short.length > 0 ? short : model;
 }
 
-function contextMetric(contextTokens: number, tokensPerMinute: number): MetricBar {
-  return {
-    label: 'context',
-    value: contextTokens,
-    max: DEFAULT_CONTEXT_TOKENS,
-    suffix: forecastContext(contextTokens, tokensPerMinute),
-  };
+export function compactNumber(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+  return `${Math.round(value)}`;
+}
+
+function pct(fraction: number): string {
+  return `${Math.round(fraction * 100)}%`;
 }
 
 function forecastContext(contextTokens: number, tokensPerMinute: number): string {
@@ -36,21 +32,31 @@ function forecastRateReset(resetEpochSeconds: number): string {
   return `resets in ${Math.max(1, Math.round(seconds / 60))}m`;
 }
 
+interface MetricBar {
+  label: string;
+  value: number;
+  max: number;
+  unit?: string;
+  suffix: string;
+}
+
 export function Footer() {
   const s = useSession();
   const contextTokens = s.estimateContextTokens();
   const tpm = s.tokensPerMinute();
 
-  let bar = contextMetric(contextTokens, tpm);
-  let metricShowsDollars = false;
-  if (s.footerMetric === 0) {
-    bar = { label: 'session', value: s.tokensIn + s.tokensOut, max: DEFAULT_CONTEXT_TOKENS, suffix: '' };
-  } else if (s.footerMetric === 2) {
-    if (s.spend > 0 && s.creditLimit) {
+  if (s.footerExpanded !== null) {
+    let bar: MetricBar = {
+      label: 'context',
+      value: contextTokens,
+      max: DEFAULT_CONTEXT_TOKENS,
+      suffix: forecastContext(contextTokens, tpm),
+    };
+    if (s.footerExpanded === 'session') {
+      bar = { label: 'session', value: s.tokensIn + s.tokensOut, max: DEFAULT_CONTEXT_TOKENS, suffix: '' };
+    } else if (s.footerExpanded === 'today' && s.spend > 0 && s.creditLimit) {
       bar = { label: 'today', value: s.spend, max: s.creditLimit, suffix: '' };
-    }
-  } else if (s.footerMetric === 3) {
-    if (s.creditRemaining !== null && s.creditLimit) {
+    } else if (s.footerExpanded === 'credit' && s.creditRemaining !== null && s.creditLimit) {
       bar = {
         label: 'credit',
         value: s.creditLimit - s.creditRemaining,
@@ -58,10 +64,7 @@ export function Footer() {
         unit: 'used',
         suffix: `· $${s.creditRemaining.toFixed(2)} left`,
       };
-      metricShowsDollars = true;
-    }
-  } else if (s.footerMetric === 4) {
-    if (s.rateLimit && s.rateLimit.limit > 0) {
+    } else if (s.footerExpanded === 'speed' && s.rateLimit && s.rateLimit.limit > 0) {
       bar = {
         label: 'speed',
         value: s.rateLimit.limit - s.rateLimit.remaining,
@@ -69,20 +72,52 @@ export function Footer() {
         suffix: forecastRateReset(s.rateLimit.reset),
       };
     }
+    return (
+      <Box justifyContent="space-between">
+        <Text dimColor>{shortModelName(s.model)}</Text>
+        <Text dimColor>
+          <UsageBar label={bar.label} value={bar.value} max={bar.max} unit={bar.unit} width={20} />
+          {bar.suffix ? <Text dimColor> {bar.suffix}</Text> : null}
+        </Text>
+      </Box>
+    );
   }
 
-  // The dollar figure lives in the metric itself when cycling credit, otherwise on the right.
-  const showTrailingCredit = !metricShowsDollars;
-  const creditText = s.creditRemaining !== null ? `$${s.creditRemaining.toFixed(2)}` : '$—';
+  // The compact view shows every metric at all times - nothing needs a key press.
+  const sessionFraction = usageFraction(s.tokensIn + s.tokensOut, DEFAULT_CONTEXT_TOKENS);
+  const contextFraction = usageFraction(contextTokens, DEFAULT_CONTEXT_TOKENS);
+  const segments: { key: string; render: React.ReactNode }[] = [
+    {
+      key: 'session',
+      render: <Text color={usageColor(sessionFraction)}>sess {pct(sessionFraction)}</Text>,
+    },
+    {
+      key: 'context',
+      render: <Text color={usageColor(contextFraction)}>ctx {pct(contextFraction)}</Text>,
+    },
+    {
+      key: 'today',
+      render: <Text>today ${s.spend.toFixed(2)}</Text>,
+    },
+    {
+      key: 'credit',
+      render: <Text>{s.creditRemaining !== null ? `$${s.creditRemaining.toFixed(2)} left` : '$— left'}</Text>,
+    },
+  ];
+  const visible = segments.filter((segment) => !s.hiddenMetrics.includes(segment.key));
 
   return (
     <Box justifyContent="space-between">
-      <Text dimColor>{s.model}</Text>
+      <Text dimColor>{shortModelName(s.model)}</Text>
       <Text dimColor>
-        <UsageBar label={bar.label} value={bar.value} max={bar.max} unit={bar.unit} width={8} />
-        {bar.suffix ? <Text dimColor> {bar.suffix}</Text> : null}
-        {showTrailingCredit ? <Text dimColor> · {creditText} credit</Text> : null}
-        <Text dimColor> · {tpm} tok/min</Text>
+        {visible.map((segment, index) => (
+          <React.Fragment key={segment.key}>
+            {index > 0 ? ' · ' : null}
+            {segment.render}
+          </React.Fragment>
+        ))}
+        {visible.length > 0 ? ' · ' : null}
+        <Text>{compactNumber(tpm)} tpm</Text>
       </Text>
     </Box>
   );
