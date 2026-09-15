@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import Fuse from 'fuse.js';
@@ -8,6 +8,7 @@ import { type ModelInfo, compactContext, compactPrice, isFastModel } from '../mo
 import { setFavorites, setRecents } from '../platform/config.js';
 import { summariseHistory } from '../agent/context.js';
 import { hasCredentials } from '../providers/index.js';
+import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 
 const TABS = ['favorites', 'recent', 'all', 'tools'] as const;
 type Tab = (typeof TABS)[number];
@@ -18,7 +19,18 @@ const TAB_LABELS: Record<Tab, string> = {
   tools: 'Tool-capable',
 };
 
-// Provider groups in the order the spec defines, then everything else alphabetically.
+// The calm first step: providers in spec order. Direct connections unlock with the key vault (Phase 7).
+const PROVIDER_ROWS = [
+  { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },
+  { id: 'anthropic', label: 'Anthropic', description: 'direct connection' },
+  { id: 'openai', label: 'OpenAI', description: 'direct connection' },
+  { id: 'google', label: 'Google', description: 'direct connection' },
+  { id: 'xai', label: 'xAI', description: 'direct connection' },
+  { id: 'groq', label: 'Groq', description: 'direct connection' },
+  { id: 'mistral', label: 'Mistral', description: 'direct connection' },
+  { id: 'ollama', label: 'Ollama', description: 'local models, no key needed' },
+];
+
 const PROVIDER_ORDER = ['openrouter', 'anthropic', 'openai', 'google', 'x-ai', 'groq', 'mistral', 'ollama'];
 const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter',
@@ -31,8 +43,12 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama: 'Ollama',
 };
 
-type Item = { kind: 'header'; label: string } | { kind: 'model'; model: ModelInfo };
+type Item =
+  | { kind: 'header'; label: string }
+  | { kind: 'back' }
+  | { kind: 'model'; model: ModelInfo };
 type Phase = 'browse' | 'switch-confirm' | 'tool-warning';
+type Step = 'providers' | 'models';
 
 function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider;
@@ -85,64 +101,128 @@ function fuzzyMatch(pool: ModelInfo[], query: string): ModelInfo[] {
   return fuse.search(query).map((result) => result.item);
 }
 
-function resolveModelIndex(items: Item[], cursor: number): number {
+// The cursor skips group headers; both the back row and model rows are selectable.
+function resolveIndex(items: Item[], cursor: number): number {
   const start = cursor < 0 ? 0 : cursor;
   for (let i = start; i < items.length; i++) {
-    if (items[i].kind === 'model') return i;
+    if (items[i].kind !== 'header') return i;
   }
   for (let i = Math.min(start, items.length - 1); i >= 0; i--) {
-    if (items[i].kind === 'model') return i;
+    if (items[i].kind !== 'header') return i;
   }
   return -1;
 }
 
-function stepModel(items: Item[], from: number, delta: number): number {
+function stepItem(items: Item[], from: number, delta: number): number {
   let i = from;
   do {
     i += delta;
-  } while (i >= 0 && i < items.length && items[i].kind !== 'model');
+  } while (i >= 0 && i < items.length && items[i].kind === 'header');
   return i >= 0 && i < items.length ? i : from;
 }
 
 export function ModelPicker({ rows, columns }: { rows: number; columns: number }) {
   const s = useSession();
+  const [step, setStep] = useState<Step>('providers');
+  const [providerCursor, setProviderCursor] = useState(0);
+  const [providerChoice, setProviderChoice] = useState<'openrouter' | 'ollama'>('openrouter');
+  const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<ModelInfo[] | null>(null);
   const [tab, setTab] = useState<Tab>('all');
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const [phase, setPhase] = useState<Phase>('browse');
   const [pending, setPending] = useState<ModelInfo | null>(null);
 
-  const greyed = !hasCredentials();
+  useEffect(() => {
+    let cancelled = false;
+    void isOllamaOnline().then((online) => {
+      if (!cancelled) setOllamaOnline(online);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const catalog = providerChoice === 'ollama' ? (ollamaModels ?? []) : s.models;
   const listHeight = Math.max(1, rows - 5);
 
   const items = useMemo<Item[]>(() => {
-    const pool = poolFor(tab, s.models, s.favorites, s.recents);
+    if (step !== 'models') return [];
+    const pool = poolFor(tab, catalog, s.favorites, s.recents);
     const matched = fuzzyMatch(pool, query);
-    const groups = groupModels(matched);
-    const flat: Item[] = [];
-    for (const provider of orderedProviders(groups)) {
-      flat.push({ kind: 'header', label: providerLabel(provider) });
-      for (const model of groups.get(provider) ?? []) {
-        flat.push({ kind: 'model', model });
+    const flat: Item[] = [{ kind: 'back' }];
+    if (providerChoice === 'ollama') {
+      flat.push({ kind: 'header', label: 'Ollama (local)' });
+      for (const model of matched) flat.push({ kind: 'model', model });
+    } else {
+      const groups = groupModels(matched);
+      for (const provider of orderedProviders(groups)) {
+        flat.push({ kind: 'header', label: providerLabel(provider) });
+        for (const model of groups.get(provider) ?? []) {
+          flat.push({ kind: 'model', model });
+        }
       }
     }
     return flat;
-  }, [tab, query, s.models, s.favorites, s.recents]);
+  }, [step, tab, query, catalog, s.favorites, s.recents, providerChoice]);
 
-  const counts = useMemo(() => ({
-    favorites: poolFor('favorites', s.models, s.favorites, s.recents).length,
-    recent: poolFor('recent', s.models, s.favorites, s.recents).length,
-    all: s.models.length,
-    tools: s.models.filter(isToolCapable).length,
-  }), [s.models, s.favorites, s.recents]);
+  const counts = useMemo(
+    () => ({
+      favorites: poolFor('favorites', catalog, s.favorites, s.recents).length,
+      recent: poolFor('recent', catalog, s.favorites, s.recents).length,
+      all: catalog.length,
+      tools: catalog.filter(isToolCapable).length,
+    }),
+    [catalog, s.favorites, s.recents]
+  );
 
-  const resolved = resolveModelIndex(items, cursor);
+  const resolved = resolveIndex(items, cursor);
   const half = Math.floor(listHeight / 2);
   const start = Math.max(0, Math.min(items.length - listHeight, resolved - half));
   const visible = items.slice(start, start + listHeight);
   const highlighted = resolved >= 0 && items[resolved]?.kind === 'model' ? (items[resolved] as { model: ModelInfo }).model : null;
 
+  function providerEnabled(rowId: string): boolean {
+    if (rowId === 'openrouter') return hasCredentials();
+    if (rowId === 'ollama') return ollamaOnline === true;
+    return false;
+  }
+
+  function providerHint(rowId: string): string {
+    if (rowId === 'ollama') {
+      return ollamaOnline === null ? 'checking…' : 'not running - start the Ollama app';
+    }
+    return 'add key';
+  }
+
+  function chooseProvider(): void {
+    const row = PROVIDER_ROWS[providerCursor];
+    if (!row) return;
+    if (row.id === 'openrouter') {
+      if (!hasCredentials()) return;
+      setProviderChoice('openrouter');
+      setStep('models');
+      setCursor(0);
+    } else if (row.id === 'ollama') {
+      if (ollamaOnline !== true) return;
+      setProviderChoice('ollama');
+      setStep('models');
+      setCursor(0);
+      void listLocalOllamaModels()
+        .then(setOllamaModels)
+        .catch(() => setOllamaModels([]));
+    }
+  }
+
+  function backToProviders(): void {
+    setQuery('');
+    setCursor(0);
+    setStep('providers');
+  }
+
   function applyModel(model: ModelInfo): void {
+    s.setProvider(providerChoice === 'ollama' ? 'ollama' : 'openrouter');
     s.setModel(model.id);
     const updatedRecents = [model.id, ...s.recents.filter((id) => id !== model.id)].slice(0, 10);
     s.setRecents(updatedRecents);
@@ -159,23 +239,30 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function selectHighlighted(): void {
-    if (!highlighted) return;
-    if (highlighted.id === s.model) {
+    if (resolved < 0) return;
+    const current = items[resolved];
+    if (!current || current.kind === 'header') return;
+    if (current.kind === 'back') {
+      backToProviders();
+      return;
+    }
+    const model = current.model;
+    if (model.id === s.model && providerChoice === (s.providerId as 'openrouter' | 'ollama')) {
       s.closePicker();
       return;
     }
-    if (!isToolCapable(highlighted)) {
-      setPending(highlighted);
+    if (!isToolCapable(model)) {
+      setPending(model);
       setPhase('tool-warning');
       return;
     }
     if (s.history.length > 0) {
-      setPending(highlighted);
+      setPending(model);
       setPhase('switch-confirm');
       return;
     }
-    applyModel(highlighted);
-    s.addNotice(`Switched to ${highlighted.name}.`);
+    applyModel(model);
+    s.addNotice(`Switched to ${model.name}.`);
     s.closePicker();
   }
 
@@ -218,8 +305,27 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       }
       return;
     }
+    if (step === 'providers') {
+      if (key.escape) {
+        s.closePicker();
+        return;
+      }
+      if (key.upArrow) {
+        setProviderCursor((current) => Math.max(0, current - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setProviderCursor((current) => Math.min(PROVIDER_ROWS.length - 1, current + 1));
+        return;
+      }
+      if (key.return) {
+        chooseProvider();
+        return;
+      }
+      return;
+    }
     if (key.escape) {
-      s.closePicker();
+      backToProviders();
       return;
     }
     if (key.tab) {
@@ -229,11 +335,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     if (key.upArrow) {
-      setCursor(stepModel(items, resolved, -1));
+      setCursor(stepItem(items, resolved, -1));
       return;
     }
     if (key.downArrow) {
-      setCursor(stepModel(items, resolved, 1));
+      setCursor(stepItem(items, resolved, 1));
       return;
     }
     if (key.return) {
@@ -254,30 +360,58 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     setCursor(0);
   });
 
+  if (step === 'providers') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Text dimColor>Choose an AI provider</Text>
+        <Box flexDirection="column" flexGrow={1}>
+          {PROVIDER_ROWS.map((row, index) => {
+            const enabled = providerEnabled(row.id);
+            const selected = index === providerCursor;
+            return (
+              <Text key={row.id} inverse={selected} dimColor={!enabled && !selected}>
+                {column(' ' + row.label, 16)}
+                {enabled ? <Text dimColor>{row.description}</Text> : <Text>{providerHint(row.id)}</Text>}
+              </Text>
+            );
+          })}
+        </Box>
+        <Text dimColor>↑↓ move · Enter choose · Esc close</Text>
+      </Box>
+    );
+  }
+
   const emptyMessage =
-    s.models.length === 0 && s.modelsNote
-      ? `${s.modelsNote}`
-      : s.models.length === 0
-        ? 'Loading the model list…'
-        : items.length === 0
-          ? query
-            ? `No models match "${query}".`
-            : tab === 'favorites'
-              ? 'No favorites yet - highlight a model and press +'
-              : tab === 'recent'
-                ? 'No recently used models yet.'
-                : 'No models.'
-          : '';
+    providerChoice === 'ollama'
+      ? ollamaModels === null
+        ? 'Loading local models…'
+        : ollamaModels.length === 0
+          ? 'Could not reach Ollama - is the app still running?'
+          : ''
+      : s.models.length === 0 && s.modelsNote
+        ? s.modelsNote
+        : s.models.length === 0
+          ? 'Loading the model list…'
+          : items.length <= 1
+            ? query
+              ? `No models match "${query}".`
+              : tab === 'favorites'
+                ? 'No favorites yet - highlight a model and press +'
+                : tab === 'recent'
+                  ? 'No recently used models yet.'
+                  : 'No models.'
+            : '';
 
   const hint =
     phase === 'tool-warning'
       ? `This model can't call tools, so reading files and running commands won't work.  Enter: continue in chat-only mode · Esc: pick another`
       : phase === 'switch-confirm'
         ? `Keep this conversation (k) · Summarise it first (s) · Start fresh (f) · Esc: cancel`
-        : `Tab list · ↑↓ move · type to search · + favorite · Enter select · Esc close`;
+        : `Tab list · ↑↓ move · type to search · + favorite · Enter select · Esc back`;
 
   return (
     <Box flexDirection="column" height={rows}>
+      <Text dimColor>{providerLabel(providerChoice)} — pick a model</Text>
       <Box>
         {TABS.map((name) => (
           <React.Fragment key={name}>
@@ -296,25 +430,31 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       </Box>
       <Text dimColor>context in tokens · prices per million tokens · ✓ tools · » fast</Text>
       <Box flexDirection="column" height={listHeight}>
-        {s.models.length === 0 ? (
+        {emptyMessage ? (
           <Text dimColor>
             <Spinner type="dots" /> {emptyMessage}
           </Text>
-        ) : emptyMessage ? (
-          <Text dimColor>{emptyMessage}</Text>
         ) : (
           visible.map((item, index) => {
             const absoluteIndex = start + index;
             if (item.kind === 'header') {
               return (
                 <Text key={`h${absoluteIndex}`} dimColor>
-                  {`── ${item.label} ──${greyed ? '  (add key)' : ''}`}
+                  {`── ${item.label} ──`}
+                </Text>
+              );
+            }
+            if (item.kind === 'back') {
+              const selected = absoluteIndex === resolved;
+              return (
+                <Text key="back" inverse={selected} dimColor={!selected}>
+                  ← Back to providers
                 </Text>
               );
             }
             const selected = absoluteIndex === resolved;
             return (
-              <Text key={`m${item.model.id}`} inverse={selected} dimColor={greyed && !selected} wrap="truncate-end">
+              <Text key={`m${item.model.id}`} inverse={selected} wrap="truncate-end">
                 {rowText(item.model)}
               </Text>
             );

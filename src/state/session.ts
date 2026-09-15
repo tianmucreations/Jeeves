@@ -180,6 +180,11 @@ class SessionStore {
     this.emit();
   }
 
+  setProvider(providerId: string): void {
+    this.providerId = providerId;
+    this.emit();
+  }
+
   setModels(models: ModelInfo[], note: string): void {
     this.models = models;
     this.modelsNote = note;

@@ -1,5 +1,6 @@
 import type { Provider } from './types.js';
 import { createOpenRouterProvider, fetchCreditInfo } from './openrouter.js';
+import { createOllamaProvider } from './ollama.js';
 import { session } from '../state/session.js';
 
 let active: Provider | null = null;
@@ -16,6 +17,9 @@ export function hasCredentials(): boolean {
 }
 
 export function getActiveProvider(): Provider {
+  if (session.providerId === 'ollama') {
+    return createOllamaProvider();
+  }
   if (!active) {
     const key = getOpenRouterApiKey();
     if (!key) {
@@ -26,8 +30,9 @@ export function getActiveProvider(): Provider {
   return active;
 }
 
-// Best-effort credit refresh; failures are silent and leave the last known values in place.
+// Best-effort credit refresh; local Ollama has no credit balance, and failures are silent.
 export async function refreshCredit(): Promise<void> {
+  if (session.providerId !== 'openrouter') return;
   const key = getOpenRouterApiKey();
   if (!key) return;
   const info = await fetchCreditInfo(key);
