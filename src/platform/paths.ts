@@ -52,3 +52,16 @@ export function displayPath(p: string): string {
   }
   return p;
 }
+
+// Returns a plain-English problem with a proposed project name, or null when the name is fine.
+export function projectNameProblem(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return 'Give the project a name first.';
+  if (/[/\\:*?"<>|]/.test(trimmed)) {
+    return 'Names cannot contain / \\ : * ? " < > or | - try another name.';
+  }
+  if (trimmed === '.' || trimmed === '..') {
+    return 'That is not a valid name - try another.';
+  }
+  return null;
+}

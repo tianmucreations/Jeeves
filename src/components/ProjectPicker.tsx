@@ -2,19 +2,25 @@ import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Fuse from 'fuse.js';
 import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { session, useSession } from '../state/session.js';
 import { setRecentProjects } from '../platform/config.js';
-import { homeLocations, listSubfolders, displayPath, type FolderEntry } from '../platform/paths.js';
+import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
 import { hasCredentials } from '../providers/index.js';
 
 type Item =
   | { kind: 'header'; label: string }
   | { kind: 'recent'; folder: string }
   | { kind: 'browse' }
+  | { kind: 'create' }
   | { kind: 'back' }
   | { kind: 'choose' }
+  | { kind: 'create-here' }
+  | { kind: 'location'; entry: FolderEntry }
   | { kind: 'folder'; entry: FolderEntry };
+
+type Mode = 'list' | 'browse' | 'create-name' | 'create-location' | 'create-confirm';
 
 // The cursor skips header lines; every other row is selectable.
 function resolveIndex(items: Item[], cursor: number): number {
@@ -42,12 +48,16 @@ function fuzzyFolders(pool: FolderEntry[], query: string): FolderEntry[] {
   return fuse.search(query).map((result) => result.item);
 }
 
-export function ProjectPicker({ rows }: { rows: number; columns: number }) {
+export function ProjectPicker({ rows, columns }: { rows: number; columns: number }) {
   const s = useSession();
-  const [mode, setMode] = useState<'list' | 'browse'>('list');
+  const [mode, setMode] = useState<Mode>('list');
+  const [purpose, setPurpose] = useState<'open' | 'create'>('open');
   const [stack, setStack] = useState<string[]>([]);
   const [filter, setFilter] = useState('');
   const [cursor, setCursor] = useState(0);
+  const [createName, setCreateName] = useState('');
+  const [createTarget, setCreateTarget] = useState<FolderEntry | null>(null);
+  const [note, setNote] = useState('');
 
   const listHeight = Math.max(1, rows - 4);
   const current = stack.length > 0 ? stack[stack.length - 1] : null;
@@ -68,18 +78,28 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
       } else {
         out.push({ kind: 'header', label: 'No recent projects yet - pick Browse below' });
       }
+      out.push({ kind: 'browse' }, { kind: 'create' });
+      return out;
+    }
+    if (mode === 'browse') {
+      const out: Item[] = [];
+      if (current !== null) {
+        out.push({ kind: 'back' });
+        out.push(purpose === 'create' ? { kind: 'create-here' } : { kind: 'choose' });
+        for (const entry of fuzzyFolders(listing.folders, filter)) out.push({ kind: 'folder', entry });
+      } else {
+        for (const entry of fuzzyFolders(homeLocations(), filter)) out.push({ kind: 'folder', entry });
+      }
+      return out;
+    }
+    if (mode === 'create-location') {
+      const out: Item[] = [];
+      for (const entry of homeLocations()) out.push({ kind: 'location', entry });
       out.push({ kind: 'browse' });
       return out;
     }
-    const out: Item[] = [];
-    if (current !== null) {
-      out.push({ kind: 'back' }, { kind: 'choose' });
-      for (const entry of fuzzyFolders(listing.folders, filter)) out.push({ kind: 'folder', entry });
-    } else {
-      for (const entry of fuzzyFolders(homeLocations(), filter)) out.push({ kind: 'folder', entry });
-    }
-    return out;
-  }, [mode, current, listing, filter, s.recentProjects]);
+    return [];
+  }, [mode, purpose, current, listing, filter, s.recentProjects]);
 
   const resolved = resolveIndex(items, cursor);
   const half = Math.floor(listHeight / 2);
@@ -104,15 +124,31 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
     }
   }
 
+  async function createProject(folder: string): Promise<void> {
+    try {
+      await mkdir(folder, { recursive: true });
+      startProject(folder);
+    } catch {
+      setNote('That location could not be written to - pick another.');
+      setMode('create-location');
+    }
+  }
+
   function goBack(): void {
     setFilter('');
     setCursor(0);
+    setNote('');
     if (stack.length > 1) {
       setStack(stack.slice(0, -1));
       return;
     }
     if (stack.length === 1) {
       setStack([]);
+      return;
+    }
+    if (mode === 'browse' && purpose === 'create') {
+      setMode('create-location');
+      setPurpose('open');
       return;
     }
     setMode('list');
@@ -124,36 +160,53 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
     setStack([...stack, folder]);
   }
 
+  function startCreate(): void {
+    setCreateName('');
+    setNote('');
+    setCursor(0);
+    setMode('create-name');
+  }
+
+  function clip(text: string): string {
+    const width = Math.max(10, columns - 2);
+    return text.length > width ? text.slice(0, width - 1) + '…' : text;
+  }
+
   useInput((input, key) => {
-    if (mode === 'list') {
+    if (mode === 'create-name') {
       if (key.escape) {
-        startProject(process.cwd());
-        return;
-      }
-      if (key.upArrow) {
-        setCursor(stepItem(items, resolved, -1));
-        return;
-      }
-      if (key.downArrow) {
-        setCursor(stepItem(items, resolved, 1));
+        setMode('list');
+        setNote('');
         return;
       }
       if (key.return) {
-        const item = items[resolved];
-        if (!item) return;
-        if (item.kind === 'recent') startProject(item.folder);
-        if (item.kind === 'browse') {
-          setMode('browse');
-          setStack([]);
-          setFilter('');
-          setCursor(0);
+        const problem = projectNameProblem(createName);
+        if (problem) {
+          setNote(problem);
+          return;
         }
+        setNote('');
+        setCursor(0);
+        setMode('create-location');
         return;
       }
+      if (key.backspace || key.delete) {
+        setCreateName((name) => name.slice(0, -1));
+        return;
+      }
+      if (!input || key.ctrl || key.meta) return;
+      setCreateName((name) => (name.length >= 60 ? name : name + input));
       return;
     }
-    if (key.escape) {
-      goBack();
+    if (mode === 'create-confirm') {
+      if (key.return && createTarget !== null) {
+        void createProject(path.join(createTarget.path, createName.trim()));
+        return;
+      }
+      if (key.escape) {
+        setMode('create-location');
+        setCursor(0);
+      }
       return;
     }
     if (key.upArrow) {
@@ -164,35 +217,98 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
       setCursor(stepItem(items, resolved, 1));
       return;
     }
-    if (key.return) {
-      const item = items[resolved];
-      if (!item) return;
-      if (item.kind === 'back') goBack();
-      if (item.kind === 'choose' && current !== null) startProject(current);
-      if (item.kind === 'folder') openFolder(item.entry.path);
+    if (key.escape) {
+      if (mode === 'list') {
+        startProject(process.cwd());
+        return;
+      }
+      if (mode === 'create-location') {
+        setMode('create-name');
+        setCursor(0);
+        return;
+      }
+      goBack();
       return;
     }
-    if (key.backspace || key.delete) {
-      setFilter((currentFilter) => currentFilter.slice(0, -1));
+    if (mode === 'create-location' && key.return) {
+      const item = items[resolved];
+      if (!item) return;
+      if (item.kind === 'location') {
+        setCreateTarget(item.entry);
+        setMode('create-confirm');
+      }
+      if (item.kind === 'browse') {
+        setPurpose('create');
+        setMode('browse');
+        setStack([]);
+        setFilter('');
+        setCursor(0);
+      }
+      return;
+    }
+    if (mode === 'list' && key.return) {
+      const item = items[resolved];
+      if (!item) return;
+      if (item.kind === 'recent') startProject(item.folder);
+      if (item.kind === 'browse') {
+        setPurpose('open');
+        setMode('browse');
+        setStack([]);
+        setFilter('');
+        setCursor(0);
+      }
+      if (item.kind === 'create') startCreate();
+      return;
+    }
+    if (mode === 'browse') {
+      if (key.return) {
+        const item = items[resolved];
+        if (!item) return;
+        if (item.kind === 'back') goBack();
+        if (item.kind === 'choose' && current !== null) startProject(current);
+        if (item.kind === 'create-here' && current !== null) {
+          void createProject(path.join(current, createName.trim()));
+        }
+        if (item.kind === 'folder') openFolder(item.entry.path);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setFilter((currentFilter) => currentFilter.slice(0, -1));
+        setCursor(0);
+        return;
+      }
+      if (!input || key.ctrl || key.meta) return;
+      setFilter((currentFilter) => currentFilter + input);
       setCursor(0);
       return;
     }
-    if (!input || key.ctrl || key.meta) return;
-    setFilter((currentFilter) => currentFilter + input);
-    setCursor(0);
   });
 
   const title =
     mode === 'list'
       ? 'Choose a project'
-      : current !== null
-        ? `Open a folder - now in ${displayPath(current)}`
-        : 'Open a folder - where do you keep your projects?';
+      : mode === 'create-name'
+        ? 'Create a new project'
+        : mode === 'create-location'
+          ? `Where should "${createName.trim()}" live?`
+          : mode === 'create-confirm'
+            ? 'Create the project?'
+            : purpose === 'create'
+              ? `Where should "${createName.trim()}" live? - now in ${current !== null ? displayPath(current) : 'your standard folders'}`
+              : current !== null
+                ? `Open a folder - now in ${displayPath(current)}`
+                : 'Open a folder - where do you keep your projects?';
 
   const hint =
     mode === 'list'
       ? '↑↓ move · Enter choose · Esc current folder'
-      : '↑↓ move · Enter open · type to filter · Esc back';
+      : mode === 'create-name'
+        ? 'type a name · Enter continue · Esc cancel'
+        : mode === 'create-location'
+          ? '↑↓ move · Enter choose · Esc back'
+          : mode === 'create-confirm'
+            ? 'Enter create · Esc back'
+            : '↑↓ move · Enter open · type to filter · Esc back';
 
   return (
     <Box flexDirection="column" height={rows}>
@@ -205,6 +321,19 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
         </Box>
       ) : null}
       <Box flexDirection="column" flexGrow={1} justifyContent="center" minHeight={listHeight}>
+        {mode === 'create-name' ? (
+          <Text>
+            <Text dimColor>Name: </Text>
+            <Text>{createName}</Text>
+            <Text inverse> </Text>
+          </Text>
+        ) : null}
+        {mode === 'create-confirm' && createTarget !== null ? (
+          <Box flexDirection="column">
+            <Text>{clip(`Create ${createName.trim()} in ${createTarget.name} →`)}</Text>
+            <Text dimColor>{displayPath(createTarget.path)}</Text>
+          </Box>
+        ) : null}
         {visible.map((item, index) => {
           const absoluteIndex = start + index;
           const selected = absoluteIndex === resolved;
@@ -226,8 +355,15 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
           }
           if (item.kind === 'browse') {
             return (
-              <Text key="browse" inverse={selected}>
+              <Text key={`b${absoluteIndex}`} inverse={selected}>
                 {' Browse for a folder →'}
+              </Text>
+            );
+          }
+          if (item.kind === 'create') {
+            return (
+              <Text key="create" inverse={selected}>
+                {' Create a new project →'}
               </Text>
             );
           }
@@ -245,6 +381,20 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
               </Text>
             );
           }
+          if (item.kind === 'create-here') {
+            return current !== null ? (
+              <Text key="create-here" inverse={selected}>
+                {clip(`Create ${createName.trim()} in ${displayPath(current)} →`)}
+              </Text>
+            ) : null;
+          }
+          if (item.kind === 'location') {
+            return (
+              <Text key={`l${item.entry.path}`} inverse={selected}>
+                {` ${item.entry.name}`}
+              </Text>
+            );
+          }
           return (
             <Text key={`f${item.entry.path}`} inverse={selected}>
               {` ${item.entry.name}`}
@@ -256,7 +406,7 @@ export function ProjectPicker({ rows }: { rows: number; columns: number }) {
         ) : null}
         {mode === 'browse' && listing.error ? <Text dimColor>({listing.error})</Text> : null}
       </Box>
-      <Text dimColor>{hint}</Text>
+      {note ? <Text color="yellow">{note}</Text> : <Text dimColor>{hint}</Text>}
     </Box>
   );
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { homeLocations, listSubfolders, displayPath } from '../src/platform/paths.js';
+import { homeLocations, listSubfolders, displayPath, projectNameProblem } from '../src/platform/paths.js';
 
 describe('folder browser helpers', () => {
   let dir: string;
@@ -54,5 +54,28 @@ describe('folder browser helpers', () => {
     expect(home).toBe('~');
     const outside = displayPath(path.join(tmpdir(), 'elsewhere'));
     expect(outside).toBe(path.join(tmpdir(), 'elsewhere'));
+  });
+});
+
+describe('project name validation', () => {
+  it('accepts normal names and trims padding', () => {
+    expect(projectNameProblem('My App')).toBeNull();
+    expect(projectNameProblem('  Padded Name  ')).toBeNull();
+    expect(projectNameProblem('Website Redesign 2026')).toBeNull();
+  });
+
+  it('rejects empty names in plain English', () => {
+    expect(projectNameProblem('   ')).toContain('Give the project a name');
+  });
+
+  it('rejects characters filesystems cannot take', () => {
+    for (const bad of ['a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b']) {
+      expect(projectNameProblem(bad)).toContain('cannot contain');
+    }
+  });
+
+  it('rejects bare dot names', () => {
+    expect(projectNameProblem('.')).toContain('not a valid name');
+    expect(projectNameProblem('..')).toContain('not a valid name');
   });
 });
