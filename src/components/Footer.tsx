@@ -3,22 +3,22 @@ import { Box, Text } from 'ink';
 import { useSession, DEFAULT_CONTEXT_TOKENS } from '../state/session.js';
 import { UsageBar } from './UsageBar.js';
 
-// The five Tab-cycled metrics; anything the provider does not report falls back
-// to the context-window percentage (spec 2.4).
+// The five Tab-cycled metrics in plain-English labels; anything the provider does
+// not report falls back to the context percentage (spec 2.4).
 interface MetricBar {
   label: string;
   value: number;
   max: number;
   unit?: string;
-  forecast: string;
+  suffix: string;
 }
 
 function contextMetric(contextTokens: number, tokensPerMinute: number): MetricBar {
   return {
-    label: 'ctx',
+    label: 'context',
     value: contextTokens,
     max: DEFAULT_CONTEXT_TOKENS,
-    forecast: forecastContext(contextTokens, tokensPerMinute),
+    suffix: forecastContext(contextTokens, tokensPerMinute),
   };
 }
 
@@ -42,27 +42,37 @@ export function Footer() {
   const tpm = s.tokensPerMinute();
 
   let bar = contextMetric(contextTokens, tpm);
+  let metricShowsDollars = false;
   if (s.footerMetric === 0) {
-    bar = { label: 'tok', value: s.tokensIn + s.tokensOut, max: DEFAULT_CONTEXT_TOKENS, forecast: '' };
+    bar = { label: 'session', value: s.tokensIn + s.tokensOut, max: DEFAULT_CONTEXT_TOKENS, suffix: '' };
   } else if (s.footerMetric === 2) {
     if (s.spend > 0 && s.creditLimit) {
-      bar = { label: 'spend', value: s.spend, max: s.creditLimit, forecast: '' };
+      bar = { label: 'today', value: s.spend, max: s.creditLimit, suffix: '' };
     }
   } else if (s.footerMetric === 3) {
     if (s.creditRemaining !== null && s.creditLimit) {
-      bar = { label: 'credit', value: s.creditLimit - s.creditRemaining, max: s.creditLimit, forecast: '' };
+      bar = {
+        label: 'credit',
+        value: s.creditLimit - s.creditRemaining,
+        max: s.creditLimit,
+        unit: 'used',
+        suffix: `· $${s.creditRemaining.toFixed(2)} left`,
+      };
+      metricShowsDollars = true;
     }
   } else if (s.footerMetric === 4) {
     if (s.rateLimit && s.rateLimit.limit > 0) {
       bar = {
-        label: 'rate',
+        label: 'speed',
         value: s.rateLimit.limit - s.rateLimit.remaining,
         max: s.rateLimit.limit,
-        forecast: forecastRateReset(s.rateLimit.reset),
+        suffix: forecastRateReset(s.rateLimit.reset),
       };
     }
   }
 
+  // The dollar figure lives in the metric itself when cycling credit, otherwise on the right.
+  const showTrailingCredit = !metricShowsDollars;
   const creditText = s.creditRemaining !== null ? `$${s.creditRemaining.toFixed(2)}` : '$—';
 
   return (
@@ -70,8 +80,9 @@ export function Footer() {
       <Text dimColor>{s.model}</Text>
       <Text dimColor>
         <UsageBar label={bar.label} value={bar.value} max={bar.max} unit={bar.unit} width={8} />
-        {bar.forecast ? <Text dimColor> {bar.forecast}</Text> : null}
-        <Text dimColor> · {creditText} credit · {tpm} tok/min</Text>
+        {bar.suffix ? <Text dimColor> {bar.suffix}</Text> : null}
+        {showTrailingCredit ? <Text dimColor> · {creditText} credit</Text> : null}
+        <Text dimColor> · {tpm} tok/min</Text>
       </Text>
     </Box>
   );
