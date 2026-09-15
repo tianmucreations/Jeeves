@@ -40,7 +40,20 @@ function expectedTerminalApp(): string {
   return TERMINAL_APP_NAMES[raw] ?? 'Terminal';
 }
 
-// Best-effort focus check, macOS only; anywhere else the notification simply fires.
+// Mirror the state in the terminal tab title (OSC 0). Terminals without OSC support
+// ignore the sequence; non-TTY streams and dumb terminals are skipped so no escape
+// bytes ever reach output they would corrupt.
+function setTabTitle(label: string): void {
+  if (!process.stdout.isTTY || process.env.TERM === 'dumb') return;
+  try {
+    process.stdout.write(`\x1b]0;${label}\x07`);
+  } catch {
+    // A closed stream must never crash the app.
+  }
+}
+
+// Best-effort focus check via AppleScript, intentionally macOS-only (spec Phase 8
+// allows per-platform checks); other platforms simply always deliver the notification.
 async function isTerminalFocused(): Promise<boolean> {
   if (platform() !== 'darwin') return false;
   try {
@@ -82,9 +95,9 @@ export function TrafficLight() {
     return () => clearInterval(timer);
   }, [s.status]);
 
-  // Mirror the state in the terminal tab title (OSC 0; ignored where unsupported).
+  // Mirror the state in the terminal tab title; degrades silently where unsupported.
   useEffect(() => {
-    process.stdout.write(`\x1b]0;${TITLE_LABELS[s.status]}\x07`);
+    setTabTitle(TITLE_LABELS[s.status]);
   }, [s.status]);
 
   // Watch for long jobs completing; notify when the terminal is not focused.

@@ -11,6 +11,8 @@ export const listDirSchema = z.object({
 
 // Assumption: only the top-level .gitignore of the listed folder is honoured, and negation
 // rules (!) are not supported - typical project files use plain ignore rules only.
+// Glob patterns use forward slashes on every platform by design (fast-glob normalises them),
+// so these are not filesystem paths and never need path.sep.
 function ignorePatterns(dir: string): string[] {
   const patterns = ['**/.git', '**/.git/**', '**/node_modules', '**/node_modules/**'];
   const gitignorePath = path.join(dir, '.gitignore');

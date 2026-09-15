@@ -57,7 +57,7 @@ export async function initKeys(): Promise<void> {
 
 // Only removes the single-key development file this project created - never a custom one.
 function removeEnvFile(): void {
-  const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env');
+  const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env');
   if (!existsSync(envPath)) return;
   try {
     const lines = readFileSync(envPath, 'utf8')

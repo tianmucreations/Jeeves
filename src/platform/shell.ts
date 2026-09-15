@@ -1,13 +1,14 @@
-import { platform } from 'node:os';
+import process from 'node:process';
 
 export interface ShellSpec {
   program: string;
   flag: string;
 }
 
-// Assumption per spec: bash on macOS and Linux, PowerShell on Windows; Windows is verified in Phase 8.
-export function getShell(): ShellSpec {
-  if (platform() === 'win32') {
+// bash on macOS and Linux, PowerShell on Windows, chosen from process.platform
+// (spec Phase 8). execa resolves the program through PATH on every platform.
+export function getShell(platform: NodeJS.Platform = process.platform): ShellSpec {
+  if (platform === 'win32') {
     return { program: 'powershell.exe', flag: '-Command' };
   }
   return { program: 'bash', flag: '-c' };

@@ -8,13 +8,20 @@ import { App } from './app.js';
 
 // Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
 // .env file at the project root. Replaced by the secure OS credential store in Phase 7.
-const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env');
+const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.env');
 if (existsSync(envPath)) {
   try {
     process.loadEnvFile(envPath);
   } catch {
     // A malformed .env is non-fatal; the on-screen notice explains what is missing.
   }
+}
+
+// Graceful degradation: without an interactive terminal there is nothing to draw,
+// so explain in plain English instead of crashing on raw mode.
+if (!process.stdin.isTTY) {
+  console.error('This app needs an interactive terminal window to run.');
+  process.exit(1);
 }
 
 const program = new Command();
