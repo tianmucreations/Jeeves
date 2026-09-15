@@ -11,7 +11,7 @@ export function App() {
   useEffect(() => {
     if (!hasCredentials()) {
       session.setStatus('disconnected');
-      session.addNotice('No OpenRouter API key set. Start with: OPENROUTER_API_KEY=your-key npm run dev');
+      session.addNotice('No OpenRouter API key found. Add OPENROUTER_API_KEY=your-key to the .env file in the project folder.');
     }
   }, []);
   return (

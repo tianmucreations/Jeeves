@@ -1,7 +1,21 @@
 import React from 'react';
 import { render } from 'ink';
 import { Command } from 'commander';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
+
+// Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
+// .env file at the project root. Replaced by the secure OS credential store in Phase 7.
+const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env');
+if (existsSync(envPath)) {
+  try {
+    process.loadEnvFile(envPath);
+  } catch {
+    // A malformed .env is non-fatal; the on-screen notice explains what is missing.
+  }
+}
 
 const program = new Command();
 
@@ -11,7 +25,7 @@ program
   .description('A plain-English terminal assistant.')
   .argument('[prompt]', 'optional prompt to start with')
   .action((prompt) => {
-    // Phase 1 scaffold: the prompt argument is accepted but unused until the agent loop exists (Phase 2).
+    // The prompt argument is accepted but not auto-sent yet; a later phase wires it into the loop.
     render(<App />);
   });
 
