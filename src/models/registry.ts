@@ -72,6 +72,48 @@ export function compactContext(tokens: number): string {
   return `${tokens}`;
 }
 
+export interface CuratedModel {
+  ids: string[];
+  blurb: string;
+}
+
+// A short, human-first shortlist. Each entry lists candidate ids so the row
+// survives catalog drift; the first id found in the catalog wins.
+export const CURATED_MODELS: CuratedModel[] = [
+  { ids: ['z-ai/glm-5.3', 'z-ai/glm-5.3-flash', 'z-ai/glm-5.2'], blurb: 'best value' },
+  { ids: ['deepseek/deepseek-v4-flash-0731', 'deepseek/deepseek-v4-flash', 'deepseek/deepseek-v3.2'], blurb: 'cheapest' },
+  { ids: ['anthropic/claude-opus-5', 'anthropic/claude-opus-4.8', 'anthropic/claude-sonnet-5'], blurb: 'best quality' },
+  { ids: ['openai/gpt-5.5', 'openai/gpt-5.4', 'openai/gpt-5.1'], blurb: 'strong all-rounder' },
+  { ids: ['google/gemini-3.1-pro-preview', 'google/gemini-3-pro-preview', 'google/gemini-2.5-pro'], blurb: 'huge memory' },
+  { ids: ['qwen/qwen3-coder-plus', 'qwen/qwen3-coder', 'qwen/qwen3-coder-flash'], blurb: 'good for code' },
+];
+
+export interface CuratedPick {
+  model: ModelInfo;
+  blurb: string;
+}
+
+export function resolveCurated(models: ModelInfo[]): CuratedPick[] {
+  const byId = new Map(models.map((model) => [model.id, model]));
+  const picks: CuratedPick[] = [];
+  for (const entry of CURATED_MODELS) {
+    for (const id of entry.ids) {
+      const model = byId.get(id);
+      if (model) {
+        picks.push({ model, blurb: entry.blurb });
+        break;
+      }
+    }
+  }
+  return picks;
+}
+
+// Strips the "Provider: " prefix OpenRouter puts in display names.
+export function cleanModelName(name: string): string {
+  const stripped = name.replace(/^[A-Za-z][A-Za-z0-9 .-]*: /, '');
+  return stripped.length > 0 ? stripped : name;
+}
+
 export function compactPrice(prompt: number, completion: number): string {
   if (prompt === 0 && completion === 0) return 'free';
   // OpenRouter marks router models with negative sentinels; their price varies by routed model.

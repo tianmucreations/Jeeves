@@ -4,7 +4,14 @@ import Spinner from 'ink-spinner';
 import Fuse from 'fuse.js';
 import { useSession } from '../state/session.js';
 import { isToolCapable } from '../models/filter.js';
-import { type ModelInfo, compactContext, compactPrice, isFastModel } from '../models/registry.js';
+import {
+  type ModelInfo,
+  compactContext,
+  compactPrice,
+  isFastModel,
+  resolveCurated,
+  cleanModelName,
+} from '../models/registry.js';
 import { setFavorites, setRecents } from '../platform/config.js';
 import { summariseHistory } from '../agent/context.js';
 import { hasCredentials } from '../providers/index.js';
@@ -46,9 +53,11 @@ const PROVIDER_LABELS: Record<string, string> = {
 type Item =
   | { kind: 'header'; label: string }
   | { kind: 'back' }
-  | { kind: 'model'; model: ModelInfo };
+  | { kind: 'show-all' }
+  | { kind: 'model'; model: ModelInfo; blurb?: string };
 type Phase = 'browse' | 'switch-confirm' | 'tool-warning';
-type Step = 'providers' | 'models';
+// Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
+type Step = 'providers' | 'curated' | 'full';
 
 function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider;
@@ -101,7 +110,7 @@ function fuzzyMatch(pool: ModelInfo[], query: string): ModelInfo[] {
   return fuse.search(query).map((result) => result.item);
 }
 
-// The cursor skips group headers; both the back row and model rows are selectable.
+// The cursor skips group headers; back, show-all, and model rows are all selectable.
 function resolveIndex(items: Item[], cursor: number): number {
   const start = cursor < 0 ? 0 : cursor;
   for (let i = start; i < items.length; i++) {
@@ -148,34 +157,35 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const listHeight = Math.max(1, rows - 5);
 
   const items = useMemo<Item[]>(() => {
-    if (step !== 'models') return [];
-    const pool = poolFor(tab, catalog, s.favorites, s.recents);
-    const matched = fuzzyMatch(pool, query);
-    const flat: Item[] = [{ kind: 'back' }];
-    if (providerChoice === 'ollama') {
-      flat.push({ kind: 'header', label: 'Ollama (local)' });
-      for (const model of matched) flat.push({ kind: 'model', model });
-    } else {
-      const groups = groupModels(matched);
-      for (const provider of orderedProviders(groups)) {
-        flat.push({ kind: 'header', label: providerLabel(provider) });
-        for (const model of groups.get(provider) ?? []) {
-          flat.push({ kind: 'model', model });
+    if (step === 'curated') {
+      const picks = resolveCurated(catalog);
+      const flat: Item[] = [{ kind: 'back' }, { kind: 'header', label: 'Recommended' }];
+      for (const pick of picks) {
+        flat.push({ kind: 'model', model: pick.model, blurb: pick.blurb });
+      }
+      flat.push({ kind: 'header', label: '──────────' }, { kind: 'show-all' });
+      return flat;
+    }
+    if (step === 'full') {
+      const pool = poolFor(tab, catalog, s.favorites, s.recents);
+      const matched = fuzzyMatch(pool, query);
+      const flat: Item[] = [{ kind: 'back' }];
+      if (providerChoice === 'ollama') {
+        flat.push({ kind: 'header', label: 'Ollama (local)' });
+        for (const model of matched) flat.push({ kind: 'model', model });
+      } else {
+        const groups = groupModels(matched);
+        for (const provider of orderedProviders(groups)) {
+          flat.push({ kind: 'header', label: providerLabel(provider) });
+          for (const model of groups.get(provider) ?? []) {
+            flat.push({ kind: 'model', model });
+          }
         }
       }
+      return flat;
     }
-    return flat;
+    return [];
   }, [step, tab, query, catalog, s.favorites, s.recents, providerChoice]);
-
-  const counts = useMemo(
-    () => ({
-      favorites: poolFor('favorites', catalog, s.favorites, s.recents).length,
-      recent: poolFor('recent', catalog, s.favorites, s.recents).length,
-      all: catalog.length,
-      tools: catalog.filter(isToolCapable).length,
-    }),
-    [catalog, s.favorites, s.recents]
-  );
 
   const resolved = resolveIndex(items, cursor);
   const half = Math.floor(listHeight / 2);
@@ -196,29 +206,43 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     return 'add key';
   }
 
+  function enterModelStep(forProvider: 'openrouter' | 'ollama'): void {
+    setProviderChoice(forProvider);
+    setQuery('');
+    setTab('all');
+    setCursor(1);
+    // Big catalogs get the curated shortlist first; small ones go straight to the full list.
+    const big = forProvider === 'openrouter' ? s.models.length > 8 : false;
+    setStep(big ? 'curated' : 'full');
+  }
+
   function chooseProvider(): void {
     const row = PROVIDER_ROWS[providerCursor];
     if (!row) return;
     if (row.id === 'openrouter') {
       if (!hasCredentials()) return;
-      setProviderChoice('openrouter');
-      setStep('models');
-      setCursor(0);
+      enterModelStep('openrouter');
     } else if (row.id === 'ollama') {
       if (ollamaOnline !== true) return;
-      setProviderChoice('ollama');
-      setStep('models');
-      setCursor(0);
+      enterModelStep('ollama');
       void listLocalOllamaModels()
         .then(setOllamaModels)
         .catch(() => setOllamaModels([]));
     }
   }
 
-  function backToProviders(): void {
-    setQuery('');
-    setCursor(0);
-    setStep('providers');
+  function goBack(): void {
+    if (step === 'full' && providerChoice === 'openrouter') {
+      setQuery('');
+      setCursor(1);
+      setStep('curated');
+    } else if (step === 'curated' || step === 'full') {
+      setStep('providers');
+    }
+  }
+
+  function backLabel(): string {
+    return step === 'full' && providerChoice === 'openrouter' ? '← Back to recommended' : '← Back to providers';
   }
 
   function applyModel(model: ModelInfo): void {
@@ -243,7 +267,14 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     const current = items[resolved];
     if (!current || current.kind === 'header') return;
     if (current.kind === 'back') {
-      backToProviders();
+      goBack();
+      return;
+    }
+    if (current.kind === 'show-all') {
+      setStep('full');
+      setQuery('');
+      setTab('all');
+      setCursor(1);
       return;
     }
     const model = current.model;
@@ -325,13 +356,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     if (key.escape) {
-      backToProviders();
-      return;
-    }
-    if (key.tab) {
-      const next = TABS[(TABS.indexOf(tab) + 1) % TABS.length];
-      setTab(next);
-      setCursor(0);
+      goBack();
       return;
     }
     if (key.upArrow) {
@@ -346,9 +371,15 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       selectHighlighted();
       return;
     }
+    if (key.tab && step === 'full') {
+      const next = TABS[(TABS.indexOf(tab) + 1) % TABS.length];
+      setTab(next);
+      setCursor(1);
+      return;
+    }
     if (key.backspace || key.delete) {
-      setQuery((current) => current.slice(0, -1));
-      setCursor(0);
+      if (step === 'full') setQuery((current) => current.slice(0, -1));
+      setCursor(1);
       return;
     }
     if (input === '+') {
@@ -356,8 +387,10 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     if (!input || key.ctrl || key.meta) return;
-    setQuery((current) => current + input);
-    setCursor(0);
+    if (step === 'full') {
+      setQuery((current) => current + input);
+      setCursor(1);
+    }
   });
 
   if (step === 'providers') {
@@ -377,6 +410,59 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           })}
         </Box>
         <Text dimColor>↑↓ move · Enter choose · Esc close</Text>
+      </Box>
+    );
+  }
+
+  if (step === 'curated') {
+    const picks = resolveCurated(catalog);
+    const hint = `↑↓ move · + favorite · Enter select · Esc back`;
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Box flexGrow={1} flexDirection="column" justifyContent="center" minHeight={listHeight}>
+          {s.models.length === 0 ? (
+            <Text dimColor>
+              <Spinner type="dots" /> Loading the model list…
+            </Text>
+          ) : (
+            visible.map((item, index) => {
+              const absoluteIndex = start + index;
+              const selected = absoluteIndex === resolved;
+              if (item.kind === 'header') {
+                return (
+                  <Text key={`h${absoluteIndex}`} dimColor>
+                    {item.label ? `${item.label}` : ''}
+                  </Text>
+                );
+              }
+              if (item.kind === 'back') {
+                return (
+                  <Text key="back" inverse={selected} dimColor={!selected}>
+                    {backLabel()}
+                  </Text>
+                );
+              }
+              if (item.kind === 'show-all') {
+                return (
+                  <Text key="showall" inverse={selected} dimColor={!selected}>
+                    Show all {catalog.length} models →
+                  </Text>
+                );
+              }
+              const tools = isToolCapable(item.model) ? '✓' : '✗';
+              return (
+                <Text key={`m${item.model.id}`} inverse={selected}>
+                  {' '}
+                  {cleanModelName(item.model.name)}{' '}
+                  <Text dimColor>
+                    — {compactContext(item.model.contextLength)} ctx — {item.blurb ?? ''} — {tools} tools
+                  </Text>
+                </Text>
+              );
+            })
+          )}
+        </Box>
+        <Text dimColor>{hint}</Text>
       </Box>
     );
   }
@@ -411,13 +497,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
 
   return (
     <Box flexDirection="column" height={rows}>
-      <Text dimColor>{providerLabel(providerChoice)} — pick a model</Text>
+      <Text dimColor>{providerLabel(providerChoice)} — all models</Text>
       <Box>
         {TABS.map((name) => (
           <React.Fragment key={name}>
             <Text inverse={name === tab} dimColor={name !== tab}>
               {' '}
-              {TAB_LABELS[name]} ({counts[name]}){' '}
+              {TAB_LABELS[name]} ({catalog.length && name === 'tools' ? catalog.filter(isToolCapable).length : name === 'all' ? catalog.length : poolFor(name, catalog, s.favorites, s.recents).length}){' '}
             </Text>
             <Text> </Text>
           </React.Fragment>
@@ -448,9 +534,12 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
               const selected = absoluteIndex === resolved;
               return (
                 <Text key="back" inverse={selected} dimColor={!selected}>
-                  ← Back to providers
+                  {backLabel()}
                 </Text>
               );
+            }
+            if (item.kind === 'show-all') {
+              return null;
             }
             const selected = absoluteIndex === resolved;
             return (

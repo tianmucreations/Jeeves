@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { normalizeModels, loadModels, compactContext, compactPrice, isFastModel } from '../src/models/registry.js';
+import { normalizeModels, loadModels, compactContext, compactPrice, isFastModel, resolveCurated, cleanModelName } from '../src/models/registry.js';
 import { isToolCapable } from '../src/models/filter.js';
 import { setModelCache } from '../src/platform/config.js';
 
@@ -85,6 +85,38 @@ describe('row formatting helpers', () => {
     const models = normalizeModels(SAMPLE);
     expect(isFastModel(models[1])).toBe(true);
     expect(isFastModel(models[2])).toBe(false);
+  });
+});
+
+describe('curated shortlist', () => {
+  const models = normalizeModels(SAMPLE);
+
+  it('resolves curated rows to the first candidate present in the catalog', () => {
+    // The sample catalog contains z-ai/glm-5.3, so exactly one curated row resolves.
+    const picks = resolveCurated(models);
+    expect(picks).toHaveLength(1);
+    expect(picks[0].model.id).toBe('z-ai/glm-5.3');
+    expect(picks[0].blurb).toBe('best value');
+
+    const extended = normalizeModels({
+      data: [
+        ...SAMPLE.data,
+        { id: 'z-ai/glm-5.3', name: 'Z.ai: GLM 5.3', context_length: 1310720, pricing: { prompt: '0', completion: '0' }, supported_parameters: ['tools'] },
+        { id: 'qwen/qwen3-coder-flash', name: 'Qwen: Qwen3 Coder Flash', context_length: 1000000, pricing: { prompt: '0', completion: '0' }, supported_parameters: ['tools'] },
+      ],
+    });
+    const resolved = resolveCurated(extended);
+    expect(resolved).toHaveLength(2);
+    expect(resolved[0].model.id).toBe('z-ai/glm-5.3');
+    expect(resolved[0].blurb).toBe('best value');
+    expect(resolved[1].model.id).toBe('qwen/qwen3-coder-flash');
+    expect(resolved[1].blurb).toBe('good for code');
+  });
+
+  it('strips provider prefixes from display names', () => {
+    expect(cleanModelName('Z.ai: GLM 5.3')).toBe('GLM 5.3');
+    expect(cleanModelName('Anthropic: Claude Opus 5')).toBe('Claude Opus 5');
+    expect(cleanModelName('Plain Name')).toBe('Plain Name');
   });
 });
 
