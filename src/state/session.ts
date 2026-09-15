@@ -15,6 +15,7 @@ export interface ToolLineData {
 export type TranscriptEntry =
   | { id: number; kind: 'user'; text: string }
   | { id: number; kind: 'assistant'; text: string }
+  | { id: number; kind: 'reasoning'; text: string }
   | { id: number; kind: 'error'; text: string }
   | { id: number; kind: 'notice'; text: string }
   | { id: number; kind: 'tool'; data: ToolLineData };
@@ -25,15 +26,18 @@ class SessionStore {
   providerName = 'OpenRouter';
   status: Status = 'idle';
   approvalPending = false;
+  verbose = false;
+  showLastReasoning = false;
   tokensIn = 0;
   tokensOut = 0;
   cost = 0;
   transcript: TranscriptEntry[] = [];
   history: ModelMessage[] = [];
-  reasoning = '';
+  lastReasoning = '';
 
   private nextId = 1;
   private version = 0;
+  private reasoningEntryId: number | null = null;
   private listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -62,6 +66,16 @@ class SessionStore {
   clearActiveApproval(): void {
     this.approvalPending = false;
     this.status = 'working';
+    this.emit();
+  }
+
+  setVerbose(value: boolean): void {
+    this.verbose = value;
+    this.emit();
+  }
+
+  toggleShowLastReasoning(): void {
+    this.showLastReasoning = !this.showLastReasoning;
     this.emit();
   }
 
@@ -106,6 +120,28 @@ class SessionStore {
     this.emit();
   }
 
+  beginTurn(): void {
+    this.reasoningEntryId = null;
+  }
+
+  // Reasoning only renders while verbose is on; each model step gets its own block.
+  appendReasoning(delta: string): void {
+    if (this.reasoningEntryId === null) {
+      const id = this.nextId++;
+      this.transcript = [...this.transcript, { id, kind: 'reasoning', text: '' }];
+      this.reasoningEntryId = id;
+    }
+    const target = this.reasoningEntryId;
+    this.transcript = this.transcript.map((entry) =>
+      entry.id === target && entry.kind === 'reasoning' ? { ...entry, text: entry.text + delta } : entry
+    );
+    this.emit();
+  }
+
+  closeReasoningEntry(): void {
+    this.reasoningEntryId = null;
+  }
+
   addToolLine(tool: string, summary: string, state: ToolLineState): number {
     const id = this.nextId++;
     this.transcript = [...this.transcript, { id, kind: 'tool', data: { tool, summary, state, label: '' } }];
@@ -124,8 +160,8 @@ class SessionStore {
     this.history = messages;
   }
 
-  setReasoning(text: string): void {
-    this.reasoning = text;
+  setLastReasoning(text: string): void {
+    this.lastReasoning = text;
   }
 
   addUsage(input: number, output: number, cost: number): void {

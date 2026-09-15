@@ -18,6 +18,7 @@ export interface StreamOptions {
   messages: ModelMessage[];
   tools: ToolSet;
   onToken: (token: string) => void;
+  onReasoning: (delta: string) => void;
   onToolCall: (call: ToolCallNote) => void;
 }
 

@@ -10,7 +10,7 @@ export function createOpenRouterProvider(apiKey: string): Provider {
   return {
     id: 'openrouter',
     name: 'OpenRouter',
-    async stream({ modelId, messages, tools, onToken, onToolCall }: StreamOptions): Promise<StreamResult> {
+    async stream({ modelId, messages, tools, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
         model: openrouter.chat(modelId),
         messages,
@@ -22,6 +22,8 @@ export function createOpenRouterProvider(apiKey: string): Provider {
       for await (const part of result.stream) {
         if (part.type === 'text-delta') {
           onToken(part.text);
+        } else if (part.type === 'reasoning-delta') {
+          onReasoning(part.text);
         } else if (part.type === 'tool-call') {
           onToolCall({ id: part.toolCallId, name: part.toolName });
         } else if (part.type === 'error') {

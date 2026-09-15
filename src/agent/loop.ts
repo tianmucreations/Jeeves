@@ -2,11 +2,22 @@ import { session } from '../state/session.js';
 import { getActiveProvider } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
 import { buildTurnMessages } from './context.js';
+import { toggleVerbose } from '../commands/verbose.js';
 
 export async function runTurn(input: string): Promise<void> {
+  if (input.startsWith('/') && input.length > 1 && !input.startsWith('/ ')) {
+    if (input === '/verbose') {
+      session.addNotice(toggleVerbose());
+    } else {
+      session.addNotice('Unknown command. Try /verbose.');
+    }
+    return;
+  }
+
   session.addUser(input);
-  const assistantId = session.startAssistant();
+  session.beginTurn();
   session.setStatus('working');
+  let assistantId: number | null = null;
   try {
     const provider = getActiveProvider();
     const messages = buildTurnMessages(session.history, input);
@@ -14,17 +25,28 @@ export async function runTurn(input: string): Promise<void> {
       modelId: session.model,
       messages,
       tools: getTools(),
-      onToken: (token) => session.appendToken(assistantId, token),
-      onToolCall: () => {},
+      onToken: (token) => {
+        if (assistantId === null) assistantId = session.startAssistant();
+        session.appendToken(assistantId, token);
+      },
+      onReasoning: (delta) => {
+        if (session.verbose) session.appendReasoning(delta);
+      },
+      onToolCall: () => {
+        // Hide pre-tool chatter so only the final answer stays visible (spec 2.3).
+        if (assistantId !== null) session.setAssistantText(assistantId, '');
+        session.closeReasoningEntry();
+      },
     });
+    if (assistantId === null) assistantId = session.startAssistant();
     session.setAssistantText(assistantId, result.text);
     session.finishAssistant(assistantId);
     session.setHistory([...messages, ...result.messages]);
-    session.setReasoning(result.reasoning);
+    session.setLastReasoning(result.reasoning);
     session.addUsage(result.usage.input, result.usage.output, result.cost);
     session.setStatus('idle');
   } catch (error) {
-    session.finishAssistant(assistantId);
+    if (assistantId !== null) session.finishAssistant(assistantId);
     session.addError(describeError(error));
     session.setStatus(classifyStatus(error));
   }

@@ -15,6 +15,10 @@ export function Input() {
       else if (answer === 'n') answerApproval(false);
       return;
     }
+    if (key.ctrl && input === 'r') {
+      s.toggleShowLastReasoning();
+      return;
+    }
     if (key.return) {
       const text = value.trim();
       if (text && s.status !== 'working') {
