@@ -5,12 +5,19 @@ export interface ToolCallNote {
   name: string;
 }
 
+export interface RateLimitInfo {
+  limit: number;
+  remaining: number;
+  reset: number;
+}
+
 export interface StreamResult {
   text: string;
   reasoning: string;
   messages: ModelMessage[];
   usage: { input: number; output: number; total: number };
   cost: number;
+  rateLimit: RateLimitInfo | null;
 }
 
 export interface StreamOptions {

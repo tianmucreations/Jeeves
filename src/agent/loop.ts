@@ -1,5 +1,5 @@
 import { session } from '../state/session.js';
-import { getActiveProvider } from '../providers/index.js';
+import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
 import { buildTurnMessages } from './context.js';
 import { toggleVerbose } from '../commands/verbose.js';
@@ -44,6 +44,8 @@ export async function runTurn(input: string): Promise<void> {
     session.setHistory([...messages, ...result.messages]);
     session.setLastReasoning(result.reasoning);
     session.addUsage(result.usage.input, result.usage.output, result.cost);
+    session.setRateLimit(result.rateLimit);
+    void refreshCredit();
     session.setStatus('idle');
   } catch (error) {
     if (assistantId !== null) session.finishAssistant(assistantId);

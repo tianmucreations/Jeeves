@@ -1,5 +1,6 @@
 import type { Provider } from './types.js';
-import { createOpenRouterProvider } from './openrouter.js';
+import { createOpenRouterProvider, fetchCreditInfo } from './openrouter.js';
+import { session } from '../state/session.js';
 
 let active: Provider | null = null;
 
@@ -23,4 +24,14 @@ export function getActiveProvider(): Provider {
     active = createOpenRouterProvider(key);
   }
   return active;
+}
+
+// Best-effort credit refresh; failures are silent and leave the last known values in place.
+export async function refreshCredit(): Promise<void> {
+  const key = getOpenRouterApiKey();
+  if (!key) return;
+  const info = await fetchCreditInfo(key);
+  if (info) {
+    session.setCredit(info.used, info.limit, info.remaining);
+  }
 }

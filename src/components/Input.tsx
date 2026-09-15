@@ -19,6 +19,10 @@ export function Input() {
       s.toggleShowLastReasoning();
       return;
     }
+    if (key.tab) {
+      s.cycleFooterMetric();
+      return;
+    }
     if (key.return) {
       const text = value.trim();
       if (text && s.status !== 'working') {

@@ -5,6 +5,9 @@ export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
 
 export type ToolLineState = 'awaiting' | 'running' | 'done' | 'failed' | 'declined';
 
+// Assumption: z-ai/glm-5.3's context length; the Phase 6 model registry replaces this constant.
+export const DEFAULT_CONTEXT_TOKENS = 1_310_720;
+
 export interface ToolLineData {
   tool: string;
   summary: string;
@@ -31,9 +34,18 @@ class SessionStore {
   tokensIn = 0;
   tokensOut = 0;
   cost = 0;
+  footerMetric = 0;
+  creditUsed: number | null = null;
+  creditRemaining: number | null = null;
+  creditLimit: number | null = null;
+  spend = 0;
+  rateLimit: { limit: number; remaining: number; reset: number } | null = null;
   transcript: TranscriptEntry[] = [];
   history: ModelMessage[] = [];
   lastReasoning = '';
+
+  private turnEvents: { t: number; tokens: number }[] = [];
+  private creditBaselineUsed: number | null = null;
 
   private nextId = 1;
   private version = 0;
@@ -168,7 +180,39 @@ class SessionStore {
     this.tokensIn += input;
     this.tokensOut += output;
     this.cost += cost;
+    this.turnEvents.push({ t: Date.now(), tokens: input + output });
+    const cutoff = Date.now() - 60_000;
+    this.turnEvents = this.turnEvents.filter((event) => event.t >= cutoff);
     this.emit();
+  }
+
+  tokensPerMinute(): number {
+    const cutoff = Date.now() - 60_000;
+    return this.turnEvents.filter((event) => event.t >= cutoff).reduce((sum, event) => sum + event.tokens, 0);
+  }
+
+  cycleFooterMetric(): void {
+    this.footerMetric = (this.footerMetric + 1) % 5;
+    this.emit();
+  }
+
+  setCredit(used: number, limit: number, remaining: number): void {
+    if (this.creditBaselineUsed === null) this.creditBaselineUsed = used;
+    this.spend = Math.max(0, used - this.creditBaselineUsed);
+    this.creditUsed = used;
+    this.creditLimit = limit;
+    this.creditRemaining = remaining;
+    this.emit();
+  }
+
+  setRateLimit(info: { limit: number; remaining: number; reset: number } | null): void {
+    this.rateLimit = info;
+    this.emit();
+  }
+
+  // Assumption: roughly four characters per token is accurate enough for the context meter.
+  estimateContextTokens(): number {
+    return Math.ceil(JSON.stringify(this.history).length / 4);
   }
 }
 

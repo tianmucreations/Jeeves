@@ -5,7 +5,7 @@ import { Transcript } from './components/Transcript.js';
 import { Input } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session } from './state/session.js';
-import { hasCredentials } from './providers/index.js';
+import { hasCredentials, refreshCredit } from './providers/index.js';
 
 // The whole frame is exactly the height of the terminal window, so nothing ever
 // scrolls away: the header is pinned at the top, the footer and input at the bottom,
@@ -21,6 +21,8 @@ export function App() {
     if (!hasCredentials()) {
       session.setStatus('disconnected');
       session.addNotice('No OpenRouter API key found. Add OPENROUTER_API_KEY=your-key to the .env file in the project folder.');
+    } else {
+      void refreshCredit();
     }
   }, []);
 
