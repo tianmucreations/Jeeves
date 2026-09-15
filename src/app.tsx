@@ -6,11 +6,12 @@ import { Input } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session, useSession } from './state/session.js';
 import { initKeys, hasCredentials, refreshCredit } from './providers/index.js';
-import { getHiddenMetrics, getFavorites, getRecents, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
+import { getHiddenMetrics, getFavorites, getRecents, getRecentProjects, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
 import { loadModels } from './models/registry.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
+import { ProjectPicker } from './components/ProjectPicker.js';
 
 // The whole frame is exactly the height of the terminal window, so nothing ever
 // scrolls away: the header is pinned at the top, the footer and input at the bottom,
@@ -27,20 +28,20 @@ export function App() {
     session.setHiddenMetrics(getHiddenMetrics());
     session.setFavorites(getFavorites());
     session.setRecents(getRecents());
+    session.setRecentProjects(getRecentProjects());
     if (getVerbosePreference()) session.setVerbose(true);
     const defaultModel = getDefaultModel();
     if (defaultModel) session.setModel(defaultModel);
     const defaultProvider = getDefaultProvider();
     if (defaultProvider) session.setProvider(defaultProvider);
     void loadModels().then(({ models, error }) => session.setModels(models, error));
-    // Keys resolve from the Mac keychain first, with the .env file as a development
-    // fallback that gets migrated into the keychain on first launch.
+    // Keys resolve from the Mac keychain first; the first-run wizard now starts
+    // after the project is chosen (the project list always shows first).
     void initKeys().then(() => {
       if (hasCredentials()) {
         void refreshCredit();
       } else {
         session.setStatus('disconnected');
-        session.startWizard();
       }
     });
   }, []);
@@ -56,6 +57,9 @@ export function App() {
   }
   if (s.helpOpen) {
     return <HelpView rows={rows} />;
+  }
+  if (s.launchStage === 'project') {
+    return <ProjectPicker rows={rows} columns={columns} />;
   }
 
   return (

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import Fuse from 'fuse.js';
-import { useSession } from '../state/session.js';
+import { session, useSession } from '../state/session.js';
 import { isToolCapable } from '../models/filter.js';
 import {
   type ModelInfo,
@@ -123,7 +123,11 @@ function stepItem(items: Item[], from: number, delta: number): number {
 export function ModelPicker({ rows, columns }: { rows: number; columns: number }) {
   const s = useSession();
   const [step, setStep] = useState<Step>('providers');
-  const [providerCursor, setProviderCursor] = useState(0);
+  // The remembered provider starts highlighted so one Enter continues where you left off.
+  const [providerCursor, setProviderCursor] = useState(() => {
+    const remembered = PROVIDER_ROWS.findIndex((row) => row.id === session.providerId);
+    return remembered >= 0 ? remembered : 0;
+  });
   const [providerChoice, setProviderChoice] = useState<'openrouter' | 'ollama'>('openrouter');
   const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[] | null>(null);
@@ -200,9 +204,16 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     setProviderChoice(forProvider);
     setQuery('');
     setTab('all');
-    setCursor(1);
     // Big catalogs get the curated shortlist first; small ones go straight to the full list.
     const big = forProvider === 'openrouter' ? s.models.length > 8 : false;
+    if (big) {
+      // The remembered model starts highlighted so one Enter accepts it.
+      const picks = resolveCurated(s.models);
+      const remembered = picks.findIndex((pick) => pick.model.id === s.model);
+      setCursor(remembered >= 0 ? 2 + remembered : 1);
+    } else {
+      setCursor(1);
+    }
     setStep(big ? 'curated' : 'full');
   }
 

@@ -37,6 +37,9 @@ class SessionStore {
   wizardActive = false;
   helpOpen = false;
   exitRequested = false;
+  launchStage: 'project' | 'ready' = 'project';
+  wizardFromLaunch = false;
+  recentProjects: string[] = [];
   models: ModelInfo[] = [];
   modelsNote = '';
   favorites: string[] = [];
@@ -233,13 +236,29 @@ class SessionStore {
     this.emit();
   }
 
-  startWizard(): void {
+  startWizard(fromLaunch = false): void {
+    this.wizardFromLaunch = fromLaunch;
     this.wizardActive = true;
     this.emit();
   }
 
   endWizard(): void {
     this.wizardActive = false;
+    const shouldOpenModelPicker = this.wizardFromLaunch;
+    this.wizardFromLaunch = false;
+    this.emit();
+    if (shouldOpenModelPicker) {
+      this.openPicker();
+    }
+  }
+
+  launchComplete(): void {
+    this.launchStage = 'ready';
+    this.emit();
+  }
+
+  setRecentProjects(projects: string[]): void {
+    this.recentProjects = projects.slice(0, 10);
     this.emit();
   }
 

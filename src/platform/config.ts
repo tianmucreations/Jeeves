@@ -4,6 +4,7 @@ interface JeevesConfig {
   hiddenMetrics?: string[];
   favorites?: string[];
   recents?: string[];
+  projects?: string[];
   modelCache?: { raw: unknown; fetchedAt: number };
   defaultModel?: string;
   defaultProvider?: string;
@@ -40,6 +41,15 @@ export function getRecents(): string[] {
 
 export function setRecents(models: string[]): void {
   config.set('recents', models.slice(0, 10));
+}
+
+// Recently chosen project folders, newest first; the list grows automatically.
+export function getRecentProjects(): string[] {
+  return config.get('projects') ?? [];
+}
+
+export function setRecentProjects(projects: string[]): void {
+  config.set('projects', projects.slice(0, 10));
 }
 
 export function getModelCache(): { raw: unknown; fetchedAt: number } | null {
