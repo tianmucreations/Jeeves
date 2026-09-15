@@ -2,19 +2,30 @@ import { session } from '../state/session.js';
 import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
 import { buildTurnMessages } from './context.js';
+import { plainError, type ErrorKind } from './errors.js';
 import { toggleVerbose } from '../commands/verbose.js';
+import { openModelPicker } from '../commands/model.js';
+import { clearConversation } from '../commands/clear.js';
 import { isToolCapable } from '../models/filter.js';
+
+const DISCONNECTING: ReadonlySet<ErrorKind> = new Set(['auth', 'network', 'payment']);
 
 export async function runTurn(input: string): Promise<void> {
   if (input.startsWith('/') && input.length > 1 && !input.startsWith('/ ')) {
-    if (input === '/verbose') {
-      session.addNotice(toggleVerbose());
+    if (input === '/help') {
+      session.openHelp();
     } else if (input === '/model') {
-      session.openPicker();
+      openModelPicker();
     } else if (input === '/keys') {
       session.openKeys();
+    } else if (input === '/verbose') {
+      session.addNotice(toggleVerbose());
+    } else if (input === '/clear') {
+      clearConversation();
+    } else if (input === '/exit') {
+      session.requestExit();
     } else {
-      session.addNotice('Unknown command. Try /model, /keys, or /verbose.');
+      session.addNotice('Unknown command. Try /help.');
     }
     return;
   }
@@ -56,22 +67,9 @@ export async function runTurn(input: string): Promise<void> {
     void refreshCredit();
     session.setStatus('idle');
   } catch (error) {
+    const plain = plainError(error);
     if (assistantId !== null) session.finishAssistant(assistantId);
-    session.addError(describeError(error));
-    session.setStatus(classifyStatus(error));
+    session.addError(plain.message);
+    session.setStatus(DISCONNECTING.has(plain.kind) ? 'disconnected' : 'idle');
   }
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
-function classifyStatus(error: unknown): 'idle' | 'disconnected' {
-  const text = describeError(error).toLowerCase();
-  const connectionProblems = ['api key', '401', 'unauthorized', 'fetch', 'network', 'dns', 'econnrefused', 'timeout'];
-  if (connectionProblems.some((problem) => text.includes(problem))) {
-    return 'disconnected';
-  }
-  return 'idle';
 }

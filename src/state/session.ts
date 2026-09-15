@@ -35,6 +35,8 @@ class SessionStore {
   pickerOpen = false;
   keysOpen = false;
   wizardActive = false;
+  helpOpen = false;
+  exitRequested = false;
   models: ModelInfo[] = [];
   modelsNote = '';
   favorites: string[] = [];
@@ -238,6 +240,26 @@ class SessionStore {
 
   endWizard(): void {
     this.wizardActive = false;
+    this.emit();
+  }
+
+  openHelp(): void {
+    this.helpOpen = true;
+    this.emit();
+  }
+
+  closeHelp(): void {
+    this.helpOpen = false;
+    this.emit();
+  }
+
+  requestExit(): void {
+    this.exitRequested = true;
+    this.emit();
+  }
+
+  clearTranscript(): void {
+    this.transcript = [];
     this.emit();
   }
 

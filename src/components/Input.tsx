@@ -9,7 +9,7 @@ export function Input() {
   const s = useSession();
 
   useInput((input, key) => {
-    if (s.pickerOpen || s.keysOpen || s.wizardActive) return;
+    if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
     if (s.approvalPending) {
       const answer = input.toLowerCase();
       if (answer === 'y') answerApproval(true);

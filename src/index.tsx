@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
+import { session } from './state/session.js';
 
 // Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
 // .env file at the project root. Replaced by the secure OS credential store in Phase 7.
@@ -33,7 +34,14 @@ program
   .argument('[prompt]', 'optional prompt to start with')
   .action((prompt) => {
     // The prompt argument is accepted but not auto-sent yet; a later phase wires it into the loop.
-    render(<App />);
+    const { unmount } = render(<App />);
+    // /exit asks for a clean shutdown: restore the terminal first, then leave.
+    session.subscribe(() => {
+      if (session.exitRequested) {
+        unmount();
+        process.exit(0);
+      }
+    });
   });
 
 program.parse();

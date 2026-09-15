@@ -19,6 +19,19 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
+// Plain-English one-line failure text for the transcript; the model still receives
+// the full technical message so it can react.
+export function plainToolFailure(error: unknown): string {
+  const raw = describeError(error);
+  const text = raw.toLowerCase();
+  if (text.includes('enoent')) return 'file or folder not found';
+  if (text.includes('eacces') || text.includes('eperm')) return 'permission denied';
+  if (text.includes('timed out') || text.includes('etimedout') || text.includes('stopped after')) return 'took too long';
+  if (text.includes('binary file')) return 'not a text file';
+  const firstLine = raw.split('\n')[0].trim();
+  return firstLine.length > 0 ? firstLine : 'failed';
+}
+
 function clip(text: string, max: number): string {
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 }
@@ -53,7 +66,7 @@ function defineTool<S extends z.ZodObject>(config: {
         session.updateToolLine(lineId, { state: 'done', label: config.label(input, result) });
         return result;
       } catch (error) {
-        session.updateToolLine(lineId, { state: 'failed', label: describeError(error) });
+        session.updateToolLine(lineId, { state: 'failed', label: plainToolFailure(error) });
         throw error;
       }
     },
