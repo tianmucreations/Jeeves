@@ -11,8 +11,10 @@ export async function runTurn(input: string): Promise<void> {
       session.addNotice(toggleVerbose());
     } else if (input === '/model') {
       session.openPicker();
+    } else if (input === '/keys') {
+      session.openKeys();
     } else {
-      session.addNotice('Unknown command. Try /model or /verbose.');
+      session.addNotice('Unknown command. Try /model, /keys, or /verbose.');
     }
     return;
   }

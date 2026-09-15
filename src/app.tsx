@@ -5,10 +5,11 @@ import { Transcript } from './components/Transcript.js';
 import { Input } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session, useSession } from './state/session.js';
-import { hasCredentials, refreshCredit } from './providers/index.js';
-import { getHiddenMetrics, getFavorites, getRecents } from './platform/config.js';
+import { initKeys, hasCredentials, refreshCredit } from './providers/index.js';
+import { getHiddenMetrics, getFavorites, getRecents, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
 import { loadModels } from './models/registry.js';
 import { ModelPicker } from './components/ModelPicker.js';
+import { KeysManager } from './components/KeysManager.js';
 
 // The whole frame is exactly the height of the terminal window, so nothing ever
 // scrolls away: the header is pinned at the top, the footer and input at the bottom,
@@ -25,15 +26,30 @@ export function App() {
     session.setHiddenMetrics(getHiddenMetrics());
     session.setFavorites(getFavorites());
     session.setRecents(getRecents());
+    if (getVerbosePreference()) session.setVerbose(true);
+    const defaultModel = getDefaultModel();
+    if (defaultModel) session.setModel(defaultModel);
+    const defaultProvider = getDefaultProvider();
+    if (defaultProvider) session.setProvider(defaultProvider);
     void loadModels().then(({ models, error }) => session.setModels(models, error));
-    if (!hasCredentials()) {
-      session.setStatus('disconnected');
-      session.addNotice('No OpenRouter API key found. Add OPENROUTER_API_KEY=your-key to the .env file in the project folder.');
-    } else {
-      void refreshCredit();
-    }
+    // Keys resolve from the Mac keychain first, with the .env file as a development
+    // fallback that gets migrated into the keychain on first launch.
+    void initKeys().then(() => {
+      if (hasCredentials()) {
+        void refreshCredit();
+      } else {
+        session.setStatus('disconnected');
+        session.startWizard();
+      }
+    });
   }, []);
 
+  if (s.wizardActive) {
+    return <KeysManager mode="wizard" rows={rows} columns={columns} />;
+  }
+  if (s.keysOpen) {
+    return <KeysManager mode="manage" rows={rows} columns={columns} />;
+  }
   if (s.pickerOpen) {
     return <ModelPicker rows={rows} columns={columns} />;
   }

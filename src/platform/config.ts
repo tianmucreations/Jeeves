@@ -5,6 +5,9 @@ interface JeevesConfig {
   favorites?: string[];
   recents?: string[];
   modelCache?: { raw: unknown; fetchedAt: number };
+  defaultModel?: string;
+  defaultProvider?: string;
+  verbose?: boolean;
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -45,4 +48,29 @@ export function getModelCache(): { raw: unknown; fetchedAt: number } | null {
 
 export function setModelCache(raw: unknown, fetchedAt: number): void {
   config.set('modelCache', { raw, fetchedAt });
+}
+
+// The default model and provider persist between sessions; API keys never do (spec 7).
+export function getDefaultModel(): string | null {
+  return config.get('defaultModel') ?? null;
+}
+
+export function setDefaultModel(model: string): void {
+  config.set('defaultModel', model);
+}
+
+export function getDefaultProvider(): string | null {
+  return config.get('defaultProvider') ?? null;
+}
+
+export function setDefaultProvider(provider: string): void {
+  config.set('defaultProvider', provider);
+}
+
+export function getVerbosePreference(): boolean {
+  return config.get('verbose') ?? false;
+}
+
+export function setVerbosePreference(value: boolean): void {
+  config.set('verbose', value);
 }

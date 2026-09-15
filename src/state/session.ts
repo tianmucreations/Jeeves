@@ -33,6 +33,8 @@ class SessionStore {
   verbose = false;
   showLastReasoning = false;
   pickerOpen = false;
+  keysOpen = false;
+  wizardActive = false;
   models: ModelInfo[] = [];
   modelsNote = '';
   favorites: string[] = [];
@@ -212,6 +214,30 @@ class SessionStore {
 
   closePicker(): void {
     this.pickerOpen = false;
+    this.emit();
+  }
+
+  openKeys(): void {
+    if (this.status === 'working' || this.approvalPending) {
+      this.addNotice('The key screens open between tasks.');
+      return;
+    }
+    this.keysOpen = true;
+    this.emit();
+  }
+
+  closeKeys(): void {
+    this.keysOpen = false;
+    this.emit();
+  }
+
+  startWizard(): void {
+    this.wizardActive = true;
+    this.emit();
+  }
+
+  endWizard(): void {
+    this.wizardActive = false;
     this.emit();
   }
 

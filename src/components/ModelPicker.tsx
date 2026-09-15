@@ -12,9 +12,9 @@ import {
   resolveCurated,
   cleanModelName,
 } from '../models/registry.js';
-import { setFavorites, setRecents } from '../platform/config.js';
+import { setFavorites, setRecents, setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { summariseHistory } from '../agent/context.js';
-import { hasCredentials } from '../providers/index.js';
+import { hasCredentials, PROVIDER_ROWS } from '../providers/index.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 
 const TABS = ['favorites', 'recent', 'all', 'tools'] as const;
@@ -26,17 +26,7 @@ const TAB_LABELS: Record<Tab, string> = {
   tools: 'Tool-capable',
 };
 
-// The calm first step: providers in spec order. Direct connections unlock with the key vault (Phase 7).
-const PROVIDER_ROWS = [
-  { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },
-  { id: 'anthropic', label: 'Anthropic', description: 'direct connection' },
-  { id: 'openai', label: 'OpenAI', description: 'direct connection' },
-  { id: 'google', label: 'Google', description: 'direct connection' },
-  { id: 'xai', label: 'xAI', description: 'direct connection' },
-  { id: 'groq', label: 'Groq', description: 'direct connection' },
-  { id: 'mistral', label: 'Mistral', description: 'direct connection' },
-  { id: 'ollama', label: 'Ollama', description: 'local models, no key needed' },
-];
+// The calm first step uses the shared provider list; keys live in the OS keychain (Phase 7).
 
 const PROVIDER_ORDER = ['openrouter', 'anthropic', 'openai', 'google', 'x-ai', 'groq', 'mistral', 'ollama'];
 const PROVIDER_LABELS: Record<string, string> = {
@@ -203,7 +193,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     if (rowId === 'ollama') {
       return ollamaOnline === null ? 'checking…' : 'not running - start the Ollama app';
     }
-    return 'add key';
+    return 'add key with /keys';
   }
 
   function enterModelStep(forProvider: 'openrouter' | 'ollama'): void {
@@ -246,8 +236,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function applyModel(model: ModelInfo): void {
-    s.setProvider(providerChoice === 'ollama' ? 'ollama' : 'openrouter');
+    const provider = providerChoice === 'ollama' ? 'ollama' : 'openrouter';
+    s.setProvider(provider);
     s.setModel(model.id);
+    setDefaultProvider(provider);
+    setDefaultModel(model.id);
     const updatedRecents = [model.id, ...s.recents.filter((id) => id !== model.id)].slice(0, 10);
     s.setRecents(updatedRecents);
     setRecents(updatedRecents);
