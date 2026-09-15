@@ -3,17 +3,28 @@ import type { ModelMessage } from 'ai';
 
 export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
 
-export interface TranscriptEntry {
-  id: number;
-  kind: 'user' | 'assistant' | 'error' | 'notice';
-  text: string;
+export type ToolLineState = 'awaiting' | 'running' | 'done' | 'failed' | 'declined';
+
+export interface ToolLineData {
+  tool: string;
+  summary: string;
+  state: ToolLineState;
+  label: string;
 }
+
+export type TranscriptEntry =
+  | { id: number; kind: 'user'; text: string }
+  | { id: number; kind: 'assistant'; text: string }
+  | { id: number; kind: 'error'; text: string }
+  | { id: number; kind: 'notice'; text: string }
+  | { id: number; kind: 'tool'; data: ToolLineData };
 
 class SessionStore {
   model = 'z-ai/glm-5.3';
   providerId = 'openrouter';
   providerName = 'OpenRouter';
   status: Status = 'idle';
+  approvalPending = false;
   tokensIn = 0;
   tokensOut = 0;
   cost = 0;
@@ -39,6 +50,18 @@ class SessionStore {
 
   setStatus(status: Status): void {
     this.status = status;
+    this.emit();
+  }
+
+  setActiveApproval(): void {
+    this.approvalPending = true;
+    this.status = 'awaiting-approval';
+    this.emit();
+  }
+
+  clearActiveApproval(): void {
+    this.approvalPending = false;
+    this.status = 'working';
     this.emit();
   }
 
@@ -80,6 +103,20 @@ class SessionStore {
 
   finishAssistant(id: number): void {
     this.transcript = this.transcript.filter((entry) => !(entry.id === id && entry.kind === 'assistant' && entry.text === ''));
+    this.emit();
+  }
+
+  addToolLine(tool: string, summary: string, state: ToolLineState): number {
+    const id = this.nextId++;
+    this.transcript = [...this.transcript, { id, kind: 'tool', data: { tool, summary, state, label: '' } }];
+    this.emit();
+    return id;
+  }
+
+  updateToolLine(id: number, patch: Partial<ToolLineData>): void {
+    this.transcript = this.transcript.map((entry) =>
+      entry.kind === 'tool' && entry.id === id ? { ...entry, data: { ...entry.data, ...patch } } : entry
+    );
     this.emit();
   }
 
