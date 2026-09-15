@@ -12,6 +12,14 @@ import {
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 
+// The keys screen shows one extra row the model picker does not: the optional
+// OpenRouter management key, which unlocks the real account balance.
+const KEY_ROWS = [
+  PROVIDER_ROWS[0],
+  { id: 'openrouter-management', label: 'OpenRouter (account)' },
+  ...PROVIDER_ROWS.slice(1),
+];
+
 type Phase =
   | { kind: 'ask' }
   | { kind: 'list' }
@@ -20,7 +28,7 @@ type Phase =
   | { kind: 'saved'; message: string };
 
 function rowLabel(id: string): string {
-  return PROVIDER_ROWS.find((row) => row.id === id)?.label ?? id;
+  return KEY_ROWS.find((row) => row.id === id)?.label ?? id;
 }
 
 export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'; rows: number; columns: number }) {
@@ -44,6 +52,11 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       if (getKeySource() === 'keychain') return 'key stored in your Mac keychain';
       if (getKeySource() === 'env') return 'key in the .env development file';
       return stored.includes('openrouter') ? 'key stored in your Mac keychain' : 'no key';
+    }
+    if (rowId === 'openrouter-management') {
+      return stored.includes('openrouter-management')
+        ? 'management key stored - real account balance'
+        : 'optional - unlocks your real account balance';
     }
     if (rowId === 'ollama') return 'local - no key needed';
     return stored.includes(rowId) ? 'key saved - direct connection coming' : 'add key with /keys';
@@ -82,6 +95,16 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return;
     }
     refreshStored();
+    if (provider === 'openrouter-management') {
+      void refreshCredit();
+      const message = 'Management key saved - the info bar now shows your real account balance.';
+      if (mode === 'wizard') {
+        finishWizard(message, false);
+      } else {
+        setPhase({ kind: 'saved', message });
+      }
+      return;
+    }
     const message = `Key saved for ${rowLabel(provider)} - direct connections arrive in a coming update.`;
     if (mode === 'wizard') {
       finishWizard(message, false);
@@ -100,6 +123,13 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           : 'The key was removed. You are signed out until a new key is added.';
       if (fallback !== 'env') session.setStatus('disconnected');
       setPhase({ kind: 'saved', message });
+      return;
+    }
+    if (provider === 'openrouter-management') {
+      await deleteKey(provider);
+      refreshStored();
+      void refreshCredit();
+      setPhase({ kind: 'saved', message: 'The management key was removed - the info bar shows the key cap again.' });
       return;
     }
     await deleteKey(provider);
@@ -184,11 +214,11 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return;
     }
     if (key.downArrow) {
-      setCursor((current) => Math.min(PROVIDER_ROWS.length - 1, current + 1));
+      setCursor((current) => Math.min(KEY_ROWS.length - 1, current + 1));
       return;
     }
     if (key.return) {
-      const row = PROVIDER_ROWS[cursor];
+      const row = KEY_ROWS[cursor];
       if (!row || row.id === 'ollama') {
         if (mode === 'wizard' && row?.id === 'ollama') {
           finishWizard('Ollama runs locally - no key needed.', false);
@@ -202,7 +232,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     }
     const answer = input.toLowerCase();
     if (answer === 'd') {
-      const row = PROVIDER_ROWS[cursor];
+      const row = KEY_ROWS[cursor];
       if (!row) return;
       const hasStored = stored.includes(row.id) || (row.id === 'openrouter' && getKeySource() !== null);
       if (hasStored) {
@@ -244,7 +274,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       <Box flexDirection="column" flexGrow={1} justifyContent="center">
         {phase.kind === 'ask' && <Text>{'  Add an API key?'}</Text>}
         {phase.kind === 'list' &&
-          PROVIDER_ROWS.map((row, index) => (
+          KEY_ROWS.map((row, index) => (
             <Text key={row.id} inverse={index === cursor}>
               {`${row.label}`.padEnd(14)}
               <Text dimColor>{statusFor(row.id)}</Text>

@@ -2,7 +2,7 @@
 
 export function keyLooksValid(key: string, provider: string): boolean {
   const trimmed = key.trim();
-  if (provider === 'openrouter') {
+  if (provider === 'openrouter' || provider === 'openrouter-management') {
     return trimmed.startsWith('sk-or-') && trimmed.length >= 20;
   }
   return trimmed.length >= 20;

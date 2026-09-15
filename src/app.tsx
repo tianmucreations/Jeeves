@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Box, useStdout } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import { Header } from './components/Header.js';
 import { Transcript } from './components/Transcript.js';
 import { Input } from './components/Input.js';
@@ -21,8 +21,9 @@ export function App() {
   const { stdout } = useStdout();
   const rows = Math.max(stdout.rows ?? 24, 8);
   const columns = Math.max(stdout.columns ?? 80, 40);
-  const transcriptHeight = Math.max(1, rows - 5);
+  const transcriptHeight = Math.max(1, rows - 7);
   const innerWidth = columns - 4;
+  const separator = '─'.repeat(innerWidth);
 
   useEffect(() => {
     session.setHiddenMetrics(getHiddenMetrics());
@@ -66,8 +67,10 @@ export function App() {
     <Box flexDirection="column" borderStyle="round" paddingX={1} height={rows}>
       <Header />
       <Transcript height={transcriptHeight} width={innerWidth} />
-      <Footer />
+      <Text dimColor>{separator}</Text>
       <Input />
+      <Text dimColor>{separator}</Text>
+      <Footer />
     </Box>
   );
 }

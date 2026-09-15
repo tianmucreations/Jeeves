@@ -62,7 +62,7 @@ export function Footer() {
         value: s.creditLimit - s.creditRemaining,
         max: s.creditLimit,
         unit: 'used',
-        suffix: `· $${s.creditRemaining.toFixed(2)} left`,
+        suffix: `· $${s.creditRemaining.toFixed(2)} ${s.creditIsAccount ? 'left' : 'key cap'}`,
       };
     } else if (s.footerExpanded === 'speed' && s.rateLimit && s.rateLimit.limit > 0) {
       bar = {
@@ -101,7 +101,15 @@ export function Footer() {
     },
     {
       key: 'credit',
-      render: <Text>{s.creditRemaining !== null ? `$${s.creditRemaining.toFixed(2)} left` : '$— left'}</Text>,
+      render: (
+        <Text>
+          {s.creditRemaining !== null
+            ? s.creditIsAccount
+              ? `$${s.creditRemaining.toFixed(2)} left`
+              : `$${s.creditRemaining.toFixed(2)} key cap`
+            : '$— left'}
+        </Text>
+      ),
     },
   ];
   const visible = segments.filter((segment) => !s.hiddenMetrics.includes(segment.key));

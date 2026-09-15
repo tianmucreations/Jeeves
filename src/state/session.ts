@@ -52,6 +52,7 @@ class SessionStore {
   creditUsed: number | null = null;
   creditRemaining: number | null = null;
   creditLimit: number | null = null;
+  creditIsAccount = false;
   spend = 0;
   rateLimit: { limit: number; remaining: number; reset: number } | null = null;
   transcript: TranscriptEntry[] = [];
@@ -334,12 +335,13 @@ class SessionStore {
     this.emit();
   }
 
-  setCredit(used: number, limit: number, remaining: number): void {
+  setCredit(used: number, limit: number, remaining: number, accountWide: boolean): void {
     if (this.creditBaselineUsed === null) this.creditBaselineUsed = used;
     this.spend = Math.max(0, used - this.creditBaselineUsed);
     this.creditUsed = used;
     this.creditLimit = limit;
     this.creditRemaining = remaining;
+    this.creditIsAccount = accountWide;
     this.emit();
   }
 

@@ -110,12 +110,23 @@ export function getActiveProvider(): Provider {
   return active;
 }
 
-// Best-effort credit refresh; local Ollama has no credit balance, and failures are silent.
+// Best-effort credit refresh. The management key sees the real account balance;
+// the inference key only sees its own spending cap, which is labelled as such.
+// Local Ollama has no credit balance, and failures are silent.
 export async function refreshCredit(): Promise<void> {
-  if (session.providerId !== 'openrouter' || !resolvedKey) return;
+  if (session.providerId !== 'openrouter') return;
+  const managementKey = await getKey('openrouter-management');
+  if (managementKey) {
+    const info = await fetchCreditInfo(managementKey);
+    if (info) {
+      session.setCredit(info.used, info.limit, info.remaining, true);
+      return;
+    }
+  }
+  if (!resolvedKey) return;
   const info = await fetchCreditInfo(resolvedKey);
   if (info) {
-    session.setCredit(info.used, info.limit, info.remaining);
+    session.setCredit(info.used, info.limit, info.remaining, false);
   }
 }
 

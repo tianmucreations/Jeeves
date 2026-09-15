@@ -13,7 +13,10 @@ interface JeevesConfig {
 
 // Persistent settings. Phase 7 expands this into the full config surface
 // (default model, favourites, recents, verbose flag). API keys are NEVER stored here (spec 5.3).
-const config = new Conf<JeevesConfig>({ projectName: 'jeeves' });
+// Tests run against their own settings file so they never touch - or race on - the real one.
+const config = new Conf<JeevesConfig>({
+  projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
+});
 
 const VALID_METRICS = ['session', 'context', 'today', 'credit', 'speed'];
 
