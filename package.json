@@ -1,7 +1,25 @@
 {
-  "name": "jeeves",
+  "name": "@tianmucreations/jeeves",
   "version": "0.1.0",
-  "description": "A plain-English terminal assistant.",
+  "description": "A clean terminal assistant. Plain English in, job done. Works with any model.",
+  "author": {
+    "name": "tianmucreations",
+    "url": "https://tianmucreations.com"
+  },
+  "homepage": "https://tianmucreations.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tianmucreations/jeeves.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tianmucreations/jeeves/issues"
+  },
+  "license": "MIT",
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
   "type": "module",
   "bin": {
     "jeeves": "bin/jeeves"
