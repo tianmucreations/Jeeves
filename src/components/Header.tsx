@@ -6,7 +6,7 @@ export function Header() {
   return (
     <Box justifyContent="space-between">
       <Text color="cyan">Jeeves</Text>
-      <Text color="red">●</Text>
+      <Text bold color="red">●●●</Text>
     </Box>
   );
 }
