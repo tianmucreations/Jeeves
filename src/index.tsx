@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
 import { session } from './state/session.js';
-import { AlternateScreen, leaveAltScreen } from './components/AlternateScreen.js';
+import { AlternateScreen, leaveAltScreen } from './ink/AlternateScreen.js';
 
 // Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
 // .env file at the project root. Replaced by the secure OS credential store in Phase 7.
