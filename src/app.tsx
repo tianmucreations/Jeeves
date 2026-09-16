@@ -13,10 +13,11 @@ import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
 
-// The main window is Claude Code's slot layout inside the AlternateScreen ceiling:
-// fixed header, transcript flexGrow (fills all remaining rows - no dead space),
-// fixed input, fixed info bar. Only the transcript region scrolls, and it scrolls
-// itself via the ScrollBox pattern; the terminal has no scrollback here.
+// The main window is the slot layout inside the AlternateScreen ceiling: fixed
+// header, transcript flexGrow (fills all remaining rows - no dead space), then the
+// bottom stack - separator, input, separator, info bar - one element per row. Only
+// the transcript region scrolls (ScrollBox pattern); the terminal has no
+// scrollback here.
 export function App() {
   const s = useSession();
   const { stdout } = useStdout();
@@ -62,21 +63,30 @@ export function App() {
     return <ProjectPicker rows={rows} columns={columns} />;
   }
 
-  // The slot layout, per Claude Code's REPL: the ceiling comes from AlternateScreen's
-  // <Box height={rows}>; inside it, the header is fixed, the transcript's flexGrow
-  // region fills every row that is left, and the input (with its separator) and the
-  // info bar are fixed at the bottom. No border, no padding: full width.
+  // The slot layout, per the interface spec (Section 2): header 1 row, transcript
+  // flexGrow (every row that is left), separator 1, input 1, separator 1, info bar
+  // 1 - exactly the terminal's rows, each element in its own row. Every fixed slot
+  // is height={1} with flexDirection="column": Ink's Box defaults to
+  // flexDirection="row", and a row-direction wrapper shrink-wraps its child to the
+  // child's own width, which pulled the traffic light off the far right of the
+  // header (space-between only spreads across the full width). The column wrapper
+  // stretches the child so the header and info bar really span the window.
   return (
     <Box flexDirection="column" height={rows}>
-      <Box height={1}>
+      <Box height={1} flexDirection="column">
         <Header />
       </Box>
       <Transcript width={columns} />
-      <Box height={2} flexDirection="column">
+      <Box height={1} flexDirection="column">
         <Text dimColor>{separator}</Text>
-        <Input scrollPage={Math.max(1, rows - 4)} />
       </Box>
-      <Box height={1}>
+      <Box height={1} flexDirection="column">
+        <Input scrollPage={Math.max(1, rows - 5)} />
+      </Box>
+      <Box height={1} flexDirection="column">
+        <Text dimColor>{separator}</Text>
+      </Box>
+      <Box height={1} flexDirection="column">
         <Footer />
       </Box>
     </Box>

@@ -36,9 +36,10 @@ describe('system prompt', () => {
 });
 
 describe('input cursor row geometry', () => {
-  it('computes the 0-based frame row of the input line', () => {
-    // Slot layout: header 1, transcript rows-4, input slot 2 (separator + prompt),
-    // footer 1. The prompt text sits on the second row of the input slot.
+  it('computes the y that lands the cursor on the input row', () => {
+    // Slot layout: header 1, transcript rows-5, separator 1, input 1, separator 1,
+    // footer 1. The input text sits on frame row rows-3; Ink's fullscreen frames
+    // draw the cursor one row above the y passed, so inputFrameRow returns rows-2.
     expect(inputFrameRow(24)).toBe(22);
     expect(inputFrameRow(40)).toBe(38);
   });
