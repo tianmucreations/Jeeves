@@ -4,23 +4,10 @@
 export const BLOCK_CURSOR = '\x1b[2 q';
 export const DEFAULT_CURSOR = '\x1b[0 q';
 
-// The app frame's fixed layout (see src/app.tsx): a bordered, one-column-padded box
-// of the full terminal height containing header, transcript, separator, input,
-// separator, footer. These 1-based screen coordinates describe where the regions sit
-// inside that frame; the cursor and the mouse-selection mapping both depend on them.
-export function transcriptTopRow(): number {
-  // Screen row 1: top border. Row 2: header. Row 3: first transcript row.
-  return 3;
-}
-
-export function contentColumn(): number {
-  // Column 1: left border. Column 2: padding. Column 3: first text column.
-  return 3;
-}
-
-// 0-based Ink-frame row of the input line (relative to the frame origin, which is
-// the alt screen's home position): transcript height is rows-7, then the separator
-// row follows, then the input row.
+// The main layout's fixed slot heights (see src/app.tsx): header 1 row, transcript
+// flexGrow, input 2 rows (separator + prompt), footer 1 row. The input's prompt
+// text sits on the second row of its slot, 0-based frame row rows-2, flush at
+// column 0 - there is no border or padding in the slot layout.
 export function inputFrameRow(rows: number): number {
-  return rows - 7 + 3;
+  return rows - 2;
 }

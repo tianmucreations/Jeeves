@@ -18,7 +18,6 @@ import { hasCredentials, hasCredentialsFor, PROVIDER_ROWS } from '../providers/i
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
 import { resetStickySession } from '../providers/openrouter.js';
-import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 
 const TABS = ['favorites', 'recent', 'all', 'tools'] as const;
 type Tab = (typeof TABS)[number];
@@ -312,11 +311,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   useInput((input, key) => {
-    if (isMouseSequence(input)) {
-      handleMouseInput(input);
-      return;
-    }
-    if (phase === 'tool-warning') {
+        if (phase === 'tool-warning') {
       if (key.return) {
         if (pending) {
           applyModel(pending);

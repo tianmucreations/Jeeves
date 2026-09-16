@@ -63,6 +63,8 @@ export function createOpenRouterProvider(apiKey: string): Provider {
     async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
         instructions,
+        // A stalled request must never wedge the app in the working state forever.
+        timeout: 180_000,
         model: openrouter.chat(modelId),
         messages,
         tools,

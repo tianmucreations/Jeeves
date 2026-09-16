@@ -8,7 +8,6 @@ import { session, useSession } from '../state/session.js';
 import { setRecentProjects } from '../platform/config.js';
 import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
 import { hasCredentials } from '../providers/index.js';
-import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 
 type Item =
   | { kind: 'header'; label: string }
@@ -174,11 +173,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
   }
 
   useInput((input, key) => {
-    if (isMouseSequence(input)) {
-      handleMouseInput(input);
-      return;
-    }
-    if (mode === 'create-name') {
+        if (mode === 'create-name') {
       if (key.escape) {
         setMode('list');
         setNote('');

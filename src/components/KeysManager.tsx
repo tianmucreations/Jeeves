@@ -13,7 +13,6 @@ import {
 } from '../providers/index.js';
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
-import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 
 // The keys screen shows one extra row the model picker does not: the optional
 // OpenRouter management key, which unlocks the real account balance.
@@ -165,11 +164,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   }
 
   useInput((input, key) => {
-    if (isMouseSequence(input)) {
-      handleMouseInput(input);
-      return;
-    }
-    if (phase.kind === 'ask') {
+        if (phase.kind === 'ask') {
       const answer = input.toLowerCase();
       if (answer === 'y') {
         setCursor(0);

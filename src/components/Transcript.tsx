@@ -1,45 +1,22 @@
-import React, { useEffect, useMemo } from 'react';
-import { Box, Text } from 'ink';
+import React, { useMemo, useRef } from 'react';
+import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { useSession, type TranscriptEntry } from '../state/session.js';
-import { buildDisplayLines, visibleWindow, type DisplayLine } from './transcript-layout.js';
-import { registerTranscriptView, transcriptTopRow } from '../ink/mouse.js';
+import { buildDisplayLines } from './transcript-layout.js';
 
-// One transcript row, with the drag-selection range (if any) inverted so the user
-// sees exactly what is selected. from/to are inclusive character indices.
-function RowText({ line, from, to }: { line: DisplayLine; from: number | null; to: number | null }) {
-  if (from === null) {
-    return (
-      <Text color={line.color} dimColor={line.dim}>
-        {line.text}
-      </Text>
-    );
-  }
-  const start = Math.max(0, from);
-  const end = Math.min(line.text.length, to ?? line.text.length);
-  if (start >= end) {
-    return (
-      <Text color={line.color} dimColor={line.dim}>
-        {line.text}
-      </Text>
-    );
-  }
-  return (
-    <Text color={line.color} dimColor={line.dim}>
-      {line.text.slice(0, start)}
-      <Text inverse>{line.text.slice(start, end)}</Text>
-      {line.text.slice(end)}
-    </Text>
-  );
-}
-
-// The transcript is clipped to a fixed height so the frame never grows past the
-// terminal window - this is what keeps the header and footer permanently in place.
-// The terminal's native scrollback is unavailable in alternate-screen mode, so
-// the region scrolls itself: arrow and page keys move the view, and 0 offset
-// keeps it pinned to the newest line while answers stream in. It also publishes
-// its rendered rows to the mouse layer so drag-selection maps screen to text.
-export function Transcript({ height, width }: { height: number; width: number }) {
+// Claude Code's ScrollBox pattern (ch13-14-terminal-ui.md): the outer box clips at
+// the viewport with overflow="hidden" and flexGrow={1}, so the transcript fills
+// every row left over by the fixed header, input, and footer slots - no dead space.
+// The inner box slides the whole content up with a negative top margin as the user
+// scrolls; scrollTop is clamped between 0 and contentHeight - viewportHeight, both
+// measured live. While scrollTop is 0 the newest line sits at the bottom edge
+// (auto-follow): new content arrives and the view stays pinned to it.
+export function Transcript({ width }: { width: number }) {
   const s = useSession();
+  const { stdout } = useStdout();
+  const outer = useRef<DOMElement | null>(null);
+  const inner = useRef<DOMElement | null>(null);
+  const viewport = useBoxMetrics(outer);
+  const content = useBoxMetrics(inner);
 
   const entries = useMemo<TranscriptEntry[]>(() => {
     if (s.showLastReasoning && s.lastReasoning) {
@@ -49,61 +26,20 @@ export function Transcript({ height, width }: { height: number; width: number })
   }, [s.transcript, s.showLastReasoning, s.lastReasoning]);
 
   const lines = useMemo(() => buildDisplayLines(entries, width), [entries, width]);
-  const { visible, linesAbove, linesBelow } = useMemo(
-    () => visibleWindow(lines, height, s.transcriptScrollUp),
-    [lines, height, s.transcriptScrollUp]
-  );
 
-  const showPosition = linesAbove > 0 || linesBelow > 0;
-  // The rendered rows the mouse layer must know about: the position indicator
-  // (non-selectable, registered as null) followed by the visible lines. The whole
-  // block is bottom-aligned inside the fixed-height region.
-  const renderedRows = useMemo<(string | null)[]>(
-    () => (showPosition ? [null, ...visible.map((line) => line.text)] : visible.map((line) => line.text)),
-    [visible, showPosition]
-  );
-  const firstRow = transcriptTopRow() + Math.max(0, height - renderedRows.length);
-
-  useEffect(() => {
-    registerTranscriptView(renderedRows, firstRow);
-  }, [renderedRows, firstRow]);
-
-  // Per-row highlight range from the current selection, in rendered-row indices.
-  function rowRange(index: number): { from: number; to: number } | null {
-    const sel = s.selection;
-    if (!sel) return null;
-    const startLine = Math.min(sel.startLine, sel.endLine);
-    const endLine = Math.max(sel.startLine, sel.endLine);
-    const startCol = startLine === sel.startLine ? sel.startCol : sel.endCol;
-    const endCol = endLine === sel.endLine ? sel.endCol : sel.startCol;
-    if (index < startLine || index > endLine) return null;
-    const text = renderedRows[index];
-    const length = typeof text === 'string' ? text.length : 0;
-    if (startLine === endLine) return { from: Math.min(startCol, endCol), to: Math.max(startCol, endCol) };
-    if (index === startLine) return { from: startCol, to: length };
-    if (index === endLine) return { from: 0, to: endCol };
-    return { from: 0, to: length };
-  }
+  // Virtual scroll: never above the first line, never below the newest.
+  const maxScroll = Math.max(0, content.height - viewport.height);
+  const scrollTop = Math.min(s.transcriptScrollUp, maxScroll);
 
   return (
-    <Box flexDirection="column" justifyContent="flex-end" height={height}>
-      {showPosition && (
-        <Text dimColor>
-          ↑ {linesAbove} line{linesAbove === 1 ? '' : 's'} above · newest ↓{linesBelow > 0 ? ` (+${linesBelow} below)` : ''}
-        </Text>
-      )}
-      {visible.map((line, index) => {
-        const renderedIndex = index + (showPosition ? 1 : 0);
-        const range = rowRange(renderedIndex);
-        return (
-          <RowText
-            key={index}
-            line={line}
-            from={range ? range.from : null}
-            to={range ? range.to : null}
-          />
-        );
-      })}
+    <Box flexDirection="column" overflow="hidden" flexGrow={1} justifyContent="flex-end" ref={outer}>
+      <Box flexDirection="column" flexShrink={0} marginTop={-scrollTop} ref={inner}>
+        {lines.map((line, index) => (
+          <Text key={index} color={line.color} dimColor={line.dim}>
+            {line.text}
+          </Text>
+        ))}
+      </Box>
     </Box>
   );
 }

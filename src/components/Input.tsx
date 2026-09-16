@@ -4,7 +4,6 @@ import { runTurn } from '../agent/loop.js';
 import { answerApproval } from '../agent/permissions.js';
 import { useSession } from '../state/session.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
-import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 
 export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
   const [value, setValue] = useState('');
@@ -23,12 +22,6 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
   }, []);
 
   useInput((input, key) => {
-    // Mouse reporting bytes never reach the typing layer: selection drags, releases,
-    // and wheel scrolls are consumed by the copy-on-select machinery.
-    if (isMouseSequence(input)) {
-      handleMouseInput(input);
-      return;
-    }
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
     if (s.approvalPending) {
       const answer = input.toLowerCase();
@@ -52,17 +45,9 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
       s.escapeFooter();
       return;
     }
-    if (key.return) {
-      const text = value.trim();
-      if (text && s.status !== 'working') {
-        setValue('');
-        s.followTranscript();
-        void runTurn(text);
-      }
-      return;
-    }
-    // The terminal's own scrollback is off (alternate screen), so the arrow and
-    // page keys scroll the transcript region instead, three lines per press.
+    // The alternate screen has no native scrollback, so these keys scroll the
+    // transcript region itself (Claude Code's bindings): arrows move 3 rows,
+    // Page Up/Down a full page, End jumps back to the newest and re-follows.
     if (key.upArrow) {
       s.scrollTranscript(3);
       return;
@@ -79,22 +64,46 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
       s.scrollTranscript(-scrollPage);
       return;
     }
+    if (key.end) {
+      s.followTranscript();
+      return;
+    }
+    // Anything typed while reading history returns to the newest first.
+    if (key.return) {
+      const text = value.trim();
+      // /exit is honoured even mid-turn so a wedged request can never trap the user.
+      if (text === '/exit' || (text && s.status !== 'working')) {
+        s.followTranscript();
+        setValue('');
+        void runTurn(text);
+      }
+      return;
+    }
     if (key.backspace || key.delete) {
+      s.followTranscript();
       setValue((v) => v.slice(0, -1));
       return;
     }
     if (!input || key.ctrl || key.meta) return;
+    s.followTranscript();
     setValue((v) => v + input);
   });
 
   // The block cursor sits exactly at the text insertion point, tracking typing and
   // screen changes. Coordinates are relative to the Ink frame origin (the alternate
-  // screen's home). The content column is 2 in 0-based frame terms: border, padding,
-  // then text.
-  setCursorPosition({ x: 2 + value.length, y: inputFrameRow(stdout.rows ?? 24) });
+  // screen's home); the input row is rows-2 in 0-based frame terms and the text is
+  // flush at column 0.
+  setCursorPosition({ x: value.length, y: inputFrameRow(stdout.rows ?? 24) });
 
   if (s.approvalPending) {
     return <Text color="yellow">y = allow · n = deny</Text>;
+  }
+
+  // While the transcript is scrolled away from the newest, the prompt is replaced
+  // by Claude Code's reading-history hint; End (or any typing) returns to the live
+  // conversation.
+  if (s.transcriptScrollUp > 0) {
+    return <Text dimColor>reading history — press End to return</Text>;
   }
 
   return (

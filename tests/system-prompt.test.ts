@@ -37,9 +37,9 @@ describe('system prompt', () => {
 
 describe('input cursor row geometry', () => {
   it('computes the 0-based frame row of the input line', () => {
-    // Transcript height is rows-7; the input follows the border, header, transcript,
-    // and separator rows.
-    expect(inputFrameRow(24)).toBe(20);
-    expect(inputFrameRow(40)).toBe(36);
+    // Slot layout: header 1, transcript rows-4, input slot 2 (separator + prompt),
+    // footer 1. The prompt text sits on the second row of the input slot.
+    expect(inputFrameRow(24)).toBe(22);
+    expect(inputFrameRow(40)).toBe(38);
   });
 });

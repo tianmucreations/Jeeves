@@ -8,6 +8,13 @@ export function shortModelName(model: string): string {
   return short && short.length > 0 ? short : model;
 }
 
+// Long model names (for example deepseek-v4-flash-0731) would push the compact
+// metric line past 80 columns and wrap the footer; the name clips first.
+export function compactModelName(model: string): string {
+  const short = shortModelName(model);
+  return short.length > 14 ? short.slice(0, 13) + '…' : short;
+}
+
 export function compactNumber(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
@@ -85,7 +92,7 @@ export function Footer() {
     }
     return (
       <Box justifyContent="space-between">
-        <Text dimColor>{shortModelName(s.model)}</Text>
+        <Text dimColor>{compactModelName(s.model)}</Text>
         <Text dimColor>
           <UsageBar label={bar.label} value={bar.value} max={bar.max} unit={bar.unit} width={20} goodWhenFull={bar.goodWhenFull} />
           {bar.suffix ? <Text dimColor> {bar.suffix}</Text> : null}
@@ -136,7 +143,7 @@ export function Footer() {
 
   return (
     <Box justifyContent="space-between">
-      <Text dimColor>{shortModelName(s.model)}</Text>
+      <Text dimColor>{compactModelName(s.model)}</Text>
       <Text dimColor>
         {visible.map((segment, index) => (
           <React.Fragment key={segment.key}>

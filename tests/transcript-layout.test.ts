@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapParagraph, clipLine, buildDisplayLines, visibleWindow } from '../src/components/transcript-layout.js';
+import { wrapParagraph, clipLine, buildDisplayLines } from '../src/components/transcript-layout.js';
 import type { TranscriptEntry } from '../src/state/session.js';
 
 describe('wrapParagraph', () => {
@@ -25,31 +25,6 @@ describe('clipLine', () => {
     const clipped = clipLine('x'.repeat(100), 30);
     expect(clipped.length).toBe(30);
     expect(clipped.endsWith('…')).toBe(true);
-  });
-});
-
-describe('visibleWindow', () => {
-  const lines = (count: number) => Array.from({ length: count }, (_, i) => ({ text: `line ${i}` }));
-
-  it('follows the newest lines when scroll offset is zero', () => {
-    const result = visibleWindow(lines(30), 10, 0);
-    expect(result.visible.map((l) => l.text)).toEqual(Array.from({ length: 10 }, (_, i) => `line ${20 + i}`));
-    expect(result.linesAbove).toBe(20);
-    expect(result.linesBelow).toBe(0);
-  });
-
-  it('scrolls up by the requested number of lines', () => {
-    const result = visibleWindow(lines(30), 10, 5);
-    expect(result.visible[0].text).toBe('line 15');
-    expect(result.visible[9].text).toBe('line 24');
-    expect(result.linesAbove).toBe(15);
-    expect(result.linesBelow).toBe(5);
-  });
-
-  it('clamps the offset so the view can never sink past the newest or rise past the oldest', () => {
-    expect(visibleWindow(lines(30), 10, 999).visible[0].text).toBe('line 0');
-    expect(visibleWindow(lines(5), 10, 3).linesAbove).toBe(0);
-    expect(visibleWindow(lines(5), 10, 3).visible).toHaveLength(5);
   });
 });
 

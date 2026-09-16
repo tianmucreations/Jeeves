@@ -13,17 +13,16 @@ import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
 
-// The whole frame is exactly the height of the terminal window, so nothing ever
-// scrolls away: the header is pinned at the top, the footer and input at the bottom,
-// and only the fixed-height transcript area in the middle re-clips its content.
+// The main window is Claude Code's slot layout inside the AlternateScreen ceiling:
+// fixed header, transcript flexGrow (fills all remaining rows - no dead space),
+// fixed input, fixed info bar. Only the transcript region scrolls, and it scrolls
+// itself via the ScrollBox pattern; the terminal has no scrollback here.
 export function App() {
   const s = useSession();
   const { stdout } = useStdout();
   const rows = Math.max(stdout.rows ?? 24, 8);
   const columns = Math.max(stdout.columns ?? 80, 40);
-  const transcriptHeight = Math.max(1, rows - 7);
-  const innerWidth = columns - 4;
-  const separator = '─'.repeat(innerWidth);
+  const separator = '─'.repeat(columns);
 
   useEffect(() => {
     session.setHiddenMetrics(getHiddenMetrics());
@@ -63,14 +62,23 @@ export function App() {
     return <ProjectPicker rows={rows} columns={columns} />;
   }
 
+  // The slot layout, per Claude Code's REPL: the ceiling comes from AlternateScreen's
+  // <Box height={rows}>; inside it, the header is fixed, the transcript's flexGrow
+  // region fills every row that is left, and the input (with its separator) and the
+  // info bar are fixed at the bottom. No border, no padding: full width.
   return (
-    <Box flexDirection="column" borderStyle="round" paddingX={1} height={rows}>
-      <Header />
-      <Transcript height={transcriptHeight} width={innerWidth} />
-      <Text dimColor>{separator}</Text>
-      <Input scrollPage={transcriptHeight} />
-      <Text dimColor>{separator}</Text>
-      <Footer />
+    <Box flexDirection="column" height={rows}>
+      <Box height={1}>
+        <Header />
+      </Box>
+      <Transcript width={columns} />
+      <Box height={2} flexDirection="column">
+        <Text dimColor>{separator}</Text>
+        <Input scrollPage={Math.max(1, rows - 4)} />
+      </Box>
+      <Box height={1}>
+        <Footer />
+      </Box>
     </Box>
   );
 }
