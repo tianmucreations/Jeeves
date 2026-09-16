@@ -37,6 +37,8 @@ describe('footer visibility', () => {
     session.tabFooter();
     expect(session.footerExpanded).toBe('context');
     session.tabFooter();
+    expect(session.footerExpanded).toBe('cache');
+    session.tabFooter();
     expect(session.footerExpanded).toBe('today');
     session.tabFooter();
     expect(session.footerExpanded).toBe('credit');
@@ -50,6 +52,8 @@ describe('footer visibility', () => {
     session.setHiddenMetrics(['session', 'today']);
     session.tabFooter();
     expect(session.footerExpanded).toBe('context');
+    session.tabFooter();
+    expect(session.footerExpanded).toBe('cache');
     session.tabFooter();
     expect(session.footerExpanded).toBe('credit');
     session.tabFooter();
@@ -71,5 +75,11 @@ describe('hidden metrics config', () => {
     expect(getHiddenMetrics()).toEqual(['session']);
     setHiddenMetrics([]);
     expect(getHiddenMetrics()).toEqual([]);
+  });
+
+  it('accepts the cache metric', () => {
+    setHiddenMetrics(['cache']);
+    expect(getHiddenMetrics()).toEqual(['cache']);
+    setHiddenMetrics([]);
   });
 });

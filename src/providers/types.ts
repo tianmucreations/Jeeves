@@ -15,7 +15,7 @@ export interface StreamResult {
   text: string;
   reasoning: string;
   messages: ModelMessage[];
-  usage: { input: number; output: number; total: number };
+  usage: { input: number; output: number; total: number; cached?: number };
   cost: number;
   rateLimit: RateLimitInfo | null;
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useSession, DEFAULT_CONTEXT_TOKENS } from '../state/session.js';
-import { UsageBar, usageFraction, usageColor } from './UsageBar.js';
+import { UsageBar, usageFraction, usageColor, benefitColor } from './UsageBar.js';
 
 export function shortModelName(model: string): string {
   const short = model.split('/').pop();
@@ -38,12 +38,14 @@ interface MetricBar {
   max: number;
   unit?: string;
   suffix: string;
+  goodWhenFull?: boolean;
 }
 
 export function Footer() {
   const s = useSession();
   const contextTokens = s.estimateContextTokens();
   const tpm = s.tokensPerMinute();
+  const cacheRate = s.cacheHitRate();
 
   if (s.footerExpanded !== null) {
     let bar: MetricBar = {
@@ -54,6 +56,15 @@ export function Footer() {
     };
     if (s.footerExpanded === 'session') {
       bar = { label: 'session', value: s.tokensIn + s.tokensOut, max: DEFAULT_CONTEXT_TOKENS, suffix: '' };
+    } else if (s.footerExpanded === 'cache' && cacheRate !== null) {
+      bar = {
+        label: 'cache',
+        value: s.tokensCached,
+        max: s.tokensIn,
+        unit: 'of input read from cache',
+        suffix: '',
+        goodWhenFull: true,
+      };
     } else if (s.footerExpanded === 'today' && s.spend > 0 && s.creditLimit) {
       bar = { label: 'today', value: s.spend, max: s.creditLimit, suffix: '' };
     } else if (s.footerExpanded === 'credit' && s.creditRemaining !== null && s.creditLimit) {
@@ -76,7 +87,7 @@ export function Footer() {
       <Box justifyContent="space-between">
         <Text dimColor>{shortModelName(s.model)}</Text>
         <Text dimColor>
-          <UsageBar label={bar.label} value={bar.value} max={bar.max} unit={bar.unit} width={20} />
+          <UsageBar label={bar.label} value={bar.value} max={bar.max} unit={bar.unit} width={20} goodWhenFull={bar.goodWhenFull} />
           {bar.suffix ? <Text dimColor> {bar.suffix}</Text> : null}
         </Text>
       </Box>
@@ -94,6 +105,15 @@ export function Footer() {
     {
       key: 'context',
       render: <Text color={usageColor(contextFraction)}>ctx {pct(contextFraction)}</Text>,
+    },
+    {
+      key: 'cache',
+      render:
+        cacheRate === null ? (
+          <Text>cache —</Text>
+        ) : (
+          <Text color={benefitColor(cacheRate)}>cache {pct(cacheRate)}</Text>
+        ),
     },
     {
       key: 'today',

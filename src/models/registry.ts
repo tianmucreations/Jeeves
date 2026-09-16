@@ -8,6 +8,8 @@ export interface ModelInfo {
   completionPrice: number;
   supportedParameters: string[];
   provider: string;
+  // Flat-plan providers (Z.ai) show this instead of a misleading per-token price.
+  priceLabel?: string;
 }
 
 const MODELS_URL = 'https://openrouter.ai/api/v1/models';
@@ -114,7 +116,8 @@ export function cleanModelName(name: string): string {
   return stripped.length > 0 ? stripped : name;
 }
 
-export function compactPrice(prompt: number, completion: number): string {
+export function compactPrice(prompt: number, completion: number, priceLabel?: string): string {
+  if (priceLabel) return priceLabel;
   if (prompt === 0 && completion === 0) return 'free';
   // OpenRouter marks router models with negative sentinels; their price varies by routed model.
   if (prompt < 0 || completion < 0) return 'varies';

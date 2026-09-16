@@ -5,6 +5,8 @@ import {
   PROVIDER_ROWS,
   storeOpenRouterKey,
   removeOpenRouterKey,
+  storeZaiKey,
+  removeZaiKey,
   storedKeyProviders,
   getKeySource,
   refreshCredit,
@@ -58,6 +60,9 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         ? 'management key stored - real account balance'
         : 'optional - unlocks your real account balance';
     }
+    if (rowId === 'zai') {
+      return stored.includes('zai') ? 'key stored - GLM Coding Plan ready' : 'no key - add one to use the flat plan';
+    }
     if (rowId === 'ollama') return 'local - no key needed';
     return stored.includes(rowId) ? 'key saved - direct connection coming' : 'add key with /keys';
   }
@@ -82,6 +87,21 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       }
       refreshStored();
       const message = 'Your key is saved securely in your Mac keychain. You will not be asked for it again.';
+      if (mode === 'wizard') {
+        finishWizard(message, true);
+      } else {
+        setPhase({ kind: 'saved', message });
+      }
+      return;
+    }
+    if (provider === 'zai') {
+      const saved = await storeZaiKey(key);
+      if (!saved) {
+        setNote('The Mac keychain was not reachable - press Enter and try again.');
+        return;
+      }
+      refreshStored();
+      const message = 'Your Z.ai key is saved. Pick Z.ai in /model to use the GLM Coding Plan.';
       if (mode === 'wizard') {
         finishWizard(message, true);
       } else {
@@ -123,6 +143,12 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           : 'The key was removed. You are signed out until a new key is added.';
       if (fallback !== 'env') session.setStatus('disconnected');
       setPhase({ kind: 'saved', message });
+      return;
+    }
+    if (provider === 'zai') {
+      await removeZaiKey();
+      refreshStored();
+      setPhase({ kind: 'saved', message: 'The Z.ai key was removed. The GLM Coding Plan needs a key to work.' });
       return;
     }
     if (provider === 'openrouter-management') {

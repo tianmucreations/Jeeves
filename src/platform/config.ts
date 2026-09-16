@@ -18,7 +18,7 @@ const config = new Conf<JeevesConfig>({
   projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
 });
 
-const VALID_METRICS = ['session', 'context', 'today', 'credit', 'speed'];
+const VALID_METRICS = ['session', 'context', 'cache', 'today', 'credit', 'speed'];
 
 // Metrics a power user has chosen to hide from the footer - hiding is opt-in, never required.
 export function getHiddenMetrics(): string[] {

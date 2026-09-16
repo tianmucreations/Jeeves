@@ -34,12 +34,14 @@ program
   .argument('[prompt]', 'optional prompt to start with')
   .action((prompt) => {
     // The prompt argument is accepted but not auto-sent yet; a later phase wires it into the loop.
-    const { unmount } = render(<App />);
+    // The alternate screen is the same mechanism vim and less use: Jeeves takes over the whole
+    // window, and the shell's own history is restored untouched on exit.
+    const instance = render(<App />, { alternateScreen: true });
     // /exit asks for a clean shutdown: restore the terminal first, then leave.
     session.subscribe(() => {
       if (session.exitRequested) {
-        unmount();
-        process.exit(0);
+        instance.unmount();
+        void instance.waitUntilExit().then(() => process.exit(0));
       }
     });
   });

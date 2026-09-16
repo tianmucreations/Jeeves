@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { usageFraction, usageColor, renderBar } from '../src/components/UsageBar.js';
+import { usageFraction, usageColor, benefitColor, renderBar } from '../src/components/UsageBar.js';
 
 describe('usage bar thresholds', () => {
   it('clamps fractions into 0..1', () => {
@@ -28,5 +28,22 @@ describe('usage bar thresholds', () => {
     expect(renderBar(0.5, 10)).toBe('█████░░░░░');
     expect(renderBar(1, 4)).toBe('████');
     expect(renderBar(0, 4)).toBe('░░░░');
+  });
+});
+
+describe('benefit bar thresholds (cache hit rate)', () => {
+  it('is green at 70% and above - caching is doing its job', () => {
+    expect(benefitColor(0.7)).toBe('#00CC00');
+    expect(benefitColor(1)).toBe('#00CC00');
+  });
+
+  it('is amber from 20% to 69%', () => {
+    expect(benefitColor(0.2)).toBe('#FFB000');
+    expect(benefitColor(0.69)).toBe('#FFB000');
+  });
+
+  it('is red below 20% - worth a look', () => {
+    expect(benefitColor(0)).toBe('#FF0000');
+    expect(benefitColor(0.19)).toBe('#FF0000');
   });
 });

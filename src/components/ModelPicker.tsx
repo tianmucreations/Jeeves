@@ -14,8 +14,10 @@ import {
 } from '../models/registry.js';
 import { setFavorites, setRecents, setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { summariseHistory } from '../agent/context.js';
-import { hasCredentials, PROVIDER_ROWS } from '../providers/index.js';
+import { hasCredentials, hasCredentialsFor, PROVIDER_ROWS } from '../providers/index.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
+import { ZAI_MODELS } from '../providers/zai.js';
+import { resetStickySession } from '../providers/openrouter.js';
 
 const TABS = ['favorites', 'recent', 'all', 'tools'] as const;
 type Tab = (typeof TABS)[number];
@@ -28,9 +30,10 @@ const TAB_LABELS: Record<Tab, string> = {
 
 // The calm first step uses the shared provider list; keys live in the OS keychain (Phase 7).
 
-const PROVIDER_ORDER = ['openrouter', 'anthropic', 'openai', 'google', 'x-ai', 'groq', 'mistral', 'ollama'];
+const PROVIDER_ORDER = ['openrouter', 'zai', 'anthropic', 'openai', 'google', 'x-ai', 'groq', 'mistral', 'ollama'];
 const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter',
+  zai: 'Z.ai',
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google',
@@ -48,6 +51,8 @@ type Item =
 type Phase = 'browse' | 'switch-confirm' | 'tool-warning';
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
 type Step = 'providers' | 'curated' | 'full';
+// Which provider's catalog the picker is browsing.
+type ProviderChoice = 'openrouter' | 'ollama' | 'zai';
 
 function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider;
@@ -80,7 +85,7 @@ function rowText(model: ModelInfo): string {
     column(model.name, 30) +
     column(model.provider, 11) +
     column(compactContext(model.contextLength), 7) +
-    column(compactPrice(model.promptPrice, model.completionPrice), 20) +
+    column(compactPrice(model.promptPrice, model.completionPrice, model.priceLabel), 20) +
     (isToolCapable(model) ? '✓' : '✗') +
     (isFastModel(model) ? ' »' : '')
   );
@@ -128,7 +133,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     const remembered = PROVIDER_ROWS.findIndex((row) => row.id === session.providerId);
     return remembered >= 0 ? remembered : 0;
   });
-  const [providerChoice, setProviderChoice] = useState<'openrouter' | 'ollama'>('openrouter');
+  const [providerChoice, setProviderChoice] = useState<ProviderChoice>('openrouter');
   const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[] | null>(null);
   const [tab, setTab] = useState<Tab>('all');
@@ -147,7 +152,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     };
   }, []);
 
-  const catalog = providerChoice === 'ollama' ? (ollamaModels ?? []) : s.models;
+  const catalog = providerChoice === 'ollama' ? (ollamaModels ?? []) : providerChoice === 'zai' ? ZAI_MODELS : s.models;
   const listHeight = Math.max(1, rows - 5);
 
   const items = useMemo<Item[]>(() => {
@@ -188,7 +193,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const highlighted = resolved >= 0 && items[resolved]?.kind === 'model' ? (items[resolved] as { model: ModelInfo }).model : null;
 
   function providerEnabled(rowId: string): boolean {
-    if (rowId === 'openrouter') return hasCredentials();
+    if (rowId === 'openrouter') return hasCredentialsFor('openrouter');
+    if (rowId === 'zai') return hasCredentialsFor('zai');
     if (rowId === 'ollama') return ollamaOnline === true;
     return false;
   }
@@ -200,7 +206,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     return 'add key with /keys';
   }
 
-  function enterModelStep(forProvider: 'openrouter' | 'ollama'): void {
+  function enterModelStep(forProvider: ProviderChoice): void {
     setProviderChoice(forProvider);
     setQuery('');
     setTab('all');
@@ -221,8 +227,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     const row = PROVIDER_ROWS[providerCursor];
     if (!row) return;
     if (row.id === 'openrouter') {
-      if (!hasCredentials()) return;
+      if (!hasCredentialsFor('openrouter')) return;
       enterModelStep('openrouter');
+    } else if (row.id === 'zai') {
+      if (!hasCredentialsFor('zai')) return;
+      enterModelStep('zai');
     } else if (row.id === 'ollama') {
       if (ollamaOnline !== true) return;
       enterModelStep('ollama');
@@ -247,7 +256,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function applyModel(model: ModelInfo): void {
-    const provider = providerChoice === 'ollama' ? 'ollama' : 'openrouter';
+    const provider: ProviderChoice = providerChoice;
     s.setProvider(provider);
     s.setModel(model.id);
     setDefaultProvider(provider);
@@ -282,7 +291,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     const model = current.model;
-    if (model.id === s.model && providerChoice === (s.providerId as 'openrouter' | 'ollama')) {
+    if (model.id === s.model && providerChoice === (s.providerId as ProviderChoice)) {
       s.closePicker();
       return;
     }
@@ -334,6 +343,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           s.addNotice(`Switched to ${pending.name} - starting fresh.`);
         }
         s.setHistory([]);
+        resetStickySession();
         s.closePicker();
       } else if (key.escape) {
         setPhase('browse');

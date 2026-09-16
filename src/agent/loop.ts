@@ -62,7 +62,7 @@ export async function runTurn(input: string): Promise<void> {
     session.finishAssistant(assistantId);
     session.setHistory([...messages, ...result.messages]);
     session.setLastReasoning(result.reasoning);
-    session.addUsage(result.usage.input, result.usage.output, result.cost);
+    session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);
     session.setRateLimit(result.rateLimit);
     void refreshCredit();
     session.setStatus('idle');

@@ -46,6 +46,7 @@ class SessionStore {
   recents: string[] = [];
   tokensIn = 0;
   tokensOut = 0;
+  tokensCached = 0;
   cost = 0;
   footerExpanded: string | null = null;
   hiddenMetrics: string[] = [];
@@ -58,6 +59,8 @@ class SessionStore {
   transcript: TranscriptEntry[] = [];
   history: ModelMessage[] = [];
   lastReasoning = '';
+  // Lines the transcript view is scrolled up from the bottom; 0 means "follow the newest".
+  transcriptScrollUp = 0;
 
   private turnEvents: { t: number; tokens: number }[] = [];
   private creditBaselineUsed: number | null = null;
@@ -280,6 +283,24 @@ class SessionStore {
 
   clearTranscript(): void {
     this.transcript = [];
+    this.transcriptScrollUp = 0;
+    this.emit();
+  }
+
+  // Internal scrolling for the alternate-screen era: the terminal's own scrollback is
+  // unavailable there, so the transcript region scrolls itself. Positive deltas go up
+  // (older); the count is clamped to zero so the view can never sink past the newest.
+  scrollTranscript(delta: number): void {
+    if (delta === 0) return;
+    const next = Math.max(0, this.transcriptScrollUp + delta);
+    if (next === this.transcriptScrollUp) return;
+    this.transcriptScrollUp = next;
+    this.emit();
+  }
+
+  followTranscript(): void {
+    if (this.transcriptScrollUp === 0) return;
+    this.transcriptScrollUp = 0;
     this.emit();
   }
 
@@ -291,14 +312,22 @@ class SessionStore {
     this.lastReasoning = text;
   }
 
-  addUsage(input: number, output: number, cost: number): void {
+  addUsage(input: number, output: number, cost: number, cached = 0): void {
     this.tokensIn += input;
     this.tokensOut += output;
+    this.tokensCached += cached;
     this.cost += cost;
     this.turnEvents.push({ t: Date.now(), tokens: input + output });
     const cutoff = Date.now() - 60_000;
     this.turnEvents = this.turnEvents.filter((event) => event.t >= cutoff);
     this.emit();
+  }
+
+  // Share of input tokens served from the provider's prompt cache - the at-a-glance
+  // "is the money-saving working" number for the footer.
+  cacheHitRate(): number | null {
+    if (this.tokensIn <= 0) return null;
+    return Math.min(1, this.tokensCached / this.tokensIn);
   }
 
   tokensPerMinute(): number {
@@ -314,7 +343,7 @@ class SessionStore {
   // Tab is an optional zoom-in: it expands one metric into a wide bar, cycling
   // through them and wrapping back to the always-visible compact view.
   tabFooter(): void {
-    const all = ['session', 'context', 'today', 'credit', 'speed'];
+    const all = ['session', 'context', 'cache', 'today', 'credit', 'speed'];
     const visible = all.filter((metric) => !this.hiddenMetrics.includes(metric));
     if (visible.length === 0) {
       this.footerExpanded = null;

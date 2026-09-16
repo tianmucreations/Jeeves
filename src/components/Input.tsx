@@ -4,7 +4,7 @@ import { runTurn } from '../agent/loop.js';
 import { answerApproval } from '../agent/permissions.js';
 import { useSession } from '../state/session.js';
 
-export function Input() {
+export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
   const [value, setValue] = useState('');
   const s = useSession();
 
@@ -36,8 +36,27 @@ export function Input() {
       const text = value.trim();
       if (text && s.status !== 'working') {
         setValue('');
+        s.followTranscript();
         void runTurn(text);
       }
+      return;
+    }
+    // The terminal's own scrollback is off (alternate screen), so the arrow and
+    // page keys scroll the transcript region instead, three lines per press.
+    if (key.upArrow) {
+      s.scrollTranscript(3);
+      return;
+    }
+    if (key.downArrow) {
+      s.scrollTranscript(-3);
+      return;
+    }
+    if (key.pageUp) {
+      s.scrollTranscript(scrollPage);
+      return;
+    }
+    if (key.pageDown) {
+      s.scrollTranscript(-scrollPage);
       return;
     }
     if (key.backspace || key.delete) {

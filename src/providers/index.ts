@@ -1,6 +1,7 @@
 import type { Provider } from './types.js';
 import { createOpenRouterProvider, fetchCreditInfo } from './openrouter.js';
 import { createOllamaProvider } from './ollama.js';
+import { createZaiProvider } from './zai.js';
 import { session } from '../state/session.js';
 import { getKey, setKey, deleteKey, listProviders } from '../keys/store.js';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
@@ -9,11 +10,13 @@ import { fileURLToPath } from 'node:url';
 
 let active: Provider | null = null;
 let resolvedKey: string | null = null;
+let zaiKey: string | null = null;
 let keySource: 'keychain' | 'env' | null = null;
 
 // The calm provider list shared by the model picker and the key screens.
 export const PROVIDER_ROWS = [
   { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },
+  { id: 'zai', label: 'Z.ai', description: 'GLM Coding Plan - $18/month flat - best for heavy daily use' },
   { id: 'anthropic', label: 'Anthropic', description: 'direct connection' },
   { id: 'openai', label: 'OpenAI', description: 'direct connection' },
   { id: 'google', label: 'Google', description: 'direct connection' },
@@ -27,14 +30,26 @@ export function getKeySource(): 'keychain' | 'env' | null {
   return keySource;
 }
 
+// Whether a stored key (or keyless local mode) makes a provider usable today.
+export function hasCredentialsFor(providerId: string): boolean {
+  if (providerId === 'openrouter') return resolvedKey !== null;
+  if (providerId === 'zai') return zaiKey !== null;
+  if (providerId === 'ollama') return true;
+  return false;
+}
+
 export function hasCredentials(): boolean {
-  return resolvedKey !== null;
+  return hasCredentialsFor(session.providerId);
 }
 
 // Startup key resolution: the Keychain wins; a .env file is a development fallback
 // that gets migrated into the Keychain on first launch. The first access may pop a
 // macOS permission dialog - that is expected and allowed once.
 export async function initKeys(): Promise<void> {
+  const storedZai = await getKey('zai');
+  if (storedZai && storedZai.length > 0) {
+    zaiKey = storedZai;
+  }
   const stored = await getKey('openrouter');
   if (stored && stored.length > 0) {
     resolvedKey = stored;
@@ -82,6 +97,19 @@ export async function storeOpenRouterKey(key: string): Promise<boolean> {
   return true;
 }
 
+// Saves the Z.ai key (GLM Coding Plan) in the Keychain and activates it immediately.
+export async function storeZaiKey(key: string): Promise<boolean> {
+  const saved = await setKey('zai', key);
+  if (!saved) return false;
+  zaiKey = key;
+  return true;
+}
+
+export async function removeZaiKey(): Promise<void> {
+  await deleteKey('zai');
+  zaiKey = null;
+}
+
 // Removes the stored OpenRouter key; an env key becomes the fallback again.
 export async function removeOpenRouterKey(): Promise<'env' | null> {
   await deleteKey('openrouter');
@@ -100,6 +128,12 @@ export async function removeOpenRouterKey(): Promise<'env' | null> {
 export function getActiveProvider(): Provider {
   if (session.providerId === 'ollama') {
     return createOllamaProvider();
+  }
+  if (session.providerId === 'zai') {
+    if (!zaiKey) {
+      throw new Error('No Z.ai key found. Add one with /keys.');
+    }
+    return createZaiProvider(zaiKey);
   }
   if (!resolvedKey) {
     throw new Error('No OpenRouter API key found. Add one with /keys.');

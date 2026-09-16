@@ -1,9 +1,24 @@
+import { randomUUID } from 'node:crypto';
 import { streamText, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult, RateLimitInfo } from './types.js';
 
 // Assumption: the spec's "maxSteps" is called stopWhen/stepCountIs in AI SDK 7 (the installed version); same cap of 25.
 const MAX_TOOL_STEPS = 25;
+
+// Sticky routing: one id per conversation, sent with every request. OpenRouter uses
+// it directly as the routing key, pinning the conversation to one provider endpoint
+// so the repeated context hits that endpoint's prompt cache (cache reads bill at
+// roughly 0.1-0.5x the fresh-input price). /clear rotates it for a fresh conversation.
+let stickySessionId = randomUUID();
+
+export function resetStickySession(): void {
+  stickySessionId = randomUUID();
+}
+
+export function getStickySessionId(): string {
+  return stickySessionId;
+}
 
 export interface CreditInfo {
   used: number;
@@ -51,6 +66,11 @@ export function createOpenRouterProvider(apiKey: string): Provider {
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        providerOptions: {
+          openrouter: {
+            session_id: stickySessionId,
+          },
+        },
       });
 
       let streamedError: unknown = null;
@@ -93,6 +113,7 @@ const finalStep = await result.finalStep;
           input: usage.inputTokens ?? 0,
           output: usage.outputTokens ?? 0,
           total: usage.totalTokens ?? 0,
+          cached: usage.inputTokenDetails?.cacheReadTokens ?? 0,
         },
         cost: 0,
         rateLimit,

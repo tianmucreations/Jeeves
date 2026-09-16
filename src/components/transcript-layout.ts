@@ -60,6 +60,24 @@ function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'
   return { text: `✓ ${d.label}` };
 }
 
+// Picks the visible window of display lines for the transcript region. The
+// terminal's own scrollback is off in alternate-screen mode, so this is the
+// app's whole scrolling story: scrollUp counts lines above the bottom edge,
+// and 0 pins the view to the newest line (follow mode).
+export function visibleWindow<T extends { text: string }>(
+  lines: T[],
+  height: number,
+  scrollUp: number
+): { visible: T[]; linesAbove: number; linesBelow: number } {
+  const total = lines.length;
+  const maxScroll = Math.max(0, total - height);
+  const offset = Math.min(Math.max(0, scrollUp), maxScroll);
+  const end = total - offset;
+  const start = Math.max(0, end - height);
+  const visible = lines.slice(start, end);
+  return { visible, linesAbove: start, linesBelow: total - end };
+}
+
 // Turns transcript entries into physical display lines that fit the given width.
 export function buildDisplayLines(entries: TranscriptEntry[], width: number): DisplayLine[] {
   const lines: DisplayLine[] = [];

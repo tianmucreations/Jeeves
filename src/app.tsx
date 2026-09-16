@@ -68,7 +68,7 @@ export function App() {
       <Header />
       <Transcript height={transcriptHeight} width={innerWidth} />
       <Text dimColor>{separator}</Text>
-      <Input />
+      <Input scrollPage={transcriptHeight} />
       <Text dimColor>{separator}</Text>
       <Footer />
     </Box>

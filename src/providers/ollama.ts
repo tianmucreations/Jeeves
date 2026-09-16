@@ -50,6 +50,7 @@ export function createOllamaProvider(): Provider {
           input: usage.inputTokens ?? 0,
           output: usage.outputTokens ?? 0,
           total: usage.totalTokens ?? 0,
+          cached: 0,
         },
         cost: 0,
         rateLimit: null,
