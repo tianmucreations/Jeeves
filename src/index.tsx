@@ -29,7 +29,7 @@ const program = new Command();
 
 program
   .name('jeeves')
-  .version('0.1.0')
+  .version('0.2.0')
   .description('A plain-English terminal assistant.')
   .argument('[prompt]', 'optional prompt to start with')
   .action((prompt) => {
