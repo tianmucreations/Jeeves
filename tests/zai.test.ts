@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ZAI_MODELS, createZaiProvider } from '../src/providers/zai.js';
+import { ZAI_MODELS, createZaiProvider, ZAI_CODING_BASE_URL } from '../src/providers/zai.js';
 import { PROVIDER_ROWS } from '../src/providers/index.js';
 import { isToolCapable } from '../src/models/filter.js';
 import { compactPrice } from '../src/models/registry.js';
@@ -26,6 +26,10 @@ describe('Z.ai provider adapter', () => {
     expect(provider.id).toBe('zai');
     expect(provider.name).toBe('Z.ai');
     expect(typeof provider.stream).toBe('function');
+  });
+
+  it('targets the GLM Coding Plan endpoint, not the standard pay-per-token API', () => {
+    expect(ZAI_CODING_BASE_URL).toBe('https://api.z.ai/api/coding/paas/v4');
   });
 
   it('appears in the picker provider list with the flat-plan note', () => {

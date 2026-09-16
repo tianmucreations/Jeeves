@@ -14,7 +14,8 @@ import {
 } from '../models/registry.js';
 import { setFavorites, setRecents, setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { summariseHistory } from '../agent/context.js';
-import { hasCredentials, hasCredentialsFor, PROVIDER_ROWS } from '../providers/index.js';
+import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS } from '../providers/index.js';
+import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
 import { resetStickySession } from '../providers/openrouter.js';
@@ -49,8 +50,9 @@ type Item =
   | { kind: 'show-all' }
   | { kind: 'model'; model: ModelInfo; blurb?: string };
 type Phase = 'browse' | 'switch-confirm' | 'tool-warning';
+// Key entry happens inside the picker for Z.ai so a new user never leaves the flow.
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
-type Step = 'providers' | 'curated' | 'full';
+type Step = 'providers' | 'curated' | 'full' | 'zai-key';
 // Which provider's catalog the picker is browsing.
 type ProviderChoice = 'openrouter' | 'ollama' | 'zai';
 
@@ -141,6 +143,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const [cursor, setCursor] = useState(0);
   const [phase, setPhase] = useState<Phase>('browse');
   const [pending, setPending] = useState<ModelInfo | null>(null);
+  const [zaiKeyValue, setZaiKeyValue] = useState('');
+  const [zaiKeyNote, setZaiKeyNote] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -194,7 +198,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
 
   function providerEnabled(rowId: string): boolean {
     if (rowId === 'openrouter') return hasCredentialsFor('openrouter');
-    if (rowId === 'zai') return hasCredentialsFor('zai');
+    // Selecting Z.ai always does something: with a key it opens the model list,
+    // without one it prompts for the key right here in the picker.
+    if (rowId === 'zai') return true;
     if (rowId === 'ollama') return ollamaOnline === true;
     return false;
   }
@@ -230,7 +236,12 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       if (!hasCredentialsFor('openrouter')) return;
       enterModelStep('openrouter');
     } else if (row.id === 'zai') {
-      if (!hasCredentialsFor('zai')) return;
+      if (!hasCredentialsFor('zai')) {
+        setZaiKeyValue('');
+        setZaiKeyNote('');
+        setStep('zai-key');
+        return;
+      }
       enterModelStep('zai');
     } else if (row.id === 'ollama') {
       if (ollamaOnline !== true) return;
@@ -242,6 +253,12 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function goBack(): void {
+    if (step === 'zai-key') {
+      setZaiKeyValue('');
+      setZaiKeyNote('');
+      setStep('providers');
+      return;
+    }
     if (step === 'full' && providerChoice === 'openrouter') {
       setQuery('');
       setCursor(1);
@@ -350,6 +367,36 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       }
       return;
     }
+    if (step === 'zai-key') {
+      if (key.escape) {
+        goBack();
+        return;
+      }
+      if (key.return) {
+        const trimmed = zaiKeyValue.trim();
+        if (!keyLooksValid(trimmed, 'zai')) {
+          setZaiKeyNote('That looks too short to be a key - paste it again, or press Esc to go back.');
+          setZaiKeyValue('');
+          return;
+        }
+        void storeZaiKey(trimmed).then((saved) => {
+          if (!saved) {
+            setZaiKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            return;
+          }
+          s.addNotice('Your Z.ai key is saved in your Mac keychain.');
+          enterModelStep('zai');
+        });
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setZaiKeyValue((v) => v.slice(0, -1));
+        return;
+      }
+      if (!input || key.ctrl || key.meta) return;
+      setZaiKeyValue((v) => v + input);
+      return;
+    }
     if (step === 'providers') {
       if (key.escape) {
         s.closePicker();
@@ -428,6 +475,25 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     );
   }
 
+  if (step === 'zai-key') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Text dimColor>Z.ai — GLM Coding Plan</Text>
+        <Box flexDirection="column" flexGrow={1} justifyContent="center">
+          <Text>
+            <Text>Paste your Z.ai API key (it stays hidden): </Text>
+            <Text inverse> </Text>
+          </Text>
+          <Text dimColor>It is stored in your Mac keychain and never shown again.</Text>
+        </Box>
+        {zaiKeyNote ? (
+          <Text color="yellow">{zaiKeyNote}</Text>
+        ) : (
+          <Text dimColor>paste the key · Enter save · Esc back</Text>
+        )}
+      </Box>
+    );
+  }
   if (step === 'curated') {
     const picks = resolveCurated(catalog);
     const hint = `↑↓ move · + favorite · Enter select · Esc back`;

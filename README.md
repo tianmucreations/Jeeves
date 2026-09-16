@@ -26,7 +26,7 @@ Jeeves takes over the whole terminal window (the same way vim does). The shell's
 ## Providers
 
 - **OpenRouter (default).** One key unlocks 400+ models from every major provider. Get a key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). Repeat conversation context is cached (sticky routing), so long conversations cost a fraction of the fresh-token price.
-- **Z.ai — GLM Coding Plan.** A flat-rate option for heavy daily use: from $18/month, no per-token billing. Z.ai's endpoint speaks the Anthropic protocol and Jeeves connects to it directly. To use it: subscribe at [z.ai](https://z.ai) if you want the plan, copy your Z.ai API key, then in Jeeves type `/keys`, choose Z.ai, and paste the key. Pick Z.ai in `/model` and choose a GLM model (for example GLM-5.3). Subscribing is optional - Jeeves works fine with OpenRouter alone; this is simply a money-saving option for daily drivers.
+- **Z.ai — GLM Coding Plan.** A flat-rate option for heavy daily use: from $18/month, no per-token billing. Jeeves connects to the GLM Coding Plan endpoint (api.z.ai/api/coding/paas/v4), so the subscription quota is used, not pay-per-token billing. To use it: subscribe at [z.ai](https://z.ai) if you want the plan, copy your Z.ai API key, then in Jeeves type `/model`, choose Z.ai, press Enter, and paste the key when asked (it is stored in the Mac Keychain); the GLM model list appears immediately. The key can also be managed with `/keys`. Subscribing is optional - Jeeves works fine with OpenRouter alone; this is simply a money-saving option for daily drivers.
 - **Ollama.** Local models, no key needed. Start the Ollama app first.
 
 API keys are stored in your operating system's credential store - never in a plain file.

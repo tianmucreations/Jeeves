@@ -89,10 +89,12 @@ export function createOpenRouterProvider(apiKey: string): Provider {
         }
       }
 
-      const text = await result.text;
-      if (!text && streamedError !== null) {
+      // The real stream error (a rejected key, a missing model) must win over the
+      // SDK's generic no-output error, which would otherwise mask the cause.
+      if (streamedError !== null) {
         throw streamedError instanceof Error ? streamedError : new Error(String(streamedError));
       }
+      const text = await result.text;
 
 const finalStep = await result.finalStep;
       const reasoning = finalStep.reasoningText ?? '';

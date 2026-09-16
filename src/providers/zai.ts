@@ -1,12 +1,14 @@
 import { streamText, stepCountIs } from 'ai';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
 import type { ModelInfo } from '../models/registry.js';
 
-// Z.ai's coding endpoint speaks the Anthropic Messages protocol, so the official
-// Anthropic adapter talks to it directly. The base URL must include /v1 because
-// the appends /messages to it.
-const ZAI_BASE_URL = 'https://api.z.ai/api/anthropic/v1';
+// The GLM Coding Plan endpoint: OpenAI Chat Completions protocol at
+// https://api.z.ai/api/coding/paas/v4 - NOT the standard /api/paas/v4, which is
+// the pay-per-token API. The OpenRouter client speaks the OpenAI protocol, so it
+// talks to the coding endpoint directly (the same trick the Ollama adapter uses
+// for its OpenAI-compatible endpoint).
+export const ZAI_CODING_BASE_URL = 'https://api.z.ai/api/coding/paas/v4';
 const MAX_TOOL_STEPS = 25;
 
 // The GLM Coding Plan is flat-rate, so prices are meaningless per token; the picker
@@ -55,9 +57,10 @@ export const ZAI_MODELS: ModelInfo[] = [
 ];
 
 export function createZaiProvider(apiKey: string): Provider {
-  const client = createAnthropic({
+  const client = createOpenRouter({
     apiKey,
-    baseURL: ZAI_BASE_URL,
+    baseURL: ZAI_CODING_BASE_URL,
+    compatibility: 'compatible',
   });
   return {
     id: 'zai',
@@ -67,7 +70,7 @@ export function createZaiProvider(apiKey: string): Provider {
         instructions,
         // A stalled request must never wedge the app in the working state forever.
         timeout: 180_000,
-        model: client(modelId),
+        model: client.chat(modelId),
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
@@ -84,10 +87,12 @@ export function createZaiProvider(apiKey: string): Provider {
           streamedError = part.error;
         }
       }
-      const text = await result.text;
-      if (!text && streamedError !== null) {
+      // The real stream error (a rejected key, a missing model) must win over the
+      // SDK's generic no-output error, which would otherwise mask the cause.
+      if (streamedError !== null) {
         throw streamedError instanceof Error ? streamedError : new Error(String(streamedError));
       }
+      const text = await result.text;
       const finalStep = await result.finalStep;
       const responseMessages = await result.responseMessages;
       const usage = await result.usage;
