@@ -1,15 +1,33 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// DO NOT CHANGE THE HOOK. THE TAKEOVER MUST STAY INSIDE useInsertionEffect.
+// ─────────────────────────────────────────────────────────────────────────────
+// This component implements Claude Code's alternate-screen takeover (published
+// source: alejandrobalderas/claude-code-from-source, chapter 13). The
+// ENTER_ALT_SCREEN escape sequence must reach the terminal BEFORE the first
+// render frame is flushed. react-reconciler calls resetAfterCommit between the
+// mutation and layout commit phases, and Ink's resetAfterCommit triggers the
+// first onRender - the first frame write to the terminal.
+//
+// useLayoutEffect and useEffect both run AFTER that first onRender. "Upgrade"
+// this to either hook and the first frame paints to the MAIN screen buffer,
+// producing a visible flash before the switch - and macOS Terminal.app then
+// archives that pre-app frame into its scrollback at the moment the app
+// switches, so the shell history stays reachable by scrolling forever. That is
+// the exact bug this file exists to prevent; it took days to diagnose and the
+// answer was published all along. Only useInsertionEffect fires before
+// resetAfterCommit. This is not a stylistic choice. Do not "improve" it.
+//
+// The escape order is equally deliberate: 1049h (take over the window) → 2J
+// (clear the fresh alternate screen) → 3J (erase the scrollback the switch
+// archived) → H (home the cursor), in one write. Entering first means the main
+// screen is never wiped, so quitting restores the shell's own screen exactly.
+// Ink's built-in alternateScreen render option is NOT used: it is not needed
+// here and mixing the two mechanisms invites double switches.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import React, { useEffect, useInsertionEffect } from 'react';
 import { Box, useStdout } from 'ink';
 import { createRequire } from 'node:module';
-
-// Claude Code's alternate-screen takeover, per the published source
-// (claude-code-from-source, chapter 13). The ENTER_ALT_SCREEN sequence must
-// reach the terminal before the first render frame; useLayoutEffect would be
-// too late - the first frame would render to the main screen buffer, producing
-// a visible flash before the switch (and macOS Terminal.app would archive that
-// frame into the scrollback the instant the app switches). useInsertionEffect
-// is the one hook that fires before react-reconciler's resetAfterCommit, where
-// Ink triggers the first frame flush.
 
 type SignalExit = (
   callback: (code: number | null, signal: string | null) => void,
