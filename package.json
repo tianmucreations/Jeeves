@@ -48,6 +48,7 @@
     "keytar": "^7.9.0",
     "node-notifier": "^10.0.1",
     "react": "^19.3.0",
+    "signal-exit": "^3.0.7",
     "zod": "^4.6.5"
   },
   "devDependencies": {
