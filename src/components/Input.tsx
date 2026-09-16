@@ -91,9 +91,12 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
 
   // The block cursor sits exactly at the text insertion point, tracking typing and
   // screen changes. Coordinates are relative to the Ink frame origin (the alternate
-  // screen's home); the input row is rows-2 in 0-based frame terms and the text is
-  // flush at column 0.
-  setCursorPosition({ x: value.length, y: inputFrameRow(stdout.rows ?? 24) });
+  // screen's home). The input row is the third row from the bottom (border 1,
+  // separator 1 below it); inputFrameRow carries the +1 that Ink's fullscreen
+  // frames require (the cursor draws one row above the y passed). Text starts two
+  // columns in - the border's │ and its padding space - so x = 2 + value.length.
+  // There is no "> " prompt character; the block cursor alone marks the position.
+  setCursorPosition({ x: 2 + value.length, y: inputFrameRow(stdout.rows ?? 24) });
 
   if (s.approvalPending) {
     return <Text color="yellow">y = allow · n = deny</Text>;

@@ -9,6 +9,7 @@ interface JeevesConfig {
   defaultModel?: string;
   defaultProvider?: string;
   verbose?: boolean;
+  address?: string;
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -86,4 +87,13 @@ export function getVerbosePreference(): boolean {
 
 export function setVerbosePreference(value: boolean): void {
   config.set('verbose', value);
+}
+
+// How Jeeves addresses the owner (spec: asked once on first launch, changeable via /address).
+export function getAddress(): string | null {
+  return config.get('address') ?? null;
+}
+
+export function setAddress(address: string): void {
+  config.set('address', address);
 }

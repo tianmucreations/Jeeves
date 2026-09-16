@@ -7,6 +7,7 @@ export const COMMANDS: HelpEntry[] = [
   { command: '/help', description: 'show this list' },
   { command: '/model', description: 'pick a different AI model' },
   { command: '/keys', description: 'add or remove API keys' },
+  { command: '/address', description: 'change how Jeeves addresses you' },
   { command: '/verbose', description: "show the model's thinking on screen" },
   { command: '/clear', description: 'start a fresh conversation and clear the screen' },
   { command: '/exit', description: 'quit' },

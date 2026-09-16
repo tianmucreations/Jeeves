@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
 import { session } from './state/session.js';
 import { AlternateScreen, leaveAltScreen } from './ink/AlternateScreen.js';
+import { getAddress } from './platform/config.js';
 
 // Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
 // .env file at the project root. Replaced by the secure OS credential store in Phase 7.
@@ -34,6 +35,9 @@ program
   .description('A plain-English terminal assistant.')
   .argument('[prompt]', 'optional prompt to start with')
   .action((prompt) => {
+    // The address question comes before the project picker on first launch only;
+    // a saved address skips straight to the picker.
+    if (getAddress()) session.skipAddressStage();
     // The prompt argument is accepted but not auto-sent yet; a later phase wires it into the loop.
     // The whole app - project picker, key screens, model picker, main window - runs inside a
     // single AlternateScreen, so the terminal is taken over exactly once for the whole

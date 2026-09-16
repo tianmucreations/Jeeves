@@ -16,6 +16,15 @@ describe('read-only bash allowlist', () => {
       'whoami',
       'date',
       'echo hello',
+      'printf "%s lines\\n" 5',
+      'seq 1 10',
+      'sort names.txt',
+      'uniq -c counts.txt',
+      'tr a-z A-Z < /dev/null',
+      'grep -i error app.log',
+      "cut -d, -f1 data.csv",
+      'fold -w 80 readme.txt',
+      'column -t table.txt',
     ]) {
       expect(isReadOnlyBashCommand(command), command).toBe(true);
     }
@@ -29,8 +38,45 @@ describe('read-only bash allowlist', () => {
       'git log --oneline -5',
       'git diff',
       'git diff --stat',
+      'git branch',
+      'git branch -a',
       'node --version',
       'npm --version',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(true);
+    }
+  });
+
+  it('allows pipes and chains of purely read-only stages', () => {
+    for (const command of [
+      'yes 0 | head -n 500',
+      'cat a.txt | grep foo | wc -l',
+      'seq 1 100 | sort -r | head -3',
+      'git status && git log --oneline',
+      'cat missing.txt || echo gone',
+      'grep -c foo big.log | sort | uniq',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(true);
+    }
+  });
+
+  it('allows redirection to /dev/null only', () => {
+    for (const command of [
+      'grep foo big.log > /dev/null',
+      'grep foo big.log 2> /dev/null',
+      'grep foo big.log >/dev/null',
+      'cat a.txt | grep foo > /dev/null',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(true);
+    }
+  });
+
+  it('allows the guarded forms of sed and awk', () => {
+    for (const command of [
+      "sed -n '1,5p' notes.md",
+      'sed -n 1,5p notes.md',
+      "awk '{print $1}' data.tsv",
+      "awk '{print $2, $5}' data.tsv",
     ]) {
       expect(isReadOnlyBashCommand(command), command).toBe(true);
     }
@@ -41,10 +87,16 @@ describe('read-only bash allowlist', () => {
       'rm -rf /',
       'touch newfile',
       'mkdir build',
+      'mv a b',
+      'chmod +x script',
+      'sudo ls',
       'npm install left-pad',
       'curl https://example.com',
+      'wget https://example.com/f',
       'git push',
       'git commit -m x',
+      'git branch feature-x',
+      'git branch -d old',
       'node script.js',
       'npm test',
     ]) {
@@ -52,18 +104,50 @@ describe('read-only bash allowlist', () => {
     }
   });
 
-  it('disqualifies anything with shell metacharacters, even on allowed commands', () => {
+  it('still prompts for write-shaped sed and awk programs', () => {
+    for (const command of [
+      'sed -i s/a/b/ file.txt',
+      "sed -n '1,5w out.txt' notes.md",
+      "awk '{print > \"out.txt\"}' data.tsv",
+      "awk '{system(\"rm x\")}' data.tsv",
+      "awk 'BEGIN { while ((getline line < \"/etc/passwd\") > 0) print line }'",
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(false);
+    }
+  });
+
+  it('still prompts for redirection anywhere other than /dev/null', () => {
     for (const command of [
       'echo hi > file.txt',
+      'echo hi >> log.txt',
+      'ls > out.txt',
+      'cat a | grep b > results.txt',
+      'grep foo log 2>&1',
+      'cat < input.txt',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(false);
+    }
+  });
+
+  it('disqualifies substitution and sequencing constructs, even on allowed commands', () => {
+    for (const command of [
       'cat a | sh',
       'ls; rm -rf /',
       'echo $(whoami)',
       'ls `pwd`',
+      'echo "$(rm -rf x)"',
       'echo hi && rm x',
-      'ls > out.txt',
+      'cat a | grep b; pwd',
+      "awk '{print $1 | \"sort\"}' data.tsv",
     ]) {
       expect(isReadOnlyBashCommand(command), command).toBe(false);
     }
+  });
+
+  it('never auto-runs yes on its own - only feeding a pipe', () => {
+    expect(isReadOnlyBashCommand('yes')).toBe(false);
+    expect(isReadOnlyBashCommand('yes 0')).toBe(false);
+    expect(isReadOnlyBashCommand('yes | tail -1')).toBe(true);
   });
 
   it('rejects empty and whitespace-only commands', () => {

@@ -1,12 +1,12 @@
 import type { ModelMessage } from 'ai';
 import { session } from '../state/session.js';
 import { getActiveProvider } from '../providers/index.js';
-import { SYSTEM_PROMPT } from './systemPrompt.js';
+import { getSystemPrompt } from './systemPrompt.js';
 
 // The model's identity and rulebook. AI SDK 7 rejects role:'system' messages in the
 // messages array ("Use the instructions option instead"), so the prompt travels as
 // streamText's instructions option via the provider layer (see loop.ts).
-export { SYSTEM_PROMPT };
+export { getSystemPrompt };
 
 // Builds the message list for one turn; automatic summarisation of older turns (spec 3.3)
 // is deferred until long-conversation handling lands.
@@ -33,7 +33,7 @@ export async function summariseHistory(): Promise<void> {
       modelId: session.model,
       messages,
       tools: {},
-      instructions: SYSTEM_PROMPT,
+      instructions: getSystemPrompt(),
       onToken: () => {},
       onReasoning: () => {},
       onToolCall: () => {},

@@ -37,7 +37,8 @@ class SessionStore {
   wizardActive = false;
   helpOpen = false;
   exitRequested = false;
-  launchStage: 'project' | 'ready' = 'project';
+  launchStage: 'address' | 'project' | 'ready' = 'address';
+  addressOpen = false;
   wizardFromLaunch = false;
   recentProjects: string[] = [];
   models: ModelInfo[] = [];
@@ -258,6 +259,32 @@ class SessionStore {
 
   launchComplete(): void {
     this.launchStage = 'ready';
+    this.emit();
+  }
+
+  // The address question runs before the project picker on first launch only;
+  // index.tsx skips straight to the picker when an address is already saved.
+  skipAddressStage(): void {
+    if (this.launchStage === 'address') {
+      this.launchStage = 'project';
+      this.emit();
+    }
+  }
+
+  addressDone(): void {
+    this.addressOpen = false;
+    if (this.launchStage === 'address') {
+      this.launchStage = 'project';
+      this.emit();
+    }
+  }
+
+  openAddress(): void {
+    if (this.status === 'working' || this.approvalPending) {
+      this.addNotice('The address change happens between tasks.');
+      return;
+    }
+    this.addressOpen = true;
     this.emit();
   }
 

@@ -1,11 +1,12 @@
 import { session } from '../state/session.js';
 import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
-import { buildTurnMessages, SYSTEM_PROMPT } from './context.js';
+import { buildTurnMessages, getSystemPrompt } from './context.js';
 import { plainError, type ErrorKind } from './errors.js';
 import { toggleVerbose } from '../commands/verbose.js';
 import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
+import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
 
 const DISCONNECTING: ReadonlySet<ErrorKind> = new Set(['auth', 'network', 'payment']);
@@ -20,6 +21,8 @@ export async function runTurn(input: string): Promise<void> {
       session.openKeys();
     } else if (input === '/verbose') {
       session.addNotice(toggleVerbose());
+    } else if (input === '/address') {
+      openAddressPrompt();
     } else if (input === '/clear') {
       clearConversation();
     } else if (input === '/exit') {
@@ -44,7 +47,7 @@ export async function runTurn(input: string): Promise<void> {
       modelId: session.model,
       messages,
       tools,
-      instructions: SYSTEM_PROMPT,
+      instructions: getSystemPrompt(),
       onToken: (token) => {
         if (assistantId === null) assistantId = session.startAssistant();
         session.appendToken(assistantId, token);

@@ -12,18 +12,23 @@ import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
+import { AddressPrompt } from './components/AddressPrompt.js';
 
-// The main window is the slot layout inside the AlternateScreen ceiling: fixed
-// header, transcript flexGrow (fills all remaining rows - no dead space), then the
-// bottom stack - separator, input, separator, info bar - one element per row. Only
-// the transcript region scrolls (ScrollBox pattern); the terminal has no
-// scrollback here.
+// The main window is a rounded box border around the whole terminal, Claude
+// Code style: the top border carries "Jeeves" on the left and the traffic-light
+// dot on the right; the bottom border carries the info bar; vertical lines run
+// down both sides. Inside: the transcript (flexGrow), an internal separator, the
+// input row, another separator. Budget: border 1 + transcript rows-5 + separator
+// 1 + input 1 + separator 1 + border 1 = exactly the terminal's rows.
 export function App() {
   const s = useSession();
   const { stdout } = useStdout();
   const rows = Math.max(stdout.rows ?? 24, 8);
   const columns = Math.max(stdout.columns ?? 80, 40);
-  const separator = '─'.repeat(columns);
+  const inner = columns - 2;
+  const midHeight = Math.max(1, rows - 5);
+  const side = '│\n'.repeat(midHeight - 1) + '│';
+  const separator = '─'.repeat(inner);
 
   useEffect(() => {
     session.setHiddenMetrics(getHiddenMetrics());
@@ -59,35 +64,40 @@ export function App() {
   if (s.helpOpen) {
     return <HelpView rows={rows} />;
   }
+  if (s.addressOpen || s.launchStage === 'address') {
+    return <AddressPrompt rows={rows} />;
+  }
   if (s.launchStage === 'project') {
     return <ProjectPicker rows={rows} columns={columns} />;
   }
 
-  // The slot layout, per the interface spec (Section 2): header 1 row, transcript
-  // flexGrow (every row that is left), separator 1, input 1, separator 1, info bar
-  // 1 - exactly the terminal's rows, each element in its own row. Every fixed slot
-  // is height={1} with flexDirection="column": Ink's Box defaults to
-  // flexDirection="row", and a row-direction wrapper shrink-wraps its child to the
-  // child's own width, which pulled the traffic light off the far right of the
-  // header (space-between only spreads across the full width). The column wrapper
-  // stretches the child so the header and info bar really span the window.
   return (
-    <Box flexDirection="column" height={rows}>
+    <Box flexDirection="column" height={rows} width={columns}>
       <Box height={1} flexDirection="column">
-        <Header />
+        <Header columns={columns} />
       </Box>
-      <Transcript width={columns} />
-      <Box height={1} flexDirection="column">
-        <Text dimColor>{separator}</Text>
+      <Box height={midHeight}>
+        <Box width={1} flexShrink={0}>
+          <Text dimColor>{side}</Text>
+        </Box>
+        <Box width={inner} paddingLeft={1} paddingRight={1}>
+          <Transcript width={inner - 2} />
+        </Box>
+        <Box width={1} flexShrink={0}>
+          <Text dimColor>{side}</Text>
+        </Box>
       </Box>
-      <Box height={1} flexDirection="column">
-        <Input scrollPage={Math.max(1, rows - 5)} />
+      <Text dimColor>├{separator}┤</Text>
+      <Box height={1}>
+        <Text dimColor>│ </Text>
+        <Box width={inner - 2}>
+          <Input scrollPage={midHeight} />
+        </Box>
+        <Text dimColor> │</Text>
       </Box>
+      <Text dimColor>├{separator}┤</Text>
       <Box height={1} flexDirection="column">
-        <Text dimColor>{separator}</Text>
-      </Box>
-      <Box height={1} flexDirection="column">
-        <Footer />
+        <Footer columns={columns} />
       </Box>
     </Box>
   );
