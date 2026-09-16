@@ -9,10 +9,10 @@
   "homepage": "https://tianmucreations.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tianmucreations/jeeves.git"
+    "url": "git+https://github.com/tianmucreations/Jeeves.git"
   },
   "bugs": {
-    "url": "https://github.com/tianmucreations/jeeves/issues"
+    "url": "https://github.com/tianmucreations/Jeeves/issues"
   },
   "license": "MIT",
   "files": [
