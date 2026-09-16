@@ -1,7 +1,7 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { session } from '../state/session.js';
-import { requestApproval } from '../agent/permissions.js';
+import { requestApproval, isReadOnlyBashCommand } from '../agent/permissions.js';
 import { readFileSchema, runReadFile } from './readFile.js';
 import { writeFileSchema, runWriteFile } from './writeFile.js';
 import { listDirSchema, runListDir } from './listDir.js';
@@ -40,7 +40,7 @@ function defineTool<S extends z.ZodObject>(config: {
   name: string;
   description: string;
   schema: S;
-  permission: boolean;
+  permission: boolean | ((input: z.output<S>) => boolean);
   summarize: (input: z.output<S>) => string;
   label: (input: z.output<S>, result: string) => string;
   run: (input: z.output<S>) => Promise<string>;
@@ -52,8 +52,10 @@ function defineTool<S extends z.ZodObject>(config: {
       // The SDK validates before execute; parsing again keeps this layer strictly typed.
       const input = config.schema.parse(rawInput);
       const summary = config.summarize(input);
-      const lineId = session.addToolLine(config.name, summary, config.permission ? 'awaiting' : 'running');
-      if (config.permission) {
+      const needsPermission =
+        typeof config.permission === 'function' ? config.permission(input) : config.permission;
+      const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
+      if (needsPermission) {
         const approved = await requestApproval();
         if (!approved) {
           session.updateToolLine(lineId, { state: 'declined' });
@@ -105,7 +107,9 @@ export const TOOLS: ToolSet = {
     name: 'runBash',
     description: 'Run a shell command and return its output.',
     schema: runBashSchema,
-    permission: true,
+    // Read-only commands never ask (the allowlist lives in permissions.ts);
+    // everything else - writes, deletes, installs, network - still prompts.
+    permission: (input) => !isReadOnlyBashCommand(input.command),
     summarize: (input) => clip(input.command, 60),
     label: (input) => `Ran ${clip(input.command, 60)}`,
     run: runRunBash,

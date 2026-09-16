@@ -28,6 +28,8 @@
 import React, { useEffect, useInsertionEffect } from 'react';
 import { Box, useStdout } from 'ink';
 import { createRequire } from 'node:module';
+import { DEFAULT_CURSOR } from './cursor.js';
+import { isCopyOnSelectEnabled, ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './mouse.js';
 
 type SignalExit = (
   callback: (code: number | null, signal: string | null) => void,
@@ -48,6 +50,7 @@ const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
 
 let altScreenActive = false;
+let altScreenMouseTracking = false;
 let cleanupRegistered = false;
 
 function write(data: string): void {
@@ -63,19 +66,20 @@ function write(data: string): void {
 // alternate screen owns the terminal, consulted by every exit path below.
 export function setAltScreenActive(active: boolean, mouseTracking: boolean): void {
   altScreenActive = active;
-  // Mouse tracking is deliberately left off: it would break click-drag text
-  // selection in Terminal.app, and the app already owns scrolling by key.
-  void mouseTracking;
+  altScreenMouseTracking = active ? mouseTracking : altScreenMouseTracking;
 }
 
 // Hands the terminal back. Safe to call from anywhere, any number of times.
-// The scrollback erase follows the switch back because macOS Terminal.app
-// archives the app's own frames into the scrollback at hand-back (measured),
-// and they must not linger; the cursor comes back on for the shell.
+// Mouse reporting is disabled in the same breath - without the paired disable
+// sequences the user's terminal would keep mouse capture after quitting - the
+// scrollback erase follows the switch back because macOS Terminal.app archives
+// the app's own frames into the scrollback at hand-back (measured), and the
+// cursor shape returns to the shell default with the cursor back on.
 export function leaveAltScreen(): void {
   if (!altScreenActive) return;
   altScreenActive = false;
-  write(LEAVE_ALT_SCREEN + ERASE_SCROLLBACK + SHOW_CURSOR);
+  const mouseOff = altScreenMouseTracking ? DISABLE_MOUSE_TRACKING : '';
+  write(LEAVE_ALT_SCREEN + mouseOff + ERASE_SCROLLBACK + DEFAULT_CURSOR + SHOW_CURSOR);
 }
 
 // The terminal must always be restored. process handlers per the mechanism,
@@ -98,11 +102,15 @@ export function AlternateScreen({ children }: { children: React.ReactNode }) {
   // the window first, then clear the fresh alternate screen, erase the
   // scrollback the switch archived, and home the cursor. Because the main
   // screen is never wiped, the shell's own screen survives for a perfect
-  // restore on exit. The cursor is hidden for the same reason Ink's own mode
-  // hides it. Empty dependency array: this runs exactly once, on mount.
+  // restore on exit. Mouse reporting (for copy-on-select) is turned on with
+  // the takeover and off on every exit path. The cursor is hidden for the
+  // same reason Ink's own mode hides it. Empty dependency array: this runs
+  // exactly once, on mount.
   useInsertionEffect(() => {
-    write(ENTER_ALT_SCREEN + CLEAR_SCREEN + ERASE_SCROLLBACK + HOME_CURSOR + HIDE_CURSOR);
-    setAltScreenActive(true, false);
+    const mouseTracking = isCopyOnSelectEnabled();
+    const mouseOn = mouseTracking ? ENABLE_MOUSE_TRACKING : '';
+    write(ENTER_ALT_SCREEN + CLEAR_SCREEN + ERASE_SCROLLBACK + HOME_CURSOR + mouseOn + HIDE_CURSOR);
+    setAltScreenActive(true, mouseTracking);
     registerCleanup();
   }, []);
 

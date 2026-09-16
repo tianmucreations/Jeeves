@@ -1,14 +1,34 @@
-import React, { useState } from 'react';
-import { Text, useInput } from 'ink';
+import React, { useEffect, useState } from 'react';
+import { Text, useCursor, useInput, useStdout } from 'ink';
 import { runTurn } from '../agent/loop.js';
 import { answerApproval } from '../agent/permissions.js';
 import { useSession } from '../state/session.js';
+import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
+import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 
 export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
   const [value, setValue] = useState('');
   const s = useSession();
+  const { stdout } = useStdout();
+  const { setCursorPosition } = useCursor();
+
+  // The terminal's real cursor becomes a steady block for the whole session; it is
+  // restored to the shell's default shape by the AlternateScreen exit paths.
+  useEffect(() => {
+    try {
+      process.stdout.write(BLOCK_CURSOR);
+    } catch {
+      // A closed stream must never crash the app.
+    }
+  }, []);
 
   useInput((input, key) => {
+    // Mouse reporting bytes never reach the typing layer: selection drags, releases,
+    // and wheel scrolls are consumed by the copy-on-select machinery.
+    if (isMouseSequence(input)) {
+      handleMouseInput(input);
+      return;
+    }
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
     if (s.approvalPending) {
       const answer = input.toLowerCase();
@@ -67,13 +87,18 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
     setValue((v) => v + input);
   });
 
+  // The block cursor sits exactly at the text insertion point, tracking typing and
+  // screen changes. Coordinates are relative to the Ink frame origin (the alternate
+  // screen's home). The content column is 2 in 0-based frame terms: border, padding,
+  // then text.
+  setCursorPosition({ x: 2 + value.length, y: inputFrameRow(stdout.rows ?? 24) });
+
   if (s.approvalPending) {
     return <Text color="yellow">y = allow · n = deny</Text>;
   }
 
   return (
     <Text>
-      <Text bold>{'> '}</Text>
       {value ? <Text>{value}</Text> : <Text dimColor>ask anything</Text>}
     </Text>
   );

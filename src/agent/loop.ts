@@ -1,7 +1,7 @@
 import { session } from '../state/session.js';
 import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
-import { buildTurnMessages } from './context.js';
+import { buildTurnMessages, SYSTEM_PROMPT } from './context.js';
 import { plainError, type ErrorKind } from './errors.js';
 import { toggleVerbose } from '../commands/verbose.js';
 import { openModelPicker } from '../commands/model.js';
@@ -44,6 +44,7 @@ export async function runTurn(input: string): Promise<void> {
       modelId: session.model,
       messages,
       tools,
+      instructions: SYSTEM_PROMPT,
       onToken: (token) => {
         if (assistantId === null) assistantId = session.startAssistant();
         session.appendToken(assistantId, token);

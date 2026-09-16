@@ -61,6 +61,9 @@ class SessionStore {
   lastReasoning = '';
   // Lines the transcript view is scrolled up from the bottom; 0 means "follow the newest".
   transcriptScrollUp = 0;
+  // The drag-selection range over the transcript's rendered rows (indices match the
+  // rows the Transcript component registers with the mouse layer), or null.
+  selection: { startLine: number; startCol: number; endLine: number; endCol: number } | null = null;
 
   private turnEvents: { t: number; tokens: number }[] = [];
   private creditBaselineUsed: number | null = null;
@@ -111,22 +114,42 @@ class SessionStore {
 
   addUser(text: string): void {
     this.transcript = [...this.transcript, { id: this.nextId++, kind: 'user', text }];
+    this.selection = null;
     this.emit();
   }
 
   addNotice(text: string): void {
     this.transcript = [...this.transcript, { id: this.nextId++, kind: 'notice', text }];
+    this.selection = null;
     this.emit();
+  }
+
+  // A short-lived confirmation line (for example "Copied to clipboard") that removes
+  // itself after a moment. Unlike addNotice it does not clear the drag selection,
+  // because it is fired by the selection itself.
+  flashNotice(text: string): void {
+    const id = this.nextId++;
+    this.transcript = [...this.transcript, { id, kind: 'notice', text }];
+    this.emit();
+    setTimeout(() => this.removeTranscriptEntry(id), 2500);
+  }
+
+  removeTranscriptEntry(id: number): void {
+    const before = this.transcript.length;
+    this.transcript = this.transcript.filter((entry) => entry.id !== id);
+    if (this.transcript.length !== before) this.emit();
   }
 
   addError(text: string): void {
     this.transcript = [...this.transcript, { id: this.nextId++, kind: 'error', text }];
+    this.selection = null;
     this.emit();
   }
 
   startAssistant(): number {
     const id = this.nextId++;
     this.transcript = [...this.transcript, { id, kind: 'assistant', text: '' }];
+    this.selection = null;
     this.emit();
     return id;
   }
@@ -135,6 +158,7 @@ class SessionStore {
     this.transcript = this.transcript.map((entry) =>
       entry.id === id && entry.kind === 'assistant' ? { ...entry, text: entry.text + token } : entry
     );
+    this.selection = null;
     this.emit();
   }
 
@@ -142,6 +166,7 @@ class SessionStore {
     this.transcript = this.transcript.map((entry) =>
       entry.id === id && entry.kind === 'assistant' ? { ...entry, text } : entry
     );
+    this.selection = null;
     this.emit();
   }
 
@@ -175,6 +200,7 @@ class SessionStore {
   addToolLine(tool: string, summary: string, state: ToolLineState): number {
     const id = this.nextId++;
     this.transcript = [...this.transcript, { id, kind: 'tool', data: { tool, summary, state, label: '' } }];
+    this.selection = null;
     this.emit();
     return id;
   }
@@ -183,6 +209,14 @@ class SessionStore {
     this.transcript = this.transcript.map((entry) =>
       entry.kind === 'tool' && entry.id === id ? { ...entry, data: { ...entry.data, ...patch } } : entry
     );
+    this.selection = null;
+    this.emit();
+  }
+
+  // The drag-selection range over the transcript's rendered rows; the Transcript
+  // reads it to highlight the selected cells.
+  setSelection(selection: { startLine: number; startCol: number; endLine: number; endCol: number } | null): void {
+    this.selection = selection;
     this.emit();
   }
 

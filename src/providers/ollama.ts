@@ -16,8 +16,9 @@ export function createOllamaProvider(): Provider {
   return {
     id: 'ollama',
     name: 'Ollama',
-    async stream({ modelId, messages, tools, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
+    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
+        instructions,
         model: client.chat(modelId),
         messages,
         tools,

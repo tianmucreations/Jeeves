@@ -9,6 +9,7 @@ interface JeevesConfig {
   defaultModel?: string;
   defaultProvider?: string;
   verbose?: boolean;
+  copyOnSelect?: boolean;
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -86,4 +87,13 @@ export function getVerbosePreference(): boolean {
 
 export function setVerbosePreference(value: boolean): void {
   config.set('verbose', value);
+}
+
+// Drag-select copy (OSC 52). On by default; JEEVES_DISABLE_COPY_ON_SELECT=1 wins over it.
+export function getCopyOnSelect(): boolean {
+  return config.get('copyOnSelect') ?? true;
+}
+
+export function setCopyOnSelect(value: boolean): void {
+  config.set('copyOnSelect', value);
 }

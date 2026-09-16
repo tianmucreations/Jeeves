@@ -24,6 +24,9 @@ export interface StreamOptions {
   modelId: string;
   messages: ModelMessage[];
   tools: ToolSet;
+  // The system prompt / rulebook. AI SDK 7 delivers it as streamText's
+  // instructions option (role:'system' messages are rejected in the messages array).
+  instructions?: string;
   onToken: (token: string) => void;
   onReasoning: (delta: string) => void;
   onToolCall: (call: ToolCallNote) => void;

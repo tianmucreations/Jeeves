@@ -2,12 +2,17 @@ import React from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useSession } from '../state/session.js';
 import { COMMANDS, KEY_BINDINGS } from '../commands/help.js';
+import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 
 // Plain-English help; every command and key is visible with a one-line description.
 export function HelpView({ rows }: { rows: number }) {
   const s = useSession();
 
   useInput((input, key) => {
+    if (isMouseSequence(input)) {
+      handleMouseInput(input);
+      return;
+    }
     if (key.escape || key.return) {
       s.closeHelp();
     }

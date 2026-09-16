@@ -60,8 +60,9 @@ export function createOpenRouterProvider(apiKey: string): Provider {
   return {
     id: 'openrouter',
     name: 'OpenRouter',
-    async stream({ modelId, messages, tools, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
+    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
+        instructions,
         model: openrouter.chat(modelId),
         messages,
         tools,

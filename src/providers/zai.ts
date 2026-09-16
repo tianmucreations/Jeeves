@@ -62,8 +62,9 @@ export function createZaiProvider(apiKey: string): Provider {
   return {
     id: 'zai',
     name: 'Z.ai',
-    async stream({ modelId, messages, tools, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
+    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
+        instructions,
         model: client(modelId),
         messages,
         tools,
