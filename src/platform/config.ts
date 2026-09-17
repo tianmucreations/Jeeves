@@ -28,6 +28,11 @@ export function getDailyLimit(): number {
   return typeof stored === 'number' && stored > 0 ? stored : 3;
 }
 
+// Whether a limit has ever been chosen - the first paid model choice asks for one.
+export function hasSavedDailyLimit(): boolean {
+  return typeof config.get('dailyLimit') === 'number';
+}
+
 export function setDailyLimit(limit: number): void {
   config.set('dailyLimit', limit);
 }

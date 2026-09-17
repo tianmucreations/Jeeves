@@ -27,8 +27,8 @@ export const PROVIDER_ROWS = [
   { id: 'anthropic', label: 'Anthropic', description: 'models through OpenRouter' },
   { id: 'openai', label: 'OpenAI', description: 'models through OpenRouter' },
   { id: 'google', label: 'Google', description: 'models through OpenRouter' },
-  { id: 'xai', label: 'xAI', description: 'models through OpenRouter' },
-  { id: 'groq', label: 'Groq', description: 'models through OpenRouter' },
+  { id: 'xai', label: 'xAI (Grok)', description: 'models through OpenRouter' },
+  { id: 'groq', label: 'Groq', description: 'fast hosting of open models, through OpenRouter' },
   { id: 'mistral', label: 'Mistral', description: 'models through OpenRouter' },
   { id: 'ollama', label: 'Ollama', description: 'models on this computer, no key needed' },
 ];

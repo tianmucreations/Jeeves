@@ -96,6 +96,12 @@ export interface CuratedPick {
   blurb: string;
 }
 
+// A free OpenRouter model: no charge for input or output. (Z.ai's plan models also
+// show 0 but are "included" in a paid plan, not free.)
+export function isFreeModel(model: ModelInfo): boolean {
+  return model.promptPrice === 0 && model.completionPrice === 0 && model.priceLabel !== 'included' && model.provider !== 'ollama';
+}
+
 // Auto heads the shortlist whenever its worker model is in the catalogue.
 export function autoPick(models: ModelInfo[]): CuratedPick | null {
   const worker = models.find((model) => model.id === AUTO_WORKER_MODEL);

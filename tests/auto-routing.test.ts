@@ -112,3 +112,25 @@ describe('spending limits', () => {
     setDailyExtra({ date: '2000-01-01', amount: 0 });
   });
 });
+
+describe('the last rung: the strongest model, only after asking', () => {
+  it('asks in plain words, with the price difference from the catalogue', async () => {
+    const { topModelQuestion, topModelPriceRatio, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL } = await import('../src/agent/auto.js');
+    const ratio = topModelPriceRatio([
+      { id: AUTO_EXPERT_MODEL, promptPrice: 0.000002 },
+      { id: AUTO_TOP_MODEL, promptPrice: 0.000005 },
+    ]);
+    expect(ratio).toBeCloseTo(2.5);
+    expect(topModelQuestion('Sir', ratio)).toBe(
+      'This is proving difficult, Sir. Shall I try the strongest model (Claude Opus 5) for this job? It costs about 2.5× as much as the expert. (y/n)'
+    );
+    expect(topModelQuestion('Madam', null)).toBe('This is proving difficult, Madam. Shall I try the strongest model (Claude Opus 5) for this job? (y/n)');
+  });
+
+  it('counts only failures after the expert took over', () => {
+    const failures = [1, 1, 0, 0, 1];
+    const takeoverStep = 2;
+    expect(shouldTakeOver(failures)).toBe(false);
+    expect(shouldTakeOver([...failures, 1].slice(takeoverStep))).toBe(true);
+  });
+});

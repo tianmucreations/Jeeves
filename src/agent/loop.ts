@@ -8,7 +8,8 @@ import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
 import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
-import { isAuto, workingModelId, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_NOTE, shouldTakeOver, createAskExpertTool, type AutoTurnState } from './auto.js';
+import { isAuto, workingModelId, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion } from './auto.js';
+import { requestApproval } from './permissions.js';
 import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportSpend, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
@@ -61,7 +62,7 @@ export async function runTurn(input: string): Promise<void> {
     await summariseHistory();
   }
   const auto = isAuto(session.model);
-  const autoState: AutoTurnState = { expertTookOver: false };
+  const autoState = newAutoTurnState();
   session.setActiveModel(auto ? AUTO_WORKER_MODEL : null);
   const stop = new AbortController();
   let countedSteps = 0;
@@ -90,11 +91,19 @@ export async function runTurn(input: string): Promise<void> {
           return {};
         }
         // In Auto mode the expert takes over the rest of a job the worker keeps failing.
+        // If the expert keeps failing too, Jeeves asks before trying the strongest model.
         let stepModel: string | undefined;
-        if (auto && (autoState.expertTookOver || shouldTakeOver(stepFailures))) {
-          autoState.expertTookOver = true;
-          stepModel = AUTO_EXPERT_MODEL;
-          session.setActiveModel(AUTO_EXPERT_MODEL);
+        if (auto && !autoState.expertTookOver && shouldTakeOver(stepFailures)) autoState.expertTookOver = true;
+        // (The expert can also take over by saying so when consulted.)
+        if (autoState.expertTookOver && autoState.takeoverStep < 0) autoState.takeoverStep = stepFailures.length;
+        if (auto && autoState.expertTookOver && !autoState.askedAboutTop && shouldTakeOver(stepFailures.slice(autoState.takeoverStep))) {
+          autoState.askedAboutTop = true;
+          session.addNotice(topModelQuestion(getAddress() ?? 'Sir', topModelPriceRatio(session.models)));
+          autoState.onTopModel = await requestApproval();
+        }
+        if (auto && autoState.expertTookOver) {
+          stepModel = autoState.onTopModel ? AUTO_TOP_MODEL : AUTO_EXPERT_MODEL;
+          session.setActiveModel(stepModel);
         }
         const tidied = clearOldToolResults(stepMessages);
         return { modelId: stepModel, messages: tidied.freedTokens > 0 ? tidied.messages : undefined };

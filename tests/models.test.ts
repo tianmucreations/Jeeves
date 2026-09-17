@@ -138,3 +138,13 @@ describe('registry cache fallback', () => {
     void previous;
   });
 });
+describe('free models', () => {
+  it('are free OpenRouter models only - not plan models marked included, not local ones', async () => {
+    const { isFreeModel } = await import('../src/models/registry.js');
+    const base = { id: 'x/y:free', name: 'Y', contextLength: 1, promptPrice: 0, completionPrice: 0, supportedParameters: ['tools'], provider: 'x' };
+    expect(isFreeModel(base)).toBe(true);
+    expect(isFreeModel({ ...base, promptPrice: 0.0000001 })).toBe(false);
+    expect(isFreeModel({ ...base, provider: 'zai', priceLabel: 'included' })).toBe(false);
+    expect(isFreeModel({ ...base, provider: 'ollama' })).toBe(false);
+  });
+});

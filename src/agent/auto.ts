@@ -11,8 +11,8 @@ import { openrouterChat } from '../tools/web/openrouterChat.js';
 // done), which costs less than running the stronger model throughout. No guessing
 // whether a message is "chat" or "work": the cheap model is always first.
 
-import { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL } from './auto-ids.js';
-export { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL };
+import { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL } from './auto-ids.js';
+export { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL };
 
 export function isAuto(modelId: string): boolean {
   return modelId === AUTO_MODEL_ID;
@@ -72,6 +72,30 @@ export function conversationForExpert(messages: ModelMessage[], maxChars = 80_00
 
 export interface AutoTurnState {
   expertTookOver: boolean;
+  // The step at which the expert took over (-1 until then), so later failures are
+  // counted from there.
+  takeoverStep: number;
+  // Whether the person was already asked about the strongest model on this job.
+  askedAboutTop: boolean;
+  onTopModel: boolean;
+}
+
+export function newAutoTurnState(): AutoTurnState {
+  return { expertTookOver: false, takeoverStep: -1, askedAboutTop: false, onTopModel: false };
+}
+
+// How many times the expert's price the strongest model costs, from the catalogue
+// (input prices); null when either is missing.
+export function topModelPriceRatio(models: { id: string; promptPrice: number }[]): number | null {
+  const expert = models.find((model) => model.id === AUTO_EXPERT_MODEL);
+  const top = models.find((model) => model.id === AUTO_TOP_MODEL);
+  if (!expert || !top || expert.promptPrice <= 0) return null;
+  return top.promptPrice / expert.promptPrice;
+}
+
+export function topModelQuestion(address: string, ratio: number | null): string {
+  const cost = ratio ? ` It costs about ${Number(ratio.toFixed(1))}× as much as the expert.` : '';
+  return `This is proving difficult, ${address}. Shall I try the strongest model (Claude Opus 5) for this job?${cost} (y/n)`;
 }
 
 export function createAskExpertTool(state: AutoTurnState, expertModel = AUTO_EXPERT_MODEL) {

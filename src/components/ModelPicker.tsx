@@ -10,22 +10,24 @@ import {
   compactPrice,
   isFastModel,
   resolveCurated,
+  isFreeModel,
   cleanModelName,
 } from '../models/registry.js';
-import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit } from '../platform/config.js';
+import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit, hasSavedDailyLimit } from '../platform/config.js';
 import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS, storeOpenRouterKey, refreshCredit } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
 import { isMouseSequence } from '../ink/mouse.js';
 
-const TABS = ['favorites', 'recent', 'all', 'tools'] as const;
+const TABS = ['favorites', 'recent', 'all', 'tools', 'free'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABELS: Record<Tab, string> = {
   favorites: 'Favorites',
   recent: 'Recent',
   all: 'All',
   tools: 'Tool-capable',
+  free: 'Free',
 };
 
 // The calm first step uses the shared provider list; keys live in the OS keychain (Phase 7).
@@ -47,6 +49,7 @@ type Item =
   | { kind: 'header'; label: string }
   | { kind: 'back' }
   | { kind: 'show-all' }
+  | { kind: 'show-free'; count: number }
   | { kind: 'model'; model: ModelInfo; blurb?: string };
 type Phase = 'browse' | 'tool-warning';
 // Key entry happens inside the picker for Z.ai so a new user never leaves the flow.
@@ -107,6 +110,8 @@ function poolFor(tab: Tab, models: ModelInfo[], favorites: string[], recents: st
   if (tab === 'favorites') return favorites.map((id) => byId.get(id)).filter((m): m is ModelInfo => m !== undefined);
   if (tab === 'recent') return recents.map((id) => byId.get(id)).filter((m): m is ModelInfo => m !== undefined);
   if (tab === 'tools') return models.filter(isToolCapable);
+  // Free models that can do tasks - a free model that can only chat is no use here.
+  if (tab === 'free') return models.filter((model) => isFreeModel(model) && isToolCapable(model));
   return models;
 }
 
@@ -158,6 +163,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const [jumpTo, setJumpTo] = useState<string | null>(null);
   const [limitValue, setLimitValue] = useState('');
   const [limitNote, setLimitNote] = useState('');
+  const [limitReturn, setLimitReturn] = useState<'providers' | 'close'>('providers');
   const [keyNote, setKeyNote] = useState('');
 
   useEffect(() => {
@@ -181,6 +187,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         flat.push({ kind: 'model', model: pick.model, blurb: pick.blurb });
       }
       flat.push({ kind: 'header', label: '──────────' }, { kind: 'show-all' });
+      const freeCount = catalog.filter((model) => isFreeModel(model) && isToolCapable(model)).length;
+      if (freeCount > 0) flat.push({ kind: 'show-free', count: freeCount });
       return flat;
     }
     if (step === 'full') {
@@ -252,6 +260,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   function chooseProvider(): void {
     // The row under the services: the daily spending limit.
     if (providerCursor === PROVIDER_ROWS.length) {
+      setLimitReturn('providers');
       setLimitValue('');
       setLimitNote('');
       setStep('limit');
@@ -343,10 +352,10 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       goBack();
       return;
     }
-    if (current.kind === 'show-all') {
+    if (current.kind === 'show-all' || current.kind === 'show-free') {
       setStep('full');
       setQuery('');
-      setTab('all');
+      setTab(current.kind === 'show-free' ? 'free' : 'all');
       setCursor(1);
       return;
     }
@@ -364,6 +373,19 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     // housekeeping keeps it lean; /clear starts afresh). No "Switched to" line:
     // the info bar already names the model.
     applyModel(model);
+    finishChoice(model);
+  }
+
+  // The first time a model that costs money is chosen, the daily limit is set, so
+  // spending is visible in the bar from the first message.
+  function finishChoice(model: ModelInfo): void {
+    if (providerChoice === 'openrouter' && !isFreeModel(model) && !hasSavedDailyLimit()) {
+      setLimitReturn('close');
+      setLimitValue('');
+      setLimitNote('');
+      setStep('limit');
+      return;
+    }
     s.closePicker();
   }
 
@@ -373,8 +395,10 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       if (key.return) {
         if (pending) {
           applyModel(pending);
+          finishChoice(pending);
+        } else {
+          s.closePicker();
         }
-        s.closePicker();
       } else if (key.escape) {
         setPhase('browse');
       }
@@ -423,8 +447,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     if (step === 'limit') {
-      if (key.escape) {
-        setStep('providers');
+      const done = () => (limitReturn === 'close' ? s.closePicker() : setStep('providers'));
+      // From a model choice, Esc or an empty Enter keeps the suggested limit.
+      if (key.escape || (key.return && limitValue === '' && limitReturn === 'close')) {
+        if (limitReturn === 'close') {
+          setDailyLimit(s.dailyLimit);
+        }
+        done();
         return;
       }
       if (key.return) {
@@ -437,7 +466,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         const rounded = Math.round(amount * 100) / 100;
         setDailyLimit(rounded);
         s.setDailyLimit(rounded);
-        setStep('providers');
+        done();
         return;
       }
       if (key.backspace || key.delete) {
@@ -545,7 +574,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           </Text>
           <Text dimColor>When today's spending reaches it, Jeeves stops and asks before spending more.</Text>
         </Box>
-        {limitNote ? <Text color="yellow">{limitNote}</Text> : <Text dimColor>type an amount · Enter save · Esc back</Text>}
+        {limitNote ? (
+          <Text color="yellow">{limitNote}</Text>
+        ) : (
+          <Text dimColor>{limitReturn === 'close' ? `Enter keeps $${s.dailyLimit.toFixed(2)} · or type an amount, then Enter` : 'type an amount · Enter save · Esc back'}</Text>
+        )}
       </Box>
     );
   }
@@ -606,6 +639,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
                 return (
                   <Text key="showall" inverse={selected} dimColor={!selected}>
                     Show all {catalog.length} models →
+                  </Text>
+                );
+              }
+              if (item.kind === 'show-free') {
+                return (
+                  <Text key="showfree" inverse={selected} dimColor={!selected}>
+                    Free models ({item.count}) - no charge, a daily limit on requests →
                   </Text>
                 );
               }
@@ -674,7 +714,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         <Text>{query}</Text>
         <Text dimColor>{query ? '' : 'type to filter'}</Text>
       </Box>
-      <Text dimColor>memory in tokens (word pieces) · price per million tokens · ✓ tools · » fast</Text>
+      <Text dimColor>
+        {tab === 'free'
+          ? 'free models: no charge, but OpenRouter limits requests per day · » fast'
+          : 'memory in tokens (word pieces) · price per million tokens · ✓ tools · » fast'}
+      </Text>
       <Box flexDirection="column" height={listHeight}>
         {emptyMessage ? (
           <Text dimColor>
@@ -698,7 +742,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
                 </Text>
               );
             }
-            if (item.kind === 'show-all') {
+            if (item.kind === 'show-all' || item.kind === 'show-free') {
               return null;
             }
             const selected = absoluteIndex === resolved;
