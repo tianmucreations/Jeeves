@@ -8,11 +8,13 @@ export const AUTO_MODEL_ID = 'jeeves/auto';
 // The first choices were measured in the model comparison; the replacements after
 // them were chosen as the nearest measured or same-family alternatives:
 // - worker: DeepSeek V4 Flash (dated name), then its undated name, then GLM 5.3
-//   (6 of 6 on the hardest jobs when working alone, at a higher price);
+//   Flash (15 of 15 on the bench on 17 Sept, including 2 of 2 on the calculator job,
+//   at a similar low price), then GLM 5.3 (6 of 6 on the hardest jobs, but about 15
+//   times the price - the last resort);
 // - expert: Claude Sonnet 5 (6 of 6; its reviews fixed the hard failures), then
 //   GLM 5.3 (6 of 6 alone), then Claude Opus 5;
 // - strongest model for the last rung: Claude Opus 5.
-export const WORKER_MODELS = ['deepseek/deepseek-v4-flash-0731', 'deepseek/deepseek-v4-flash', 'z-ai/glm-5.3'];
+export const WORKER_MODELS = ['deepseek/deepseek-v4-flash-0731', 'deepseek/deepseek-v4-flash', 'z-ai/glm-5.3-flash', 'z-ai/glm-5.3'];
 export const EXPERT_MODELS = [
   ...(process.env.JEEVES_EXPERT_MODEL ? [process.env.JEEVES_EXPERT_MODEL] : []),
   'anthropic/claude-sonnet-5',

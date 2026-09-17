@@ -147,6 +147,7 @@ describe('when a model is retired', () => {
     const { firstAvailable, WORKER_MODELS, EXPERT_MODELS } = await import('../src/agent/auto-ids.js');
     expect(firstAvailable(WORKER_MODELS, [entry('deepseek/deepseek-v4-flash'), entry('z-ai/glm-5.3')])).toBe('deepseek/deepseek-v4-flash');
     expect(firstAvailable(WORKER_MODELS, [entry('deepseek/deepseek-v4-flash', false), entry('z-ai/glm-5.3')])).toBe('z-ai/glm-5.3');
+    expect(firstAvailable(WORKER_MODELS, [entry('z-ai/glm-5.3'), entry('z-ai/glm-5.3-flash')])).toBe('z-ai/glm-5.3-flash');
     expect(firstAvailable(EXPERT_MODELS, [entry('z-ai/glm-5.3'), entry('anthropic/claude-opus-5')])).toBe('z-ai/glm-5.3');
     expect(firstAvailable(WORKER_MODELS, [entry('some/other-model')])).toBeNull();
   });
