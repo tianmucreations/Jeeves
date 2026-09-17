@@ -1,3 +1,5 @@
+import { reportSpend } from '../../agent/spending.js';
+
 // One plain request to OpenRouter's standard chat endpoint (not a beta feature).
 // Used by web research for the cheap reading model and for web search.
 
@@ -10,6 +12,8 @@ export interface Citation {
 export interface ChatReply {
   text: string;
   citations: Citation[];
+  // OpenRouter's own figure for what this request cost, in dollars.
+  cost: number;
 }
 
 export class OpenRouterRequestError extends Error {
@@ -26,11 +30,12 @@ export async function openrouterChat(
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, usage: { include: true } }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   const json = (await response.json().catch(() => ({}))) as {
     error?: { message?: string };
+    usage?: { cost?: number };
     choices?: { message?: { content?: string; annotations?: { type?: string; url_citation?: Partial<Citation> }[] } }[];
   };
   if (!response.ok || json.error) {
@@ -44,5 +49,7 @@ export async function openrouterChat(
       title: annotation.url_citation!.title ?? '',
       content: annotation.url_citation!.content ?? '',
     }));
-  return { text: (message?.content ?? '').trim(), citations };
+  const cost = typeof json.usage?.cost === 'number' ? json.usage.cost : 0;
+  reportSpend(cost);
+  return { text: (message?.content ?? '').trim(), citations, cost };
 }

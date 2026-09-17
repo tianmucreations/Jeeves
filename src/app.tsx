@@ -6,7 +6,7 @@ import { Input } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session, useSession } from './state/session.js';
 import { initKeys, hasCredentials, refreshCredit } from './providers/index.js';
-import { getFavorites, getRecents, getRecentProjects, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
+import { getDailyLimit, getFavorites, getRecents, getRecentProjects, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
 import { loadModels } from './models/registry.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
@@ -33,6 +33,7 @@ export function App() {
 
   useEffect(() => {
     session.setFavorites(getFavorites());
+    session.setDailyLimit(getDailyLimit());
     session.setRecents(getRecents());
     session.setRecentProjects(getRecentProjects());
     if (getVerbosePreference()) session.setVerbose(true);

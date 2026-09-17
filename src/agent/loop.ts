@@ -8,6 +8,10 @@ import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
 import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
+import { isAuto, workingModelId, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_NOTE, shouldTakeOver, createAskExpertTool, type AutoTurnState } from './auto.js';
+import { clearOldToolResults } from './housekeeping.js';
+import { startJob, endJob, reportSpend, withinLimits } from './spending.js';
+import { getAddress } from '../platform/config.js';
 
 // Added to the rulebook when the chosen model cannot use tools, so a task request
 // gets a plain answer instead of a pretend attempt.
@@ -42,10 +46,25 @@ export async function runTurn(input: string): Promise<void> {
   }
 
   session.addUser(input);
-  // A long conversation is summarised before it fills the model's memory.
-  if (summaryDue(session.estimateContextTokens(), contextLimitFor(session.model, session.models))) {
+  startJob();
+  // Nothing is sent once today's limit is reached, unless the person agrees.
+  if (!(await withinLimits())) {
+    endJob();
+    session.addNotice('Stopped - nothing was sent.');
+    return;
+  }
+  // Quiet housekeeping: old tool output is cleared, and a long conversation summarised.
+  const cleared = clearOldToolResults(session.history);
+  if (cleared.freedTokens > 0) session.setHistory(cleared.messages);
+  const modelId = workingModelId(session.model);
+  if (summaryDue(session.estimateContextTokens(), contextLimitFor(modelId, session.models))) {
     await summariseHistory();
   }
+  const auto = isAuto(session.model);
+  const autoState: AutoTurnState = { expertTookOver: false };
+  session.setActiveModel(auto ? AUTO_WORKER_MODEL : null);
+  const stop = new AbortController();
+  let countedSteps = 0;
   session.beginTurn();
   session.setStatus('working');
   let assistantId: number | null = null;
@@ -53,13 +72,33 @@ export async function runTurn(input: string): Promise<void> {
     const provider = getActiveProvider();
     const messages = buildTurnMessages(session.history, input);
     // Models without tool support get a tool-free chat mode automatically (spec 4.2).
-    const currentModel = session.models.find((model) => model.id === session.model);
-    const tools = !currentModel || isToolCapable(currentModel) ? getTools() : {};
+    const currentModel = session.models.find((model) => model.id === modelId);
+    const toolCapable = !currentModel || isToolCapable(currentModel);
+    const tools = toolCapable ? { ...getTools(), ...(auto ? { askExpert: createAskExpertTool(autoState) } : {}) } : {};
+    const note = !toolCapable ? CHAT_ONLY_NOTE : auto ? AUTO_NOTE.replaceAll('{{ADDRESS}}', getAddress() ?? 'Sir') : '';
     const result = await provider.stream({
-      modelId: session.model,
+      modelId,
       messages,
       tools,
-      instructions: Object.keys(tools).length > 0 ? getSystemPrompt() : getSystemPrompt() + CHAT_ONLY_NOTE,
+      instructions: getSystemPrompt() + note,
+      abortSignal: stop.signal,
+      beforeStep: async ({ stepFailures, stepCosts, messages: stepMessages }) => {
+        for (const cost of stepCosts.slice(countedSteps)) reportSpend(cost);
+        countedSteps = stepCosts.length;
+        if (!(await withinLimits())) {
+          stop.abort();
+          return {};
+        }
+        // In Auto mode the expert takes over the rest of a job the worker keeps failing.
+        let stepModel: string | undefined;
+        if (auto && (autoState.expertTookOver || shouldTakeOver(stepFailures))) {
+          autoState.expertTookOver = true;
+          stepModel = AUTO_EXPERT_MODEL;
+          session.setActiveModel(AUTO_EXPERT_MODEL);
+        }
+        const tidied = clearOldToolResults(stepMessages);
+        return { modelId: stepModel, messages: tidied.freedTokens > 0 ? tidied.messages : undefined };
+      },
       onToken: (token) => {
         if (assistantId === null) assistantId = session.startAssistant();
         session.appendToken(assistantId, token);
@@ -81,9 +120,20 @@ export async function runTurn(input: string): Promise<void> {
     session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);
     session.setRateLimit(result.rateLimit);
     void refreshCredit();
+    for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportSpend(cost);
     session.setPlanResetAt(null);
+    session.setActiveModel(auto ? AUTO_WORKER_MODEL : null);
+    endJob();
     session.setStatus('idle');
   } catch (error) {
+    endJob();
+    session.setActiveModel(auto ? AUTO_WORKER_MODEL : null);
+    if (stop.signal.aborted) {
+      if (assistantId !== null) session.finishAssistant(assistantId);
+      session.addNotice('Stopped, as you asked - nothing more will be spent on this.');
+      session.setStatus('idle');
+      return;
+    }
     const plain = plainError(error, session.providerId);
     if (assistantId !== null) session.finishAssistant(assistantId);
     session.addError(plain.message);

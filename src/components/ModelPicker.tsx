@@ -12,7 +12,7 @@ import {
   resolveCurated,
   cleanModelName,
 } from '../models/registry.js';
-import { setFavorites, setRecents, setDefaultModel, setDefaultProvider } from '../platform/config.js';
+import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit } from '../platform/config.js';
 import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS, storeOpenRouterKey, refreshCredit } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
@@ -51,7 +51,7 @@ type Item =
 type Phase = 'browse' | 'tool-warning';
 // Key entry happens inside the picker for Z.ai so a new user never leaves the flow.
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
-type Step = 'providers' | 'curated' | 'full' | 'key';
+type Step = 'providers' | 'curated' | 'full' | 'key' | 'limit';
 // Which provider's catalog the picker is browsing.
 type ProviderChoice = 'openrouter' | 'ollama' | 'zai';
 
@@ -156,6 +156,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   // Which service the key prompt is for, and which company's models to show after it.
   const [keyFor, setKeyFor] = useState<'openrouter' | 'zai'>('zai');
   const [jumpTo, setJumpTo] = useState<string | null>(null);
+  const [limitValue, setLimitValue] = useState('');
+  const [limitNote, setLimitNote] = useState('');
   const [keyNote, setKeyNote] = useState('');
 
   useEffect(() => {
@@ -248,6 +250,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function chooseProvider(): void {
+    // The row under the services: the daily spending limit.
+    if (providerCursor === PROVIDER_ROWS.length) {
+      setLimitValue('');
+      setLimitNote('');
+      setStep('limit');
+      return;
+    }
     const row = PROVIDER_ROWS[providerCursor];
     if (!row) return;
     if (row.id === 'openrouter') {
@@ -413,6 +422,34 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       setKeyValue((v) => v + input);
       return;
     }
+    if (step === 'limit') {
+      if (key.escape) {
+        setStep('providers');
+        return;
+      }
+      if (key.return) {
+        const amount = Number(limitValue.replace(/^\$/, ''));
+        if (!Number.isFinite(amount) || amount <= 0 || amount > 1000) {
+          setLimitNote('Type an amount in dollars, like 3 or 7.50');
+          setLimitValue('');
+          return;
+        }
+        const rounded = Math.round(amount * 100) / 100;
+        setDailyLimit(rounded);
+        s.setDailyLimit(rounded);
+        setStep('providers');
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setLimitValue((v) => v.slice(0, -1));
+        return;
+      }
+      if (/^[0-9.$]$/.test(input)) {
+        setLimitNote('');
+        setLimitValue((v) => (v + input).slice(0, 8));
+      }
+      return;
+    }
     if (step === 'providers') {
       if (key.escape) {
         s.closePicker();
@@ -423,7 +460,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         return;
       }
       if (key.downArrow) {
-        setProviderCursor((current) => Math.min(PROVIDER_ROWS.length - 1, current + 1));
+        setProviderCursor((current) => Math.min(PROVIDER_ROWS.length, current + 1));
         return;
       }
       if (key.return) {
@@ -485,8 +522,30 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
               </Text>
             );
           })}
+          <Text> </Text>
+          <Text inverse={providerCursor === PROVIDER_ROWS.length}>
+            {column(' Daily limit', 16)}
+            <Text dimColor>${s.dailyLimit.toFixed(2)} a day - Enter to change</Text>
+          </Text>
         </Box>
         <Text dimColor>↑↓ move · Enter choose · Esc close</Text>
+      </Box>
+    );
+  }
+
+  if (step === 'limit') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Text dimColor>Daily spending limit</Text>
+        <Box flexDirection="column" flexGrow={1} justifyContent="center">
+          <Text>
+            <Text>Most to spend in a day, in dollars (now ${s.dailyLimit.toFixed(2)}): </Text>
+            <Text>{limitValue}</Text>
+            <Text inverse> </Text>
+          </Text>
+          <Text dimColor>When today's spending reaches it, Jeeves stops and asks before spending more.</Text>
+        </Box>
+        {limitNote ? <Text color="yellow">{limitNote}</Text> : <Text dimColor>type an amount · Enter save · Esc back</Text>}
       </Box>
     );
   }

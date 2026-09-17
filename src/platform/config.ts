@@ -3,6 +3,8 @@ import type { SpendReading } from '../state/today-spend.js';
 
 interface JeevesConfig {
   spendReading?: SpendReading;
+  dailyLimit?: number;
+  dailyExtra?: { date: string; amount: number };
   favorites?: string[];
   recents?: string[];
   projects?: string[];
@@ -19,6 +21,25 @@ interface JeevesConfig {
 const config = new Conf<JeevesConfig>({
   projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
 });
+
+// The daily spending limit in dollars (default $3, the owner's choice).
+export function getDailyLimit(): number {
+  const stored = config.get('dailyLimit');
+  return typeof stored === 'number' && stored > 0 ? stored : 3;
+}
+
+export function setDailyLimit(limit: number): void {
+  config.set('dailyLimit', limit);
+}
+
+// Extra allowance agreed for one day when the limit was reached.
+export function getDailyExtra(): { date: string; amount: number } | undefined {
+  return config.get('dailyExtra');
+}
+
+export function setDailyExtra(extra: { date: string; amount: number }): void {
+  config.set('dailyExtra', extra);
+}
 
 // The last OpenRouter usage reading, kept between launches so "today" survives a restart.
 export function getSpendReading(): SpendReading | undefined {

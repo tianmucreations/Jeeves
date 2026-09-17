@@ -18,6 +18,24 @@ export interface StreamResult {
   usage: { input: number; output: number; total: number; cached?: number };
   cost: number;
   rateLimit: RateLimitInfo | null;
+  // What each step of the job cost, where the service reports it (OpenRouter).
+  stepCosts?: number[];
+}
+
+// Called before each step of a job: may swap the model for that step (Auto mode's
+// expert taking over) and replace the messages (housekeeping during a long job).
+export interface StepInfo {
+  stepNumber: number;
+  // Failed tool actions in each finished step, oldest first.
+  stepFailures: number[];
+  // What each finished step cost, where the service reports it (OpenRouter).
+  stepCosts: number[];
+  messages: ModelMessage[];
+}
+
+export interface StepControl {
+  modelId?: string;
+  messages?: ModelMessage[];
 }
 
 export interface StreamOptions {
@@ -30,6 +48,8 @@ export interface StreamOptions {
   onToken: (token: string) => void;
   onReasoning: (delta: string) => void;
   onToolCall: (call: ToolCallNote) => void;
+  beforeStep?: (info: StepInfo) => StepControl | Promise<StepControl>;
+  abortSignal?: AbortSignal;
 }
 
 export interface Provider {

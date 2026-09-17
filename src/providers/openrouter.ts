@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { streamText, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult, RateLimitInfo } from './types.js';
+import { prepareStepFor, stepCost } from './step-control.js';
 
 // Assumption: the spec's "maxSteps" is called stopWhen/stepCountIs in AI SDK 7 (the installed version); same cap of 25.
 const MAX_TOOL_STEPS = 25;
@@ -75,15 +76,18 @@ export function createOpenRouterProvider(apiKey: string): Provider {
   return {
     id: 'openrouter',
     name: 'OpenRouter',
-    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
+    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall, beforeStep, abortSignal }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
         instructions,
         // A stalled request must never wedge the app in the working state forever.
         timeout: 180_000,
-        model: openrouter.chat(modelId),
+        // Usage accounting makes OpenRouter report each step's exact cost.
+        model: openrouter.chat(modelId, { usage: { include: true } }),
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        prepareStep: prepareStepFor(beforeStep, (id) => openrouter.chat(id, { usage: { include: true } })),
+        abortSignal,
         providerOptions: {
           openrouter: {
             session_id: stickySessionId,
@@ -137,6 +141,7 @@ const finalStep = await result.finalStep;
         },
         cost: 0,
         rateLimit,
+        stepCosts: (await result.steps).map(stepCost),
       };
     },
   };

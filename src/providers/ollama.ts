@@ -1,6 +1,7 @@
 import { streamText, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
+import { prepareStepFor } from './step-control.js';
 import type { ModelInfo } from '../models/registry.js';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434/v1';
@@ -16,7 +17,7 @@ export function createOllamaProvider(): Provider {
   return {
     id: 'ollama',
     name: 'Ollama',
-    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall }: StreamOptions): Promise<StreamResult> {
+    async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall, beforeStep, abortSignal }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
         instructions,
         // A stalled request must never wedge the app in the working state forever.
@@ -25,6 +26,8 @@ export function createOllamaProvider(): Provider {
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        prepareStep: prepareStepFor(beforeStep, (id) => client.chat(id)),
+        abortSignal,
       });
       let streamedError: unknown = null;
       for await (const part of result.stream) {

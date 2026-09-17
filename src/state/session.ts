@@ -58,6 +58,13 @@ class SessionStore {
   // When a flat-rate plan (Z.ai) has used up its allowance: the reset time it gave
   // (HH:MM, or '' if none was given); null while the plan has allowance.
   planResetAt: string | null = null;
+  // In Auto mode, the model actually working right now (worker or expert).
+  activeModel: string | null = null;
+  // True while quiet housekeeping (a summary) is running - shown in the info bar.
+  tidying = false;
+  // The daily spending limit in dollars, and any extra allowance granted today.
+  dailyLimit = 3;
+  dailyExtra = 0;
   rateLimit: { limit: number; remaining: number; reset: number } | null = null;
   transcript: TranscriptEntry[] = [];
   history: ModelMessage[] = [];
@@ -386,6 +393,24 @@ class SessionStore {
 
   setTodaySpend(amount: number): void {
     this.todaySpend = amount;
+    this.emit();
+  }
+
+  setActiveModel(model: string | null): void {
+    if (this.activeModel === model) return;
+    this.activeModel = model;
+    this.emit();
+  }
+
+  setTidying(value: boolean): void {
+    if (this.tidying === value) return;
+    this.tidying = value;
+    this.emit();
+  }
+
+  setDailyLimit(limit: number, extra = this.dailyExtra): void {
+    this.dailyLimit = limit;
+    this.dailyExtra = extra;
     this.emit();
   }
 

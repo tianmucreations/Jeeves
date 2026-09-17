@@ -4,6 +4,9 @@ import { getActiveProvider } from '../providers/index.js';
 import { getSystemPrompt } from './systemPrompt.js';
 import { DEFAULT_CONTEXT_TOKENS } from '../state/session.js';
 import { ZAI_MODELS } from '../providers/zai.js';
+import { SUMMARY_TRIGGER_TOKENS, SUMMARY_INSTRUCTIONS } from './housekeeping.js';
+import { AUTO_WORKER_MODEL, workingModelId } from './auto.js';
+import { reportSpend } from './spending.js';
 
 // The model's identity and rulebook. AI SDK 7 rejects role:'system' messages in the
 // messages array ("Use the instructions option instead"), so the prompt travels as
@@ -29,8 +32,10 @@ export function contextLimitFor(modelId: string, models: { id: string; contextLe
 // amber threshold the old info bar used for "getting full".
 export const AUTO_SUMMARISE_AT = 0.7;
 
+// Whichever comes first: Anthropic's default compaction point (100,000 tokens), or
+// 70% of the model's memory for models with a small one.
 export function shouldAutoSummarise(conversationTokens: number, limit: number): boolean {
-  return conversationTokens >= AUTO_SUMMARISE_AT * limit;
+  return conversationTokens >= Math.min(SUMMARY_TRIGGER_TOKENS, AUTO_SUMMARISE_AT * limit);
 }
 
 // A failed summary is never announced - the user could do nothing about it. It is
@@ -53,17 +58,14 @@ export function summaryDue(conversationTokens: number, limit: number): boolean {
 export async function summariseHistory(): Promise<void> {
   if (session.history.length === 0) return;
   session.setStatus('working');
+  session.setTidying(true);
   try {
     const provider = getActiveProvider();
-    const messages: ModelMessage[] = [
-      ...session.history,
-      {
-        role: 'user',
-        content: 'Summarise this conversation so far as compact context a model can continue from. Reply with only the summary.',
-      },
-    ];
+    const messages: ModelMessage[] = [...session.history, { role: 'user', content: SUMMARY_INSTRUCTIONS }];
+    // On OpenRouter the summary is written by the cheap worker model whatever model
+    // is selected - summarising needs care, not the most expensive model.
     const result = await provider.stream({
-      modelId: session.model,
+      modelId: session.providerId === 'openrouter' ? AUTO_WORKER_MODEL : workingModelId(session.model),
       messages,
       tools: {},
       instructions: getSystemPrompt(),
@@ -71,9 +73,9 @@ export async function summariseHistory(): Promise<void> {
       onReasoning: () => {},
       onToolCall: () => {},
     });
+    for (const cost of result.stepCosts ?? []) reportSpend(cost);
     const summary = result.text.trim();
-    // Success is silent - there is nothing for the user to do. Only a failure is
-    // mentioned, because then the conversation was not shortened.
+    // Silent either way: the user can do nothing about it (a failure retries later).
     if (summary) {
       session.setHistory([
         {
@@ -87,5 +89,6 @@ export async function summariseHistory(): Promise<void> {
   } catch {
     messagesUntilRetry = SUMMARY_RETRY_AFTER;
   }
+  session.setTidying(false);
   session.setStatus('idle');
 }

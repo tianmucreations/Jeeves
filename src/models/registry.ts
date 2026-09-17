@@ -1,3 +1,4 @@
+import { AUTO_MODEL_ID, AUTO_WORKER_MODEL } from '../agent/auto-ids.js';
 import { getModelCache, setModelCache } from '../platform/config.js';
 
 export interface ModelInfo {
@@ -95,9 +96,17 @@ export interface CuratedPick {
   blurb: string;
 }
 
+// Auto heads the shortlist whenever its worker model is in the catalogue.
+export function autoPick(models: ModelInfo[]): CuratedPick | null {
+  const worker = models.find((model) => model.id === AUTO_WORKER_MODEL);
+  if (!worker) return null;
+  return { model: { ...worker, id: AUTO_MODEL_ID, name: 'Auto', priceLabel: 'cheap, expert when needed' }, blurb: 'recommended: cheap model, expert on call' };
+}
+
 export function resolveCurated(models: ModelInfo[]): CuratedPick[] {
   const byId = new Map(models.map((model) => [model.id, model]));
-  const picks: CuratedPick[] = [];
+  const auto = autoPick(models);
+  const picks: CuratedPick[] = auto ? [auto] : [];
   for (const entry of CURATED_MODELS) {
     for (const id of entry.ids) {
       const model = byId.get(id);

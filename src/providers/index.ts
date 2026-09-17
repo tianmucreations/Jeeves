@@ -179,7 +179,8 @@ async function refreshTodaySpend(): Promise<void> {
   if (usage === null) return;
   const reading = nextSpendReading(getSpendReading(), usage, new Date());
   setSpendReading(reading);
-  session.setTodaySpend(spentToday(reading));
+  // Never lower than the live figure: the key's total can lag a request or two behind.
+  session.setTodaySpend(Math.max(session.todaySpend ?? 0, spentToday(reading)));
 }
 
 // Which providers have a key in the OS credential store.

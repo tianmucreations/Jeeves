@@ -5,7 +5,7 @@ import { contextLimitFor, shouldAutoSummarise } from '../src/agent/context.js';
 import { DEFAULT_CONTEXT_TOKENS } from '../src/state/session.js';
 import { plainError } from '../src/agent/errors.js';
 
-const base: FooterInfo = { providerId: 'openrouter', todaySpend: 0.31, creditRemaining: 12.5, creditIsAccount: true, planResetAt: null };
+const base: FooterInfo = { providerId: 'openrouter', allowance: 3, tidying: false, todaySpend: 0.31, creditRemaining: 12.5, creditIsAccount: true, planResetAt: null };
 const texts = (info: FooterInfo) => footerSegments(info).map((segment) => segment.text);
 
 describe('info bar', () => {
@@ -15,21 +15,22 @@ describe('info bar', () => {
   });
 
   it("shows today's spend and what is left, nothing else, while all is well", () => {
-    expect(texts(base)).toEqual(['today $0.31', '$12.50 left']);
+    expect(texts(base)).toEqual(['today $0.31 of $3.00', '$12.50 left']);
+    expect(footerSegments(base)[0].color).toBeUndefined();
     expect(footerSegments(base)[1].color).toBeUndefined();
   });
 
   it('turns the balance amber under $5, and adds "credit low - top up" in red under $1', () => {
     expect(footerSegments({ ...base, creditRemaining: 2.84 })[1].color).toBe('yellow');
     const low = footerSegments({ ...base, creditRemaining: 0.94 });
-    expect(low.map((s) => s.text)).toEqual(['today $0.31', '$0.94 left', 'credit low - top up']);
+    expect(low.map((s) => s.text)).toEqual(['today $0.31 of $3.00', '$0.94 left', 'credit low - top up']);
     expect(low[1].color).toBe('red');
     expect(low[2].color).toBe('red');
   });
 
   it('shows placeholders before the first reading, and labels a key limit as such', () => {
-    expect(texts({ ...base, todaySpend: null, creditRemaining: null })).toEqual(['today $—', '$— left']);
-    expect(texts({ ...base, creditIsAccount: false })).toEqual(['today $0.31', '$12.50 key limit']);
+    expect(texts({ ...base, todaySpend: null, creditRemaining: null })).toEqual(['today $— of $3.00', '$— left']);
+    expect(texts({ ...base, creditIsAccount: false })).toEqual(['today $0.31 of $3.00', '$12.50 key limit']);
   });
 
   it('shows the flat-rate plan, and when it is used up, when it resets', () => {
@@ -37,6 +38,13 @@ describe('info bar', () => {
     const used = footerSegments({ ...base, providerId: 'zai', planResetAt: '13:03' });
     expect(used).toEqual([{ text: 'plan used up · resets @ 13:03', color: 'red' }]);
     expect(texts({ ...base, providerId: 'zai', planResetAt: '' })).toEqual(['plan used up']);
+  });
+
+  it("warns as today's spend nears the daily limit, and shows tidying up while it happens", () => {
+    expect(footerSegments({ ...base, todaySpend: 2.4 })[0]).toEqual({ text: 'today $2.40 of $3.00', color: 'yellow' });
+    expect(footerSegments({ ...base, todaySpend: 3.1 })[0]).toEqual({ text: 'today $3.10 of $3.00', color: 'red' });
+    expect(texts({ ...base, tidying: true })[0]).toBe('tidying up…');
+    expect(texts({ ...base, providerId: 'zai', tidying: true })).toEqual(['tidying up…']);
   });
 
   it('shows local models as free', () => {
@@ -92,9 +100,11 @@ describe('automatic summarising', () => {
     expect(contextLimitFor('unknown/model', [])).toBe(DEFAULT_CONTEXT_TOKENS);
   });
 
-  it('summarises once the conversation fills 70% of that memory', () => {
-    expect(shouldAutoSummarise(139_999, 200_000)).toBe(false);
-    expect(shouldAutoSummarise(140_000, 200_000)).toBe(true);
+  it("summarises at Anthropic's 100,000-token point, or 70% of a smaller memory", () => {
+    expect(shouldAutoSummarise(99_999, 1_310_720)).toBe(false);
+    expect(shouldAutoSummarise(100_000, 1_310_720)).toBe(true);
+    expect(shouldAutoSummarise(69_999, 100_000)).toBe(false);
+    expect(shouldAutoSummarise(70_000, 100_000)).toBe(true);
   });
 });
 

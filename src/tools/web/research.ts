@@ -3,6 +3,7 @@ import { session } from '../../state/session.js';
 import { getOpenRouterKey } from '../../providers/index.js';
 import { htmlToText } from './htmlToText.js';
 import { openrouterChat, OpenRouterRequestError, type Citation } from './openrouterChat.js';
+import { workingModelId } from '../../agent/auto.js';
 
 // Web research, built only on OpenRouter's standard (non-beta) features, with
 // automatic fallbacks so no single service leaving creates a hole:
@@ -27,7 +28,8 @@ const SNIPPET_CHARS = 300;
 // when that is also an OpenRouter model.
 export function readingModels(): string[] {
   const models = [READING_MODEL];
-  if (session.providerId === 'openrouter' && session.model && session.model !== READING_MODEL) models.push(session.model);
+  const current = workingModelId(session.model);
+  if (session.providerId === 'openrouter' && current && current !== READING_MODEL) models.push(current);
   return models;
 }
 
