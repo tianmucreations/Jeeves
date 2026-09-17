@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
 import { session } from './state/session.js';
 import { AlternateScreen, leaveAltScreen } from './ink/AlternateScreen.js';
+import { killAllRunningCommands } from './tools/runBash.js';
 import { getAddress } from './platform/config.js';
 
 // Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
@@ -55,6 +56,7 @@ program
         quitting = true;
         instance.unmount();
         void instance.waitUntilExit().then(() => {
+          killAllRunningCommands();
           leaveAltScreen();
           process.exit(0);
         });

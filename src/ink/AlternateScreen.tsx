@@ -29,6 +29,7 @@ import React, { useEffect, useInsertionEffect } from 'react';
 import { Box, useStdout } from 'ink';
 import { createRequire } from 'node:module';
 import { DEFAULT_CURSOR } from './cursor.js';
+import { killAllRunningCommands } from '../tools/runBash.js';
 
 type SignalExit = (
   callback: (code: number | null, signal: string | null) => void,
@@ -79,17 +80,26 @@ export function leaveAltScreen(): void {
   write(LEAVE_ALT_SCREEN + ERASE_SCROLLBACK + DEFAULT_CURSOR + SHOW_CURSOR);
 }
 
-// The terminal must always be restored. process handlers per the mechanism,
-// plus signal-exit so kill signals re-raise with correct exit codes.
+// The terminal must always be restored, and any command the agent is running
+// must die with the app - the user is leaving, nothing may keep running or block
+// the exit. process handlers per the mechanism, plus signal-exit so kill signals
+// re-raise with correct exit codes.
 function registerCleanup(): void {
   if (cleanupRegistered) return;
   cleanupRegistered = true;
-  process.on('exit', () => leaveAltScreen());
+  process.on('exit', () => {
+    killAllRunningCommands();
+    leaveAltScreen();
+  });
   process.on('SIGINT', () => {
+    killAllRunningCommands();
     leaveAltScreen();
     process.exit(130);
   });
-  onSignalExit(() => leaveAltScreen(), { alwaysLast: false });
+  onSignalExit(() => {
+    killAllRunningCommands();
+    leaveAltScreen();
+  }, { alwaysLast: false });
 }
 
 export function AlternateScreen({ children }: { children: React.ReactNode }) {

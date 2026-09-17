@@ -161,7 +161,9 @@ export function isReadOnlyBashCommand(command: string): boolean {
   return true;
 }
 
-function stripQuotes(text: string): string {
+// Replaces quoted spans with empty quoted strings, so metacharacter checks see
+// only what the shell will actually interpret. Shared with the runBash tool.
+export function stripQuotes(text: string): string {
   return text.replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
 }
 
