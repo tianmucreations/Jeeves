@@ -118,3 +118,11 @@ describe('rejected keys, as the services really send them', () => {
     expect(plainError(retry, 'openrouter').kind).toBe('payment');
   });
 });
+
+describe('a request that stops responding', () => {
+  it('says the service stopped responding, not that the connection failed', () => {
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+    expect(plainError(timeout, 'openrouter').message).toBe('OpenRouter stopped responding partway through - please ask again.');
+    expect(plainError(new Error('fetch failed'), 'openrouter').message).toContain("Couldn't reach OpenRouter");
+  });
+});

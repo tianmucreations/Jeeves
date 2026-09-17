@@ -20,8 +20,14 @@ export function createOllamaProvider(): Provider {
     async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall, beforeStep, abortSignal }: StreamOptions): Promise<StreamResult> {
       const result = streamText({
         instructions,
-        // A stalled request must never wedge the app in the working state forever.
-        timeout: 180_000,
+        // A stalled request must never wedge the app in the working state forever -
+        // but a long, healthy job must not be cut off either. So the limits are on
+        // silence, not on the whole job: 90 seconds between pieces of a reply (verified
+        // to abort a real stream), 2 minutes for the first piece once the reply has
+        // started, and 10 minutes for any single step, which also covers a request that
+        // never starts answering. (A plain number here limits the entire multi-step
+        // job; a 3-minute one killed healthy jobs mid-way in testing.)
+        timeout: { firstChunkMs: 120_000, chunkMs: 90_000, stepMs: 600_000 },
         model: client.chat(modelId),
         messages,
         tools,

@@ -70,6 +70,10 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   if (status === 429 || text.includes('429') || text.includes('rate limit') || text.includes('rate_limit') || text.includes('too many requests')) {
     return make(`${service} is asking us to slow down - wait a few seconds and ask again.`, 'rate-limit');
   }
+  const name = (error as { name?: unknown } | null)?.name;
+  if (name === 'TimeoutError' || text.includes('timed out') || text.includes('timeout')) {
+    return make(`${service} stopped responding partway through - please ask again.`, 'network');
+  }
   if (
     text.includes('fetch failed') ||
     text.includes('network') ||
@@ -77,7 +81,6 @@ export function plainError(error: unknown, providerId?: string): PlainError {
     text.includes('econnrefused') ||
     text.includes('econnreset') ||
     text.includes('etimedout') ||
-    text.includes('timeout') ||
     text.includes('eai_again') ||
     text.includes('socket hang up')
   ) {

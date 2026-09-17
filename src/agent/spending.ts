@@ -28,9 +28,17 @@ export function jobSpent(): number {
   return job?.spent ?? 0;
 }
 
+let sessionTotal = 0;
+
+// Everything reported since Jeeves started.
+export function spentThisSession(): number {
+  return sessionTotal;
+}
+
 // Every paid request reports here.
 export function reportSpend(amount: number | undefined): void {
   if (!amount || amount <= 0) return;
+  sessionTotal += amount;
   if (job) job.spent += amount;
   session.setTodaySpend((session.todaySpend ?? 0) + amount);
 }
