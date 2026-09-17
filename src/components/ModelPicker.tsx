@@ -323,8 +323,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       setPhase('switch-confirm');
       return;
     }
+    // No "Switched to" line: the info bar already names the model.
     applyModel(model);
-    s.addNotice(`Switched to ${model.name}.`);
     s.closePicker();
   }
 
@@ -346,20 +346,19 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       if (input === 'k') {
         if (pending) {
           applyModel(pending);
-          s.addNotice(`Switched to ${pending.name} - conversation kept.`);
         }
         s.closePicker();
       } else if (input === 's') {
         if (pending) {
           applyModel(pending);
-          s.addNotice(`Switched to ${pending.name} - summarising the conversation.`);
         }
         s.closePicker();
         void summariseHistory();
       } else if (input === 'f') {
         if (pending) {
           applyModel(pending);
-          s.addNotice(`Switched to ${pending.name} - starting fresh.`);
+          // Said once, because the old messages stay on screen but are forgotten.
+          s.addNotice('Starting fresh - earlier messages are forgotten.');
         }
         s.setHistory([]);
         resetStickySession();

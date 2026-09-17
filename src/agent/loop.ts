@@ -36,7 +36,7 @@ export async function runTurn(input: string): Promise<void> {
   session.addUser(input);
   // A long conversation is summarised before it fills the model's memory.
   if (shouldAutoSummarise(session.estimateContextTokens(), contextLimitFor(session.model, session.models))) {
-    await summariseHistory('auto');
+    await summariseHistory();
   }
   session.beginTurn();
   session.setStatus('working');

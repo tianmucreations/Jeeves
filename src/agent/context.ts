@@ -36,7 +36,7 @@ export function shouldAutoSummarise(conversationTokens: number, limit: number): 
 // Condenses the whole conversation into a single summary message so a model can
 // continue without re-reading every turn: on a model switch, or automatically when
 // the conversation grows long.
-export async function summariseHistory(reason: 'switch' | 'auto' = 'switch'): Promise<void> {
+export async function summariseHistory(): Promise<void> {
   if (session.history.length === 0) return;
   session.setStatus('working');
   try {
@@ -58,6 +58,8 @@ export async function summariseHistory(reason: 'switch' | 'auto' = 'switch'): Pr
       onToolCall: () => {},
     });
     const summary = result.text.trim();
+    // Success is silent - there is nothing for the user to do. Only a failure is
+    // mentioned, because then the conversation was not shortened.
     if (summary) {
       session.setHistory([
         {
@@ -65,11 +67,6 @@ export async function summariseHistory(reason: 'switch' | 'auto' = 'switch'): Pr
           content: `A summary of the conversation so far:\n\n${summary}\n\nContinue helping from this point.`,
         },
       ]);
-      session.addNotice(
-        reason === 'auto'
-          ? 'This conversation was getting long, so I summarised the earlier part to keep things running smoothly.'
-          : 'Conversation summarised for the new model.'
-      );
     } else {
       session.addNotice('Could not summarise - kept the conversation as-is.');
     }
