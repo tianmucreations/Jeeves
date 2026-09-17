@@ -3,7 +3,7 @@ import { session } from '../../state/session.js';
 import { getOpenRouterKey } from '../../providers/index.js';
 import { htmlToText } from './htmlToText.js';
 import { openrouterChat, OpenRouterRequestError, type Citation } from './openrouterChat.js';
-import { workingModelId } from '../../agent/auto.js';
+import { workingModelId, workerModel } from '../../agent/auto.js';
 
 // Web research, built only on OpenRouter's standard (non-beta) features, with
 // automatic fallbacks so no single service leaving creates a hole:
@@ -14,6 +14,7 @@ import { workingModelId } from '../../agent/auto.js';
 // - extracting the answer: a cheap reading model quotes the page, rotating to the
 //   model Jeeves is using, and as a last resort the trimmed page text itself.
 
+// The cheap reading model is Auto's worker, including its replacements if retired.
 export const READING_MODEL = 'deepseek/deepseek-v4-flash-0731';
 export const SEARCH_ENGINES: { engine: string; mode?: string }[] = [
   { engine: 'exa' },
@@ -27,9 +28,9 @@ const SNIPPET_CHARS = 300;
 // Reading models in the order tried: the cheap one first, then Jeeves's own model
 // when that is also an OpenRouter model.
 export function readingModels(): string[] {
-  const models = [READING_MODEL];
+  const models = [workerModel()];
   const current = workingModelId(session.model);
-  if (session.providerId === 'openrouter' && current && current !== READING_MODEL) models.push(current);
+  if (session.providerId === 'openrouter' && current && !models.includes(current)) models.push(current);
   return models;
 }
 

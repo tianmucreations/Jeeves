@@ -5,7 +5,7 @@ import { getSystemPrompt } from './systemPrompt.js';
 import { DEFAULT_CONTEXT_TOKENS } from '../state/session.js';
 import { ZAI_MODELS } from '../providers/zai.js';
 import { SUMMARY_TRIGGER_TOKENS, SUMMARY_INSTRUCTIONS } from './housekeeping.js';
-import { AUTO_WORKER_MODEL, workingModelId } from './auto.js';
+import { workerModel, workingModelId } from './auto.js';
 import { reportSpend } from './spending.js';
 
 // The model's identity and rulebook. AI SDK 7 rejects role:'system' messages in the
@@ -65,7 +65,7 @@ export async function summariseHistory(): Promise<void> {
     // On OpenRouter the summary is written by the cheap worker model whatever model
     // is selected - summarising needs care, not the most expensive model.
     const result = await provider.stream({
-      modelId: session.providerId === 'openrouter' ? AUTO_WORKER_MODEL : workingModelId(session.model),
+      modelId: session.providerId === 'openrouter' ? workerModel() : workingModelId(session.model),
       messages,
       tools: {},
       instructions: getSystemPrompt(),

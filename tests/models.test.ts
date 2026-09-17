@@ -92,11 +92,11 @@ describe('curated shortlist', () => {
   const models = normalizeModels(SAMPLE);
 
   it('resolves curated rows to the first candidate present in the catalog', () => {
-    // The sample catalog contains z-ai/glm-5.3, so exactly one curated row resolves.
+    // The sample catalog contains z-ai/glm-5.3, so one curated row resolves - and Auto
+    // heads the list, because GLM 5.3 is one of its replacement worker models.
     const picks = resolveCurated(models);
-    expect(picks).toHaveLength(1);
-    expect(picks[0].model.id).toBe('z-ai/glm-5.3');
-    expect(picks[0].blurb).toBe('best value');
+    expect(picks.map((pick) => pick.model.id)).toEqual(['jeeves/auto', 'z-ai/glm-5.3']);
+    expect(picks[1].blurb).toBe('best value');
 
     const extended = normalizeModels({
       data: [
@@ -106,11 +106,9 @@ describe('curated shortlist', () => {
       ],
     });
     const resolved = resolveCurated(extended);
-    expect(resolved).toHaveLength(2);
-    expect(resolved[0].model.id).toBe('z-ai/glm-5.3');
-    expect(resolved[0].blurb).toBe('best value');
-    expect(resolved[1].model.id).toBe('qwen/qwen3-coder-flash');
-    expect(resolved[1].blurb).toBe('good for code');
+    expect(resolved.map((pick) => pick.model.id)).toEqual(['jeeves/auto', 'z-ai/glm-5.3', 'qwen/qwen3-coder-flash']);
+    expect(resolved[1].blurb).toBe('best value');
+    expect(resolved[2].blurb).toBe('good for code');
   });
 
   it('strips provider prefixes from display names', () => {

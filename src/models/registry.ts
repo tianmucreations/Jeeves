@@ -1,4 +1,4 @@
-import { AUTO_MODEL_ID, AUTO_WORKER_MODEL } from '../agent/auto-ids.js';
+import { AUTO_MODEL_ID, WORKER_MODELS, firstAvailable } from '../agent/auto-ids.js';
 import { getModelCache, setModelCache } from '../platform/config.js';
 
 export interface ModelInfo {
@@ -104,7 +104,9 @@ export function isFreeModel(model: ModelInfo): boolean {
 
 // Auto heads the shortlist whenever its worker model is in the catalogue.
 export function autoPick(models: ModelInfo[]): CuratedPick | null {
-  const worker = models.find((model) => model.id === AUTO_WORKER_MODEL);
+  // Auto stays available as long as any of its worker models is still in the catalogue.
+  const workerId = firstAvailable(WORKER_MODELS, models);
+  const worker = models.find((model) => model.id === workerId);
   if (!worker) return null;
   return { model: { ...worker, id: AUTO_MODEL_ID, name: 'Auto', priceLabel: 'cheap, expert when needed' }, blurb: 'recommended: cheap model, expert on call' };
 }

@@ -11,8 +11,21 @@ import { openrouterChat } from '../tools/web/openrouterChat.js';
 // done), which costs less than running the stronger model throughout. No guessing
 // whether a message is "chat" or "work": the cheap model is always first.
 
-import { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL } from './auto-ids.js';
-export { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL };
+import { AUTO_MODEL_ID, AUTO_WORKER_MODEL, WORKER_MODELS, EXPERT_MODELS, TOP_MODELS, firstAvailable } from './auto-ids.js';
+export { AUTO_MODEL_ID, AUTO_WORKER_MODEL };
+
+// The models Auto uses right now, allowing for retired models (see auto-ids.ts).
+export function workerModel(): string {
+  return firstAvailable(WORKER_MODELS, session.models) ?? AUTO_WORKER_MODEL;
+}
+
+export function expertModel(): string | null {
+  return firstAvailable(EXPERT_MODELS, session.models);
+}
+
+export function topModel(): string | null {
+  return firstAvailable(TOP_MODELS, session.models);
+}
 
 export function isAuto(modelId: string): boolean {
   return modelId === AUTO_MODEL_ID;
@@ -20,7 +33,7 @@ export function isAuto(modelId: string): boolean {
 
 // The real model id behind the selection: in Auto mode, the worker.
 export function workingModelId(modelId: string): string {
-  return isAuto(modelId) ? AUTO_WORKER_MODEL : modelId;
+  return isAuto(modelId) ? workerModel() : modelId;
 }
 
 // If the cheap model's tool actions keep failing, the expert takes over for the
@@ -83,14 +96,14 @@ Otherwise reply with a short numbered list of the concrete problems, each saying
 // The compulsory final check: when Auto changed files, the expert reviews the work
 // before the person is told it is done. In testing the cheap model never chose to
 // consult before finishing, so this is not left to its judgement.
-export async function reviewFinishedJob(messages: ModelMessage[], expertModel = AUTO_EXPERT_MODEL): Promise<{ ok: boolean; advice: string } | null> {
+export async function reviewFinishedJob(messages: ModelMessage[], expert = expertModel()): Promise<{ ok: boolean; advice: string } | null> {
   const key = getOpenRouterKey();
-  if (!key) return null;
+  if (!key || !expert) return null;
   const lineId = session.addToolLine('askExpert', 'final check of the work', 'running');
-  session.setActiveModel(expertModel);
+  session.setActiveModel(expert);
   try {
     const reply = await openrouterChat(key, {
-      model: expertModel,
+      model: expert,
       messages: [
         { role: 'system', content: REVIEW_INSTRUCTIONS },
         { role: 'user', content: `Conversation:\n${conversationForExpert(messages, 80_000, 6_000)}` },
@@ -104,7 +117,7 @@ export async function reviewFinishedJob(messages: ModelMessage[], expertModel = 
     session.updateToolLine(lineId, { state: 'failed', label: 'the expert was not available' });
     return null;
   } finally {
-    session.setActiveModel(AUTO_WORKER_MODEL);
+    session.setActiveModel(workerModel());
   }
 }
 
@@ -124,9 +137,13 @@ export function newAutoTurnState(): AutoTurnState {
 
 // How many times the expert's price the strongest model costs, from the catalogue
 // (input prices); null when either is missing.
-export function topModelPriceRatio(models: { id: string; promptPrice: number }[]): number | null {
-  const expert = models.find((model) => model.id === AUTO_EXPERT_MODEL);
-  const top = models.find((model) => model.id === AUTO_TOP_MODEL);
+export function topModelPriceRatio(
+  models: { id: string; promptPrice: number }[],
+  expertId: string | null = expertModel(),
+  topId: string | null = topModel()
+): number | null {
+  const expert = models.find((model) => model.id === expertId);
+  const top = models.find((model) => model.id === topId);
   if (!expert || !top || expert.promptPrice <= 0) return null;
   return top.promptPrice / expert.promptPrice;
 }
@@ -136,19 +153,21 @@ export function topModelQuestion(address: string, ratio: number | null): string 
   return `This is proving difficult, ${address}. Shall I try the strongest model (Claude Opus 5) for this job?${cost} (y/n)`;
 }
 
-export function createAskExpertTool(state: AutoTurnState, expertModel = AUTO_EXPERT_MODEL) {
+export function createAskExpertTool(state: AutoTurnState) {
   return tool({
     description:
       'Consult a stronger expert model about the job in hand. It sees the whole conversation. Use at decision points only (see the rules).',
     inputSchema: z.object({ question: z.string().min(1).describe('One clear question for the expert') }),
     execute: async ({ question }, { messages }) => {
       const key = getOpenRouterKey();
+      const expert = expertModel();
       if (!key) return 'The expert is not available: it needs an OpenRouter key.';
+      if (!expert) return 'No expert model is available right now. Carry on carefully, and tell the person the work could not be double-checked.';
       const lineId = session.addToolLine('askExpert', question.slice(0, 60), 'running');
-      session.setActiveModel(expertModel);
+      session.setActiveModel(expert);
       try {
         const reply = await openrouterChat(key, {
-          model: expertModel,
+          model: expert,
           messages: [
             { role: 'system', content: EXPERT_INSTRUCTIONS },
             { role: 'user', content: `Conversation so far:\n${conversationForExpert(messages)}\n\nThe assistant asks: ${question}` },
@@ -162,7 +181,7 @@ export function createAskExpertTool(state: AutoTurnState, expertModel = AUTO_EXP
         session.updateToolLine(lineId, { state: 'failed', label: 'the expert was not available' });
         return `The expert could not be reached (${error instanceof Error ? error.message : String(error)}). Carry on carefully.`;
       } finally {
-        session.setActiveModel(state.expertTookOver ? expertModel : AUTO_WORKER_MODEL);
+        session.setActiveModel(state.expertTookOver ? expert : workerModel());
       }
     },
   });

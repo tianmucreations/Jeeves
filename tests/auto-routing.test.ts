@@ -115,11 +115,16 @@ describe('spending limits', () => {
 
 describe('the last rung: the strongest model, only after asking', () => {
   it('asks in plain words, with the price difference from the catalogue', async () => {
-    const { topModelQuestion, topModelPriceRatio, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL } = await import('../src/agent/auto.js');
-    const ratio = topModelPriceRatio([
-      { id: AUTO_EXPERT_MODEL, promptPrice: 0.000002 },
-      { id: AUTO_TOP_MODEL, promptPrice: 0.000005 },
-    ]);
+    const { topModelQuestion, topModelPriceRatio } = await import('../src/agent/auto.js');
+    const { AUTO_EXPERT_MODEL, AUTO_TOP_MODEL } = await import('../src/agent/auto-ids.js');
+    const ratio = topModelPriceRatio(
+      [
+        { id: AUTO_EXPERT_MODEL, promptPrice: 0.000002 },
+        { id: AUTO_TOP_MODEL, promptPrice: 0.000005 },
+      ],
+      AUTO_EXPERT_MODEL,
+      AUTO_TOP_MODEL
+    );
     expect(ratio).toBeCloseTo(2.5);
     expect(topModelQuestion('Sir', ratio)).toBe(
       'This is proving difficult, Sir. Shall I try the strongest model (Claude Opus 5) for this job? It costs about 2.5× as much as the expert. (y/n)'
@@ -132,5 +137,36 @@ describe('the last rung: the strongest model, only after asking', () => {
     const takeoverStep = 2;
     expect(shouldTakeOver(failures)).toBe(false);
     expect(shouldTakeOver([...failures, 1].slice(takeoverStep))).toBe(true);
+  });
+});
+
+describe('when a model is retired', () => {
+  const entry = (id: string, tools = true) => ({ id, supportedParameters: tools ? ['tools'] : [] });
+
+  it('uses the first replacement still in the catalogue that can use tools', async () => {
+    const { firstAvailable, WORKER_MODELS, EXPERT_MODELS } = await import('../src/agent/auto-ids.js');
+    expect(firstAvailable(WORKER_MODELS, [entry('deepseek/deepseek-v4-flash'), entry('z-ai/glm-5.3')])).toBe('deepseek/deepseek-v4-flash');
+    expect(firstAvailable(WORKER_MODELS, [entry('deepseek/deepseek-v4-flash', false), entry('z-ai/glm-5.3')])).toBe('z-ai/glm-5.3');
+    expect(firstAvailable(EXPERT_MODELS, [entry('z-ai/glm-5.3'), entry('anthropic/claude-opus-5')])).toBe('z-ai/glm-5.3');
+    expect(firstAvailable(WORKER_MODELS, [entry('some/other-model')])).toBeNull();
+  });
+
+  it('uses the first choice before the catalogue has loaded', async () => {
+    const { firstAvailable, WORKER_MODELS } = await import('../src/agent/auto-ids.js');
+    expect(firstAvailable(WORKER_MODELS, [])).toBe('deepseek/deepseek-v4-flash-0731');
+  });
+
+  it('switches Auto, research and summaries to the replacement automatically', async () => {
+    const { workerModel, expertModel, workingModelId, AUTO_MODEL_ID } = await import('../src/agent/auto.js');
+    const { readingModels } = await import('../src/tools/web/research.js');
+    const model = (id: string) => ({ id, name: id, contextLength: 1, promptPrice: 1, completionPrice: 1, supportedParameters: ['tools'], provider: id.split('/')[0] });
+    session.setModels([model('deepseek/deepseek-v4-flash'), model('z-ai/glm-5.3')], '');
+    session.providerId = 'openrouter';
+    session.setModel(AUTO_MODEL_ID);
+    expect(workerModel()).toBe('deepseek/deepseek-v4-flash');
+    expect(workingModelId(AUTO_MODEL_ID)).toBe('deepseek/deepseek-v4-flash');
+    expect(expertModel()).toBe('z-ai/glm-5.3');
+    expect(readingModels()[0]).toBe('deepseek/deepseek-v4-flash');
+    session.setModels([], '');
   });
 });

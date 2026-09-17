@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
-import { isAuto, AUTO_WORKER_MODEL } from '../agent/auto.js';
+import { isAuto, workerModel } from '../agent/auto.js';
 
 export function shortModelName(model: string): string {
   const short = model.split('/').pop();
@@ -87,7 +87,7 @@ export function Footer() {
   });
   const rightWidth = segments.reduce((sum, segment) => sum + segment.text.length, 0) + 3 * (segments.length - 1);
   // In Auto mode the bar names the model actually working: "auto · deepseek-v4-flash-0731".
-  const name = isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? AUTO_WORKER_MODEL)}` : shortModelName(s.model);
+  const name = isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model);
   const model = fitModelName(name, columns - rightWidth - 2);
 
   return (
