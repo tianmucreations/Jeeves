@@ -62,6 +62,10 @@ class SessionStore {
   activeModel: string | null = null;
   // True while quiet housekeeping (a summary) is running - shown in the info bar.
   tidying = false;
+  // A short note for the info bar while something quick runs, like 'backing up…'.
+  busyNote: string | null = null;
+  // Something the model must be told with the next message (for example, that /undo ran).
+  pendingContextNote: string | null = null;
   // The daily spending limit in dollars, and any extra allowance granted today.
   dailyLimit = 3;
   dailyExtra = 0;
@@ -399,6 +403,12 @@ class SessionStore {
   setActiveModel(model: string | null): void {
     if (this.activeModel === model) return;
     this.activeModel = model;
+    this.emit();
+  }
+
+  setBusyNote(note: string | null): void {
+    if (this.busyNote === note) return;
+    this.busyNote = note;
     this.emit();
   }
 

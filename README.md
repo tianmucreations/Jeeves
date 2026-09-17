@@ -23,6 +23,10 @@ Everything is visible on screen: arrow keys move, Enter selects, Esc goes back. 
 
 Jeeves takes over the whole terminal window (the same way vim does). The shell's own scrollback is unavailable while it runs, so the trackpad, mouse wheel, and up and down arrows scroll the conversation instead - `Page Up` / `Page Down` jump a whole screen and `End` returns to the newest. To select text for copying, hold `Fn` while dragging in Terminal.app (`Option` in iTerm2, `Shift` in most other terminals). When you quit, the terminal returns exactly as it was.
 
+## Undo
+
+Before Jeeves changes anything in your project folder, he quietly backs it up. Type `/undo` to put the folder back to how it was before your last request - changed and deleted files come back, and new files are removed. Type it again to go further back. Changes outside the project folder can't be undone, so Jeeves warns you before making them.
+
 ## Checking facts on the web
 
 Jeeves doesn't guess. When you ask about something in the outside world - a version, a price, a date - he searches the web, opens the most official page, and answers with the source. It uses your OpenRouter key and costs about a cent per question; the spend shows in the bottom bar. If one search service is unavailable, he switches to another automatically.

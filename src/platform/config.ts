@@ -1,3 +1,4 @@
+import path from 'node:path';
 import Conf from 'conf';
 import type { SpendReading } from '../state/today-spend.js';
 
@@ -21,6 +22,12 @@ interface JeevesConfig {
 const config = new Conf<JeevesConfig>({
   projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
 });
+
+// The folder Jeeves keeps its settings in (chosen by the conf library for each
+// operating system); backups live in a "checkpoints" folder beside the settings.
+export function settingsFolder(): string {
+  return path.dirname(config.path);
+}
 
 // The daily spending limit in dollars (default $3, the owner's choice).
 export function getDailyLimit(): number {

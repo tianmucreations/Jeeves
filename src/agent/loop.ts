@@ -14,6 +14,7 @@ import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportSpend, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
+import { startTurnCheckpoints, undoLastChange } from '../checkpoints/index.js';
 
 // Added to the rulebook when the chosen model cannot use tools, so a task request
 // gets a plain answer instead of a pretend attempt.
@@ -37,6 +38,19 @@ export async function runTurn(input: string): Promise<void> {
       session.addNotice(toggleVerbose());
     } else if (input === '/address') {
       openAddressPrompt();
+    } else if (input === '/undo') {
+      if (session.status === 'working') {
+        session.addNotice('Undo works between tasks - wait for this one to finish, then type /undo.');
+      } else {
+        try {
+          const outcome = await undoLastChange();
+          session.addNotice(outcome.message);
+          if (outcome.historyNote) session.pendingContextNote = outcome.historyNote;
+        } catch (error) {
+          session.addError("Undo didn't work this time - nothing was changed. Please try /undo again.");
+          if (session.verbose) session.addNotice(`Technical details: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
     } else if (input === '/clear') {
       clearConversation();
     } else if (input === '/exit') {
@@ -48,6 +62,7 @@ export async function runTurn(input: string): Promise<void> {
   }
 
   session.addUser(input);
+  startTurnCheckpoints(input);
   startJob();
   // Nothing is sent once today's limit is reached, unless the person agrees.
   if (!(await withinLimits())) {
@@ -73,7 +88,10 @@ export async function runTurn(input: string): Promise<void> {
   let assistantId: number | null = null;
   try {
     const provider = getActiveProvider();
-    const messages = buildTurnMessages(session.history, input);
+    // A note from /undo travels with the next message, so the model knows files changed back.
+    const note_ = session.pendingContextNote;
+    session.pendingContextNote = null;
+    const messages = buildTurnMessages(session.history, note_ ? `${note_}\n\n${input}` : input);
     // Models without tool support get a tool-free chat mode automatically (spec 4.2).
     const currentModel = session.models.find((model) => model.id === modelId);
     const toolCapable = !currentModel || isToolCapable(currentModel);
@@ -118,8 +136,14 @@ export async function runTurn(input: string): Promise<void> {
         if (session.verbose) session.appendReasoning(delta);
       },
       onToolCall: () => {
-        // Hide pre-tool chatter so only the final answer stays visible (spec 2.3).
-        if (assistantId !== null) session.setAssistantText(assistantId, '');
+        // Hide pre-tool chatter so only the final answer stays visible (spec 2.3). The
+        // entry is removed, not just emptied, so the final answer appears below the
+        // actions it reports on rather than above them.
+        if (assistantId !== null) {
+          session.setAssistantText(assistantId, '');
+          session.finishAssistant(assistantId);
+          assistantId = null;
+        }
         session.closeReasoningEntry();
       },
     };

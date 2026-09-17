@@ -19,6 +19,8 @@ export interface FooterInfo {
   // Today's allowance (daily limit plus any extra agreed today).
   allowance: number;
   tidying: boolean;
+  // A short note while something quick runs ('backing up…', 'undoing…').
+  busyNote?: string | null;
   todaySpend: number | null;
   creditRemaining: number | null;
   creditIsAccount: boolean;
@@ -31,7 +33,8 @@ const money = (value: number) => `$${value.toFixed(2)}`;
 // and on the right what today has cost and what is left - or, for a flat-rate
 // plan, whether it has allowance. Warnings appear only when they matter.
 export function footerSegments(info: FooterInfo): FooterSegment[] {
-  if (info.tidying && info.providerId !== 'openrouter') return [{ text: 'tidying up…' }];
+  const busy = info.busyNote ?? (info.tidying ? 'tidying up…' : null);
+  if (busy && info.providerId !== 'openrouter') return [{ text: busy }];
   if (info.providerId === 'zai') {
     if (info.planResetAt === null) return [{ text: 'flat-rate plan' }];
     const when = info.planResetAt ? ` · resets @ ${info.planResetAt}` : '';
@@ -50,7 +53,7 @@ export function footerSegments(info: FooterInfo): FooterSegment[] {
       color: cents >= limitCents ? 'red' : cents * 10 >= limitCents * 8 ? 'yellow' : undefined,
     },
   ];
-  if (info.tidying) segments.unshift({ text: 'tidying up…' });
+  if (busy) segments.unshift({ text: busy });
   if (info.creditRemaining === null) {
     segments.push({ text: '$— left' });
     return segments;
@@ -76,6 +79,7 @@ export function Footer() {
     providerId: s.providerId,
     allowance: allowanceToday(),
     tidying: s.tidying,
+    busyNote: s.busyNote,
     todaySpend: s.todaySpend,
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,

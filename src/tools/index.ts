@@ -7,6 +7,7 @@ import { writeFileSchema, runWriteFile } from './writeFile.js';
 import { listDirSchema, runListDir } from './listDir.js';
 import { runBashSchema, runRunBash } from './runBash.js';
 import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage } from './web/research.js';
+import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
 
 // Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
 const MAX_RESULT_CHARS = 150_000;
@@ -57,6 +58,11 @@ function defineTool<S extends z.ZodObject>(config: {
   summarize: (input: z.output<S>) => string;
   label: (input: z.output<S>, result: string) => string;
   run: (input: z.output<S>) => Promise<string>;
+  // Whether this action can change files - if so, the project folder is backed up
+  // first, so /undo can put it back.
+  changesFiles?: (input: z.output<S>) => boolean;
+  // A plain warning shown before asking, when /undo could not reverse this action.
+  warning?: (input: z.output<S>) => string | null;
 }) {
   return tool({
     description: config.description,
@@ -67,6 +73,8 @@ function defineTool<S extends z.ZodObject>(config: {
       const summary = config.summarize(input);
       const needsPermission =
         typeof config.permission === 'function' ? config.permission(input) : config.permission;
+      const warning = config.warning?.(input) ?? null;
+      if (warning) session.addNotice(warning);
       const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
       if (needsPermission) {
         const approved = await requestApproval();
@@ -75,6 +83,16 @@ function defineTool<S extends z.ZodObject>(config: {
           throw new Error(`Permission denied by the user - ${config.name} ${summary} was not executed.`);
         }
         session.updateToolLine(lineId, { state: 'running' });
+      }
+      if (config.changesFiles?.(input)) {
+        const backup = await ensureCheckpoint();
+        if (!backup.ok) {
+          session.addNotice("I couldn't back up the project folder first, so this change couldn't be undone. Go ahead anyway? (y/n)");
+          if (!(await requestApproval())) {
+            session.updateToolLine(lineId, { state: 'declined' });
+            throw new Error(`Not done: the folder could not be backed up first (${backup.problem}), and the person chose not to go ahead.`);
+          }
+        }
       }
       try {
         const result = truncate(await config.run(input));
@@ -115,6 +133,11 @@ export const TOOLS: ToolSet = {
     summarize: (input) => `${input.path} (${input.content.length} characters)`,
     label: () => 'Wrote 1 file',
     run: runWriteFile,
+    changesFiles: () => true,
+    warning: (input) =>
+      isOutsideProject(input.path)
+        ? `Heads up: ${input.path} is outside your project folder, so /undo can't reverse this change.`
+        : null,
   }),
   webSearch: defineTool({
     name: 'webSearch',
@@ -144,6 +167,11 @@ export const TOOLS: ToolSet = {
     summarize: (input) => clip(input.command, 60),
     label: (input) => `Ran ${clip(input.command, 60)}`,
     run: runRunBash,
+    changesFiles: (input) => !isReadOnlyBashCommand(input.command),
+    warning: (input) =>
+      !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
+        ? "Heads up: this command may change things outside your project folder, which /undo can't reverse."
+        : null,
   }),
 };
 
