@@ -23,6 +23,10 @@ Everything is visible on screen: arrow keys move, Enter selects, Esc goes back. 
 
 Jeeves takes over the whole terminal window (the same way vim does). The shell's own scrollback is unavailable while it runs, so the trackpad, mouse wheel, and up and down arrows scroll the conversation instead - `Page Up` / `Page Down` jump a whole screen and `End` returns to the newest. To select text for copying, hold `Fn` while dragging in Terminal.app (`Option` in iTerm2, `Shift` in most other terminals). When you quit, the terminal returns exactly as it was.
 
+## Checking facts on the web
+
+Jeeves doesn't guess. When you ask about something in the outside world - a version, a price, a date - he searches the web, opens the most official page, and answers with the source. It uses your OpenRouter key and costs about a cent per question; the spend shows in the bottom bar. If one search service is unavailable, he switches to another automatically.
+
 ## Providers
 
 - **OpenRouter (default).** One key unlocks 400+ models from every major provider. Get a key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). Repeat conversation context is cached (sticky routing), so long conversations cost a fraction of the fresh-token price.

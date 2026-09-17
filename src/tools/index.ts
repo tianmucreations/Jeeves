@@ -6,6 +6,7 @@ import { readFileSchema, runReadFile } from './readFile.js';
 import { writeFileSchema, runWriteFile } from './writeFile.js';
 import { listDirSchema, runListDir } from './listDir.js';
 import { runBashSchema, runRunBash } from './runBash.js';
+import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage } from './web/research.js';
 
 // Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
 const MAX_RESULT_CHARS = 150_000;
@@ -34,6 +35,10 @@ export function plainToolFailure(error: unknown): string {
   if (text.includes('no space left')) return 'the disk is full';
   if (text.includes('timed out') || text.includes('etimedout') || text.includes('stopped after') || text.includes("didn't finish")) return 'took too long';
   if (text.includes('binary file')) return 'not a text file';
+  if (text.includes('web search needs an openrouter key')) return 'needs an OpenRouter key (type /keys)';
+  if (text.includes('web search is not available')) return 'web search is not available right now';
+  if (text.includes("couldn't open")) return "that website wouldn't open";
+  if (text.includes('not a valid web address') || text.includes('only web pages')) return 'not a web address';
   if (text.includes('needs an interactive terminal')) return 'that program needs typing in a window of its own';
   // Anything unrecognised stays off screen; the model receives the full message
   // and explains it in plain English.
@@ -110,6 +115,24 @@ export const TOOLS: ToolSet = {
     summarize: (input) => `${input.path} (${input.content.length} characters)`,
     label: () => 'Wrote 1 file',
     run: runWriteFile,
+  }),
+  webSearch: defineTool({
+    name: 'webSearch',
+    description: 'Search the web. Returns titles, addresses and short snippets - a list of where to look, not checked facts.',
+    schema: webSearchSchema,
+    permission: false,
+    summarize: (input) => clip(input.query, 60),
+    label: (input) => `Searched ${clip(input.query, 60)}`,
+    run: runWebSearch,
+  }),
+  readWebPage: defineTool({
+    name: 'readWebPage',
+    description: 'Open a web page and find one fact on it. Returns the answer with the exact quote from the page, or says it is not stated there.',
+    schema: readWebPageSchema,
+    permission: false,
+    summarize: (input) => clip(input.url, 60),
+    label: (input) => `Read ${clip(input.url.replace(/^https?:\/\//, ''), 60)}`,
+    run: runReadWebPage,
   }),
   runBash: defineTool({
     name: 'runBash',

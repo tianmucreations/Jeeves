@@ -15,6 +15,11 @@ let resolvedKey: string | null = null;
 let zaiKey: string | null = null;
 let keySource: 'keychain' | 'env' | null = null;
 
+// The OpenRouter key, for features that call OpenRouter directly (web research).
+export function getOpenRouterKey(): string | null {
+  return resolvedKey;
+}
+
 // The calm provider list shared by the model picker and the key screens.
 export const PROVIDER_ROWS = [
   { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },
