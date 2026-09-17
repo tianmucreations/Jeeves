@@ -13,12 +13,10 @@ import {
   cleanModelName,
 } from '../models/registry.js';
 import { setFavorites, setRecents, setDefaultModel, setDefaultProvider } from '../platform/config.js';
-import { summariseHistory } from '../agent/context.js';
 import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
-import { resetStickySession } from '../providers/openrouter.js';
 import { isMouseSequence } from '../ink/mouse.js';
 
 const TABS = ['favorites', 'recent', 'all', 'tools'] as const;
@@ -50,7 +48,7 @@ type Item =
   | { kind: 'back' }
   | { kind: 'show-all' }
   | { kind: 'model'; model: ModelInfo; blurb?: string };
-type Phase = 'browse' | 'switch-confirm' | 'tool-warning';
+type Phase = 'browse' | 'tool-warning';
 // Key entry happens inside the picker for Z.ai so a new user never leaves the flow.
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
 type Step = 'providers' | 'curated' | 'full' | 'zai-key';
@@ -318,12 +316,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       setPhase('tool-warning');
       return;
     }
-    if (s.history.length > 0) {
-      setPending(model);
-      setPhase('switch-confirm');
-      return;
-    }
-    // No "Switched to" line: the info bar already names the model.
+    // A switch mid-conversation simply carries the conversation on (context
+    // housekeeping keeps it lean; /clear starts afresh). No "Switched to" line:
+    // the info bar already names the model.
     applyModel(model);
     s.closePicker();
   }
@@ -334,34 +329,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       if (key.return) {
         if (pending) {
           applyModel(pending);
-          s.addNotice("Chat-only mode - this model can't read files or run commands.");
         }
-        s.closePicker();
-      } else if (key.escape) {
-        setPhase('browse');
-      }
-      return;
-    }
-    if (phase === 'switch-confirm') {
-      if (input === 'k') {
-        if (pending) {
-          applyModel(pending);
-        }
-        s.closePicker();
-      } else if (input === 's') {
-        if (pending) {
-          applyModel(pending);
-        }
-        s.closePicker();
-        void summariseHistory();
-      } else if (input === 'f') {
-        if (pending) {
-          applyModel(pending);
-          // Said once, because the old messages stay on screen but are forgotten.
-          s.addNotice('Starting fresh - earlier messages are forgotten.');
-        }
-        s.setHistory([]);
-        resetStickySession();
         s.closePicker();
       } else if (key.escape) {
         setPhase('browse');
@@ -543,7 +511,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
             })
           )}
         </Box>
-        <Text dimColor>{hint}</Text>
+        <Text color={phase === 'tool-warning' ? 'yellow' : undefined} dimColor={phase !== 'tool-warning'}>
+          {hint}
+        </Text>
       </Box>
     );
   }
@@ -571,10 +541,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
 
   const hint =
     phase === 'tool-warning'
-      ? `This model can't use tools, so it can't read files or run commands.  Enter: continue in chat-only mode · Esc: pick another`
-      : phase === 'switch-confirm'
-        ? `Keep this conversation (k) · Summarise it first (s) · Start fresh (f) · Esc: cancel`
-        : `Tab list · ↑↓ move · type to search · + favorite · Enter select · Esc back`;
+      ? `This model can only chat, not do tasks · Enter use anyway · Esc pick another`
+      : `Tab list · ↑↓ move · type to search · + favorite · Enter select · Esc back`;
 
   return (
     <Box flexDirection="column" height={rows}>

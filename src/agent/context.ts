@@ -33,6 +33,20 @@ export function shouldAutoSummarise(conversationTokens: number, limit: number): 
   return conversationTokens >= AUTO_SUMMARISE_AT * limit;
 }
 
+// A failed summary is never announced - the user could do nothing about it. It is
+// retried quietly, but only after a few messages, so a service that keeps failing
+// is not asked (and billed) for a summary on every single message.
+export const SUMMARY_RETRY_AFTER = 3;
+let messagesUntilRetry = 0;
+
+export function summaryDue(conversationTokens: number, limit: number): boolean {
+  if (messagesUntilRetry > 0) {
+    messagesUntilRetry -= 1;
+    return false;
+  }
+  return shouldAutoSummarise(conversationTokens, limit);
+}
+
 // Condenses the whole conversation into a single summary message so a model can
 // continue without re-reading every turn: on a model switch, or automatically when
 // the conversation grows long.
@@ -68,10 +82,10 @@ export async function summariseHistory(): Promise<void> {
         },
       ]);
     } else {
-      session.addNotice('Could not summarise - kept the conversation as-is.');
+      messagesUntilRetry = SUMMARY_RETRY_AFTER;
     }
   } catch {
-    session.addNotice('Could not summarise - kept the conversation as-is.');
+    messagesUntilRetry = SUMMARY_RETRY_AFTER;
   }
   session.setStatus('idle');
 }

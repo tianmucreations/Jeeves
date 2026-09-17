@@ -1,13 +1,21 @@
 import { session } from '../state/session.js';
 import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
-import { buildTurnMessages, getSystemPrompt, contextLimitFor, shouldAutoSummarise, summariseHistory } from './context.js';
+import { buildTurnMessages, getSystemPrompt, contextLimitFor, summaryDue, summariseHistory } from './context.js';
 import { plainError, type ErrorKind } from './errors.js';
 import { toggleVerbose } from '../commands/verbose.js';
 import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
 import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
+
+// Added to the rulebook when the chosen model cannot use tools, so a task request
+// gets a plain answer instead of a pretend attempt.
+export const CHAT_ONLY_NOTE = `
+
+Chat-Only Model
+
+The model currently selected can only chat. For now you have no tools: you cannot read files, write files, list folders, or run commands, whatever the sections above say. If you are asked to do something that needs them, say plainly that the model in use can only chat, and suggest typing /model to choose one that can do tasks. Never pretend to have done it.`;
 
 const DISCONNECTING: ReadonlySet<ErrorKind> = new Set(['auth', 'network', 'payment']);
 
@@ -35,7 +43,7 @@ export async function runTurn(input: string): Promise<void> {
 
   session.addUser(input);
   // A long conversation is summarised before it fills the model's memory.
-  if (shouldAutoSummarise(session.estimateContextTokens(), contextLimitFor(session.model, session.models))) {
+  if (summaryDue(session.estimateContextTokens(), contextLimitFor(session.model, session.models))) {
     await summariseHistory();
   }
   session.beginTurn();
@@ -51,7 +59,7 @@ export async function runTurn(input: string): Promise<void> {
       modelId: session.model,
       messages,
       tools,
-      instructions: getSystemPrompt(),
+      instructions: Object.keys(tools).length > 0 ? getSystemPrompt() : getSystemPrompt() + CHAT_ONLY_NOTE,
       onToken: (token) => {
         if (assistantId === null) assistantId = session.startAssistant();
         session.appendToken(assistantId, token);

@@ -97,3 +97,12 @@ describe('automatic summarising', () => {
     expect(shouldAutoSummarise(140_000, 200_000)).toBe(true);
   });
 });
+
+describe('chat-only models', () => {
+  it('tell Jeeves plainly that he cannot do tasks', async () => {
+    const { CHAT_ONLY_NOTE } = await import('../src/agent/loop.js');
+    expect(CHAT_ONLY_NOTE).toContain('can only chat');
+    expect(CHAT_ONLY_NOTE).toContain('suggest typing /model');
+    expect(CHAT_ONLY_NOTE).toContain('Never pretend to have done it.');
+  });
+});
