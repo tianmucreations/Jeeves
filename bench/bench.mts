@@ -1,0 +1,83 @@
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const B = path.dirname(fileURLToPath(import.meta.url));
+const P = path.dirname(B);
+const { initKeys, getOpenRouterKey } = await import(P + '/src/providers/index.ts');
+const { fetchKeyUsage } = await import(P + '/src/providers/openrouter.ts');
+const { session } = await import(P + '/src/state/session.ts');
+const { runTurn } = await import(P + '/src/agent/loop.ts');
+const { answerApproval } = await import(P + '/src/agent/permissions.ts');
+const { loadModels } = await import(P + '/src/models/registry.ts');
+const { spentThisSession } = await import(P + '/src/agent/spending.ts');
+const { clearConversation } = await import(P + '/src/commands/clear.ts');
+await initKeys();
+session.setModels((await loadModels()).models, '');
+session.setProvider('openrouter');
+session.setDailyLimit(100, 0);
+const [h1, h2, h3, h4] = fs.readFileSync(B + '/hashes.txt', 'utf8').trim().split(' ');
+const JOBS: Record<string, { prompt: string; fixture?: string; check: (dir: string, text: string, tools: string[]) => boolean }> = {
+  chat: { prompt: "What's the difference between a file and a folder?", check: (_d, text, tools) => tools.length === 0 && text.length > 40 },
+  research: { prompt: 'What is the latest Node.js LTS version?', check: (_d, text) => text.includes('24.21.0') },
+  bugfix: { fixture: 'bugfix', prompt: 'The invoice total in this project is wrong - the test fails. Please fix it so the test passes, without changing the test.', check: (d) => runCheck('bugfix', d, h1) },
+  csv: { fixture: 'csv', prompt: 'Please save my contacts from contacts.js into a spreadsheet file called contacts.csv, with the columns name, email and phone.', check: (d) => runCheck('csv', d) },
+  euros: { fixture: 'euros', prompt: 'Change the shop to show prices in euros (€) instead of dollars, everywhere prices appear.', check: (d) => runCheck('euros', d) },
+  split: { fixture: 'split', prompt: "When we split a bill, the amounts don't always add up to the total. The tests show it. Please fix it without changing the tests, so every split adds up to the exact cent and is fair to everyone's share.", check: (d) => runCheck('split', d, h3) },
+  sydney: { fixture: 'sydney', prompt: "Make report.js print the total sales for each month, oldest month first, one line each like '2026-01: $123.45'. Count each sale in the month it happened in Sydney time.", check: (d) => runCheck('sydney', d) },
+  bank: { fixture: 'bank', prompt: 'Work out how much I spent in each category from bank.csv and save it as summary.json, like {"Groceries": 123.45}. Refunds reduce what I spent, and income is not spending.', check: (d) => runCheck('bank', d) },
+  calc: { fixture: 'calc', prompt: "Make the calculator in calc.js handle proper sums: + - * / ^ and brackets, with the usual order (^ first, and 2^3^2 means 2^(3^2)), a minus sign in front of a number (-2^2 is -4, 2*-3 is -6). If the sum isn't valid - like '1 +', '2(3)', unmatched brackets, dividing by zero, or letters - it must throw an error instead of giving a number.", check: (d) => runCheck('calc', d) },
+  fifo: { fixture: 'fifo', prompt: "My share tracker in stock.js gives the wrong profits. The rules are written at the top of the file and the test shows one case. Please fix it so it follows all the rules, without changing the test.", check: (d) => runCheck('fifo', d, h4) },
+  todo: { fixture: 'todo', prompt: "Write todo.js, a to-do list I run with node todo.js. Commands: 'add <text>' prints 'Added <n>: <text>'; 'done <n>' prints 'Done <n>: <text>'; 'remove <n>' prints 'Removed <n>: <text>'; 'list' prints each as '<n>. [ ] <text>' or '<n>. [x] <text>', or 'Nothing to do.' when empty. Numbers start at 1 and are never reused. Save everything in todos.json as {\"items\": [...], \"nextId\": <number>}. If the number doesn't exist print 'There is no to-do number <n>.'; 'add' with no text prints 'Say what to add, like: todo add Buy milk'; if todos.json is damaged print 'The to-do file is damaged, so nothing was changed.' and leave it untouched. All errors must exit with a non-zero code.", check: (d) => runCheck('todo', d) },
+  countdown: { fixture: 'countdown', prompt: 'The countdown sometimes shows the wrong number of days. The tests show the problem - please fix it without changing the tests.', check: (d) => runCheck('countdown', d, h2) },
+};
+function runCheck(job: string, dir: string, hash = ''): boolean {
+  try { execSync(`node ${B}/checks/${job}.js ${dir} ${hash}`, { stdio: 'pipe', timeout: 60000 }); return true; } catch { return false; }
+}
+const unsafe = /(\.\.|~|\bsudo\b|\brm\b|\bcurl\b|\bwget\b|\bgit\b|\bnpm\s+(i|install)\b|\/Users\/(?!me\/)|^\s*\/)/;
+session.subscribe(() => {
+  if (!session.approvalPending) return;
+  const last = [...session.transcript].reverse().find((e: any) => e.kind === 'tool' && e.data.state === 'awaiting') as any;
+  if (!last) return answerApproval(true); // spending questions: yes (budget guarded here)
+  const ok = last.data.tool === 'writeFile' || (last.data.tool === 'runBash' && !unsafe.test(last.data.summary));
+  log(`    permission ${last.data.tool} "${last.data.summary}" -> ${ok ? 'yes' : 'no'}`);
+  answerApproval(ok);
+});
+const out = B + '/results.jsonl';
+function log(line: string) { fs.appendFileSync(B + '/bench.log', line + '\n'); console.log(line); }
+const key = getOpenRouterKey()!;
+const startUsage = (await fetchKeyUsage(key)) ?? 0;
+const BUDGET = Number(process.env.BUDGET ?? 4.5);
+const plan = (process.env.PLAN ?? '').split(',').filter(Boolean); // model:job:repeat
+for (const entry of plan) {
+  const [model, job, rep] = entry.split('|');
+  const keyNow = ((await fetchKeyUsage(key)) ?? startUsage) - startUsage;
+  const spent = Math.max(spentThisSession(), keyNow);
+  if (spent > BUDGET) { log(`BUDGET STOP at $${spent.toFixed(3)}`); break; }
+  const spec = JOBS[job];
+  const dir = `${B}/runs/${model.replace(/\//g, '_')}${process.env.JEEVES_EXPERT_MODEL ? '+' + process.env.JEEVES_EXPERT_MODEL.replace(/\//g, '_') : ''}-${job}-${rep}`;
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  if (spec.fixture) fs.cpSync(`${B}/fixtures/${spec.fixture}`, dir, { recursive: true });
+  process.chdir(dir);
+  clearConversation();
+  session.transcript = [];
+  session.setModel(model);
+  const before = spentThisSession();
+  const t = Date.now();
+  let crashed = '';
+  try {
+    await Promise.race([runTurn(spec.prompt), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 8 min')), 480000))]);
+  } catch (e) { crashed = String(e); }
+  const tools = session.transcript.filter((e: any) => e.kind === 'tool').map((e: any) => `${e.data.state === 'done' ? '✓' : '✗'} ${e.data.tool}:${(e.data.label || e.data.summary).slice(0, 50)}`);
+  const text = session.transcript.filter((e: any) => ['assistant', 'error', 'notice'].includes(e.kind)).map((e: any) => e.text).join(' | ');
+  const pass = !crashed && spec.check(dir, text, tools);
+  const row = { model, job, rep, pass, cost: +(spentThisSession() - before).toFixed(4), seconds: Math.round((Date.now() - t) / 1000), expert: tools.some((x) => x.includes('askExpert')), takeover: session.activeModel !== null && session.activeModel !== 'deepseek/deepseek-v4-flash-0731' && model === 'jeeves/auto', steps: tools.length, crashed, text: text.slice(0, 300) };
+  fs.appendFileSync(out, JSON.stringify(row) + '\n');
+  log(`${pass ? 'PASS' : 'FAIL'} ${model}${process.env.JEEVES_EXPERT_MODEL ? ' reviewer=' + process.env.JEEVES_EXPERT_MODEL : ''} ${job}#${rep} $${row.cost} ${row.seconds}s tools=${tools.length} expert=${row.expert}${crashed ? ' CRASH ' + crashed : ''}`);
+  log(`    tools: ${tools.filter((x) => x.includes('askExpert')).join(' ; ')}`);
+  if (!pass) log(`    said: ${text.replace(/\n/g, ' ').slice(0, 220)}\n    tools: ${tools.join(' ; ').slice(0, 400)}`);
+}
+await new Promise((r) => setTimeout(r, 20000));
+log(`TOTAL reported $${spentThisSession().toFixed(4)}; key usage change $${(((await fetchKeyUsage(key)) ?? startUsage) - startUsage).toFixed(4)}`);
+process.exit(0);

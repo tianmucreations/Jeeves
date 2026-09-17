@@ -1,0 +1,13 @@
+const { execSync } = require('child_process');
+const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const dir = process.argv[2];
+const hash = crypto.createHash('sha256').update(fs.readFileSync(dir + '/invoice.test.js')).digest('hex');
+assert.strictEqual(hash, process.argv[3], 'the test file was changed');
+execSync('node --test', { cwd: dir, stdio: 'pipe' });
+const { invoiceTotal } = require(dir + '/invoice.js');
+assert.strictEqual(invoiceTotal([{ qty: 1, price: 0.1 }, { qty: 2, price: 0.2 }], 0), 0.5);
+assert.strictEqual(invoiceTotal([{ qty: 2, price: 10 }], 0.075), 21.5);
+assert.strictEqual(invoiceTotal([{ qty: 7, price: 3.33 }], 0.2), 27.97);
+console.log('PASS');

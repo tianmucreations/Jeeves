@@ -1,0 +1,11 @@
+const assert = require('assert');
+const dir = process.argv[2];
+const { formatPrice, priceList } = require(dir + '/prices.js');
+const { receipt } = require(dir + '/receipt.js');
+const items = [{ name: 'Bread', price: 4.5 }, { name: 'Cake', price: 12 }];
+assert.strictEqual(formatPrice(12.5), '€12.50');
+const list = priceList(items);
+assert.ok(list.includes('€4.50') && list.includes('€12.00') && !list.includes('$'), 'price list: ' + list);
+const r = receipt(items);
+assert.ok(r.includes('€16.50') && !r.includes('$') && !r.includes('USD'), 'receipt: ' + r);
+console.log('PASS');
