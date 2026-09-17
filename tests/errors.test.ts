@@ -103,3 +103,18 @@ describe('help data', () => {
     }
   });
 });
+describe('rejected keys, as the services really send them', () => {
+  const apiError = (message: string, statusCode: number) => Object.assign(new Error(message), { statusCode });
+  it('recognises a bad OpenRouter key ("User not found." with status 401)', () => {
+    const result = plainError(apiError('User not found.', 401), 'openrouter');
+    expect(result.message).toBe("OpenRouter didn't accept the key - type /keys to check or replace it.");
+    expect(result.kind).toBe('auth');
+  });
+  it('recognises a bad Z.ai key ("Authentication Failed" with status 401)', () => {
+    expect(plainError(apiError('Authentication Failed', 401), 'zai').message).toContain("Z.ai didn't accept the key");
+  });
+  it('reads the status after the SDK gives up retrying', () => {
+    const retry = Object.assign(new Error('Failed after 3 attempts. Last error: Service Unavailable'), { lastError: { statusCode: 402 } });
+    expect(plainError(retry, 'openrouter').kind).toBe('payment');
+  });
+});

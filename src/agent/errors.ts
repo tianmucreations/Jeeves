@@ -19,8 +19,21 @@ function serviceName(providerId: string | undefined): string {
 // Turns technical failures into plain English (Phase 9 polish). Nothing technical
 // reaches the screen: unrecognised failures get a plain sentence, and the raw text
 // travels in detail for /verbose.
+// The HTTP status of a failed request. The AI SDK puts it on the error itself, or on
+// lastError once its retries give up; the message text alone often doesn't say it
+// (a bad OpenRouter key reads just "User not found.", measured live).
+export function statusOf(error: unknown): number | null {
+  const candidates = [error, (error as { lastError?: unknown } | null)?.lastError];
+  for (const candidate of candidates) {
+    const code = (candidate as { statusCode?: unknown } | null)?.statusCode;
+    if (typeof code === 'number') return code;
+  }
+  return null;
+}
+
 export function plainError(error: unknown, providerId?: string): PlainError {
   const raw = error instanceof Error ? error.message : String(error);
+  const status = statusOf(error);
   const text = raw.toLowerCase();
   const service = serviceName(providerId);
   const make = (message: string, kind: ErrorKind): PlainError => ({ message, kind, detail: raw });
@@ -28,7 +41,16 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   if (text.includes('no openrouter api key') || text.includes('no z.ai key')) {
     return make("There's no key yet - type /keys to add one.", 'auth');
   }
-  if (text.includes('401') || text.includes('unauthorized') || text.includes('invalid api key') || text.includes('not authenticated')) {
+  if (
+    status === 401 ||
+    status === 403 ||
+    text.includes('401') ||
+    text.includes('unauthorized') ||
+    text.includes('invalid api key') ||
+    text.includes('not authenticated') ||
+    text.includes('authentication failed') ||
+    text.includes('user not found')
+  ) {
     return make(`${service} didn't accept the key - type /keys to check or replace it.`, 'auth');
   }
   // Z.ai's flat plan reports its time window as "Usage limit reached for 5 hour.
@@ -42,10 +64,10 @@ export function plainError(error: unknown, providerId?: string): PlainError {
       resetAt: reset ? reset[1] : '',
     };
   }
-  if (text.includes('402') || text.includes('insufficient') || text.includes('out of credit') || text.includes('quota')) {
+  if (status === 402 || text.includes('402') || text.includes('insufficient') || text.includes('out of credit') || text.includes('quota')) {
     return make(`${service} credit ran out - top up at openrouter.ai/credits, then ask again.`, 'payment');
   }
-  if (text.includes('429') || text.includes('rate limit') || text.includes('rate_limit') || text.includes('too many requests')) {
+  if (status === 429 || text.includes('429') || text.includes('rate limit') || text.includes('rate_limit') || text.includes('too many requests')) {
     return make(`${service} is asking us to slow down - wait a few seconds and ask again.`, 'rate-limit');
   }
   if (
@@ -61,7 +83,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   ) {
     return make(`Couldn't reach ${service} - check the internet connection and ask again in a moment.`, 'network');
   }
-  if (text.includes('model') && (text.includes('not found') || text.includes('404'))) {
+  if ((status === 404 || text.includes('404') || text.includes('not found')) && text.includes('model')) {
     return make("That model isn't available any more - type /model to pick another.", 'model');
   }
   if (text.includes('context') && (text.includes('length') || text.includes('too long'))) {

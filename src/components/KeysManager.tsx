@@ -15,13 +15,17 @@ import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
 
-// The keys screen shows one extra row the model picker does not: the optional
-// OpenRouter management key, which unlocks the real account balance.
+// Only services whose key Jeeves actually uses are listed. The model makers
+// (Anthropic, OpenAI...) are reached through OpenRouter, so a key for them would do
+// nothing. The optional OpenRouter management key (it unlocks the real account
+// balance) is for /keys only - the first-run wizard keeps to the essentials.
+const USED_KEYS = ['openrouter', 'zai', 'ollama'];
 const KEY_ROWS = [
   PROVIDER_ROWS[0],
-  { id: 'openrouter-management', label: 'OpenRouter (account)' },
-  ...PROVIDER_ROWS.slice(1),
+  { id: 'openrouter-management', label: 'OpenRouter account' },
+  ...PROVIDER_ROWS.slice(1).filter((row) => USED_KEYS.includes(row.id)),
 ];
+const WIZARD_ROWS = KEY_ROWS.filter((row) => row.id !== 'openrouter-management');
 
 type Phase =
   | { kind: 'ask' }
@@ -38,6 +42,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   const s = useSession();
   const [phase, setPhase] = useState<Phase>(mode === 'wizard' ? { kind: 'ask' } : { kind: 'list' });
   const [cursor, setCursor] = useState(0);
+  const visibleRows = mode === 'wizard' ? WIZARD_ROWS : KEY_ROWS;
   const [hidden, setHidden] = useState('');
   const [stored, setStored] = useState<string[]>([]);
   const [note, setNote] = useState('');
@@ -242,11 +247,11 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return;
     }
     if (key.downArrow) {
-      setCursor((current) => Math.min(KEY_ROWS.length - 1, current + 1));
+      setCursor((current) => Math.min(visibleRows.length - 1, current + 1));
       return;
     }
     if (key.return) {
-      const row = KEY_ROWS[cursor];
+      const row = visibleRows[cursor];
       if (!row || row.id === 'ollama') {
         if (mode === 'wizard' && row?.id === 'ollama') {
           finishWizard('Ollama runs on this computer - no key needed.', false);
@@ -260,7 +265,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     }
     const answer = input.toLowerCase();
     if (answer === 'd') {
-      const row = KEY_ROWS[cursor];
+      const row = visibleRows[cursor];
       if (!row) return;
       const hasStored = stored.includes(row.id) || (row.id === 'openrouter' && getKeySource() !== null);
       if (hasStored) {
@@ -302,9 +307,9 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       <Box flexDirection="column" flexGrow={1} justifyContent="center">
         {phase.kind === 'ask' && <Text>{'  Add an API key?'}</Text>}
         {phase.kind === 'list' &&
-          KEY_ROWS.map((row, index) => (
+          visibleRows.map((row, index) => (
             <Text key={row.id} inverse={index === cursor}>
-              {`${row.label}`.padEnd(14)}
+              {` ${row.label}`.padEnd(21)}
               <Text dimColor>{statusFor(row.id)}</Text>
             </Text>
           ))}
@@ -316,7 +321,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         )}
         {phase.kind === 'confirm-remove' && (
           <Text>
-            Remove the {phase.label} key from your Mac keychain? <Text dimColor>({hint})</Text>
+            Remove the {phase.label} key from your Mac keychain?
           </Text>
         )}
         {phase.kind === 'saved' && <Text>{phase.message}</Text>}

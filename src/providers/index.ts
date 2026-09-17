@@ -24,12 +24,12 @@ export function getOpenRouterKey(): string | null {
 export const PROVIDER_ROWS = [
   { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },
   { id: 'zai', label: 'Z.ai', description: 'GLM Coding Plan - $18/month flat - best for heavy daily use' },
-  { id: 'anthropic', label: 'Anthropic', description: 'direct connection' },
-  { id: 'openai', label: 'OpenAI', description: 'direct connection' },
-  { id: 'google', label: 'Google', description: 'direct connection' },
-  { id: 'xai', label: 'xAI', description: 'direct connection' },
-  { id: 'groq', label: 'Groq', description: 'direct connection' },
-  { id: 'mistral', label: 'Mistral', description: 'direct connection' },
+  { id: 'anthropic', label: 'Anthropic', description: 'models through OpenRouter' },
+  { id: 'openai', label: 'OpenAI', description: 'models through OpenRouter' },
+  { id: 'google', label: 'Google', description: 'models through OpenRouter' },
+  { id: 'xai', label: 'xAI', description: 'models through OpenRouter' },
+  { id: 'groq', label: 'Groq', description: 'models through OpenRouter' },
+  { id: 'mistral', label: 'Mistral', description: 'models through OpenRouter' },
   { id: 'ollama', label: 'Ollama', description: 'models on this computer, no key needed' },
 ];
 

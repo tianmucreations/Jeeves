@@ -13,7 +13,7 @@ import {
   cleanModelName,
 } from '../models/registry.js';
 import { setFavorites, setRecents, setDefaultModel, setDefaultProvider } from '../platform/config.js';
-import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS } from '../providers/index.js';
+import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS, storeOpenRouterKey, refreshCredit } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
@@ -51,9 +51,19 @@ type Item =
 type Phase = 'browse' | 'tool-warning';
 // Key entry happens inside the picker for Z.ai so a new user never leaves the flow.
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
-type Step = 'providers' | 'curated' | 'full' | 'zai-key';
+type Step = 'providers' | 'curated' | 'full' | 'key';
 // Which provider's catalog the picker is browsing.
 type ProviderChoice = 'openrouter' | 'ollama' | 'zai';
+
+// Model makers listed as services; they open their own models inside OpenRouter.
+const COMPANY_PREFIX: Record<string, string> = {
+  anthropic: 'anthropic',
+  openai: 'openai',
+  google: 'google',
+  xai: 'x-ai',
+  mistral: 'mistralai',
+  groq: '',
+};
 
 function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider;
@@ -142,8 +152,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const [cursor, setCursor] = useState(0);
   const [phase, setPhase] = useState<Phase>('browse');
   const [pending, setPending] = useState<ModelInfo | null>(null);
-  const [zaiKeyValue, setZaiKeyValue] = useState('');
-  const [zaiKeyNote, setZaiKeyNote] = useState('');
+  const [keyValue, setKeyValue] = useState('');
+  // Which service the key prompt is for, and which company's models to show after it.
+  const [keyFor, setKeyFor] = useState<'openrouter' | 'zai'>('zai');
+  const [jumpTo, setJumpTo] = useState<string | null>(null);
+  const [keyNote, setKeyNote] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -195,20 +208,26 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const visible = items.slice(start, start + listHeight);
   const highlighted = resolved >= 0 && items[resolved]?.kind === 'model' ? (items[resolved] as { model: ModelInfo }).model : null;
 
+  // Every row does something when chosen: OpenRouter and Z.ai ask for their key
+  // right here if it is missing; the model makers open their own models inside
+  // OpenRouter (direct connections to them are not built).
   function providerEnabled(rowId: string): boolean {
-    if (rowId === 'openrouter') return hasCredentialsFor('openrouter');
-    // Selecting Z.ai always does something: with a key it opens the model list,
-    // without one it prompts for the key right here in the picker.
-    if (rowId === 'zai') return true;
     if (rowId === 'ollama') return ollamaOnline === true;
-    return false;
+    return true;
   }
 
   function providerHint(rowId: string): string {
     if (rowId === 'ollama') {
       return ollamaOnline === null ? 'checking…' : 'not running - start the Ollama app';
     }
-    return 'add key with /keys';
+    return '';
+  }
+
+  function askForKey(service: 'openrouter' | 'zai'): void {
+    setKeyFor(service);
+    setKeyValue('');
+    setKeyNote('');
+    setStep('key');
   }
 
   function enterModelStep(forProvider: ProviderChoice): void {
@@ -232,16 +251,16 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     const row = PROVIDER_ROWS[providerCursor];
     if (!row) return;
     if (row.id === 'openrouter') {
-      if (!hasCredentialsFor('openrouter')) return;
+      setJumpTo(null);
+      if (!hasCredentialsFor('openrouter')) return askForKey('openrouter');
       enterModelStep('openrouter');
     } else if (row.id === 'zai') {
-      if (!hasCredentialsFor('zai')) {
-        setZaiKeyValue('');
-        setZaiKeyNote('');
-        setStep('zai-key');
-        return;
-      }
+      if (!hasCredentialsFor('zai')) return askForKey('zai');
       enterModelStep('zai');
+    } else if (row.id in COMPANY_PREFIX) {
+      setJumpTo(COMPANY_PREFIX[row.id]);
+      if (!hasCredentialsFor('openrouter')) return askForKey('openrouter');
+      openCompanyModels();
     } else if (row.id === 'ollama') {
       if (ollamaOnline !== true) return;
       enterModelStep('ollama');
@@ -251,10 +270,26 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     }
   }
 
+  // A model maker's row opens the full OpenRouter list at that company's models.
+  function openCompanyModels(): void {
+    setProviderChoice('openrouter');
+    setQuery('');
+    setTab('all');
+    setCursor(1);
+    setStep('full');
+  }
+
+  useEffect(() => {
+    if (step !== 'full' || jumpTo === null) return;
+    const header = items.findIndex((item) => item.kind === 'header' && item.label === providerLabel(jumpTo));
+    if (header >= 0) setCursor(header + 1);
+    setJumpTo(null);
+  }, [step, jumpTo, items]);
+
   function goBack(): void {
-    if (step === 'zai-key') {
-      setZaiKeyValue('');
-      setZaiKeyNote('');
+    if (step === 'key') {
+      setKeyValue('');
+      setKeyNote('');
       setStep('providers');
       return;
     }
@@ -336,34 +371,46 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       }
       return;
     }
-    if (step === 'zai-key') {
+    if (step === 'key') {
       if (key.escape) {
         goBack();
         return;
       }
       if (key.return) {
-        const trimmed = zaiKeyValue.trim();
-        if (!keyLooksValid(trimmed, 'zai')) {
-          setZaiKeyNote('That looks too short to be a key - paste it again, or press Esc to go back.');
-          setZaiKeyValue('');
+        const trimmed = keyValue.trim();
+        if (!keyLooksValid(trimmed, keyFor)) {
+          setKeyNote(
+            keyFor === 'openrouter'
+              ? 'Not an OpenRouter key (they start with sk-or-) - paste it again, or Esc'
+              : 'That looks too short to be a key - paste it again, or Esc'
+          );
+          setKeyValue('');
           return;
         }
-        void storeZaiKey(trimmed).then((saved) => {
+        const store = keyFor === 'openrouter' ? storeOpenRouterKey : storeZaiKey;
+        void store(trimmed).then((saved) => {
           if (!saved) {
-            setZaiKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
             return;
           }
-          s.addNotice('Your Z.ai key is saved in your Mac keychain.');
-          enterModelStep('zai');
+          if (keyFor === 'zai') {
+            enterModelStep('zai');
+          } else {
+            void refreshCredit();
+            if (s.status === 'disconnected') s.setStatus('idle');
+            if (jumpTo !== null) openCompanyModels();
+            else enterModelStep('openrouter');
+          }
         });
         return;
       }
       if (key.backspace || key.delete) {
-        setZaiKeyValue((v) => v.slice(0, -1));
+        setKeyValue((v) => v.slice(0, -1));
         return;
       }
       if (!input || key.ctrl || key.meta) return;
-      setZaiKeyValue((v) => v + input);
+      setKeyNote('');
+      setKeyValue((v) => v + input);
       return;
     }
     if (step === 'providers') {
@@ -444,25 +491,30 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     );
   }
 
-  if (step === 'zai-key') {
+  if (step === 'key') {
+    const service = keyFor === 'openrouter' ? 'OpenRouter' : 'Z.ai';
     return (
       <Box flexDirection="column" height={rows}>
-        <Text dimColor>Z.ai — GLM Coding Plan</Text>
+        <Text dimColor>{keyFor === 'openrouter' ? 'OpenRouter — one key unlocks 400+ models' : 'Z.ai — GLM Coding Plan'}</Text>
         <Box flexDirection="column" flexGrow={1} justifyContent="center">
           <Text>
-            <Text>Paste your Z.ai API key (it stays hidden): </Text>
+            <Text>Paste your {service} API key (it stays hidden): </Text>
+            <Text dimColor>{keyValue ? `${keyValue.length} characters ` : ''}</Text>
             <Text inverse> </Text>
           </Text>
-          <Text dimColor>It is stored in your Mac keychain and never shown again.</Text>
+          <Text dimColor>
+            {keyFor === 'openrouter' ? 'Get one at openrouter.ai/settings/keys. ' : ''}It is stored in your Mac keychain and never shown again.
+          </Text>
         </Box>
-        {zaiKeyNote ? (
-          <Text color="yellow">{zaiKeyNote}</Text>
+        {keyNote ? (
+          <Text color="yellow">{keyNote}</Text>
         ) : (
           <Text dimColor>paste the key · Enter save · Esc back</Text>
         )}
       </Box>
     );
   }
+
   if (step === 'curated') {
     const picks = resolveCurated(catalog);
     const hint = `↑↓ move · + favorite · Enter select · Esc back`;

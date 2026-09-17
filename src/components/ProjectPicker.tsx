@@ -349,7 +349,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
           if (item.kind === 'recent') {
             const name = path.basename(item.folder);
             return (
-              <Text key={`r${item.folder}`} inverse={selected}>
+              <Text key={`r${item.folder}`} inverse={selected} wrap="truncate-middle">
                 {` ${name}`.padEnd(26)}
                 <Text dimColor>{displayPath(item.folder)}</Text>
               </Text>

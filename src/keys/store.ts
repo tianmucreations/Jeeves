@@ -3,7 +3,8 @@
 // gracefully instead of crashing the app.
 type Keytar = typeof import('keytar');
 
-const SERVICE = 'jeeves';
+// JEEVES_KEYCHAIN_SERVICE lets a test run use its own keychain entries, never the real ones.
+const SERVICE = process.env.JEEVES_KEYCHAIN_SERVICE || 'jeeves';
 
 let cached: Keytar | null = null;
 
