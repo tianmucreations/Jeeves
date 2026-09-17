@@ -5,6 +5,8 @@ export interface PlainError {
   kind: ErrorKind;
   // The original technical text, shown only when /verbose is on.
   detail: string;
+  // For a used-up flat-rate plan: the reset time it gave (HH:MM), or '' if none.
+  resetAt?: string;
 }
 
 // The AI service's name as the user knows it, for messages that name it.
@@ -35,7 +37,10 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   if (text.includes('usage limit')) {
     const reset = raw.match(/reset at \d{4}-\d{2}-\d{2} (\d{2}:\d{2})/i);
     const when = reset ? ` Z.ai says it resets at ${reset[1]}.` : '';
-    return make(`Your ${service} plan has used up its allowance for now.${when} Type /model to use a different model meanwhile.`, 'payment');
+    return {
+      ...make(`Your ${service} plan has used up its allowance for now.${when} Type /model to use a different model meanwhile.`, 'payment'),
+      resetAt: reset ? reset[1] : '',
+    };
   }
   if (text.includes('402') || text.includes('insufficient') || text.includes('out of credit') || text.includes('quota')) {
     return make(`${service} credit ran out - top up at openrouter.ai/credits, then ask again.`, 'payment');

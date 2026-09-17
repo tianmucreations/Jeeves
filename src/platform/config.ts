@@ -1,7 +1,8 @@
 import Conf from 'conf';
+import type { SpendReading } from '../state/today-spend.js';
 
 interface JeevesConfig {
-  hiddenMetrics?: string[];
+  spendReading?: SpendReading;
   favorites?: string[];
   recents?: string[];
   projects?: string[];
@@ -19,16 +20,13 @@ const config = new Conf<JeevesConfig>({
   projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
 });
 
-const VALID_METRICS = ['session', 'context', 'cache', 'today', 'credit', 'speed'];
-
-// Metrics a power user has chosen to hide from the footer - hiding is opt-in, never required.
-export function getHiddenMetrics(): string[] {
-  const stored = config.get('hiddenMetrics') ?? [];
-  return stored.filter((metric) => VALID_METRICS.includes(metric));
+// The last OpenRouter usage reading, kept between launches so "today" survives a restart.
+export function getSpendReading(): SpendReading | undefined {
+  return config.get('spendReading');
 }
 
-export function setHiddenMetrics(metrics: string[]): void {
-  config.set('hiddenMetrics', metrics.filter((metric) => VALID_METRICS.includes(metric)));
+export function setSpendReading(reading: SpendReading): void {
+  config.set('spendReading', reading);
 }
 
 export function getFavorites(): string[] {

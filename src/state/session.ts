@@ -49,13 +49,15 @@ class SessionStore {
   tokensOut = 0;
   tokensCached = 0;
   cost = 0;
-  footerExpanded: string | null = null;
-  hiddenMetrics: string[] = [];
   creditUsed: number | null = null;
   creditRemaining: number | null = null;
   creditLimit: number | null = null;
   creditIsAccount = false;
-  spend = 0;
+  // Spent today on the OpenRouter key (local calendar day); null until first read.
+  todaySpend: number | null = null;
+  // When a flat-rate plan (Z.ai) has used up its allowance: the reset time it gave
+  // (HH:MM, or '' if none was given); null while the plan has allowance.
+  planResetAt: string | null = null;
   rateLimit: { limit: number; remaining: number; reset: number } | null = null;
   transcript: TranscriptEntry[] = [];
   history: ModelMessage[] = [];
@@ -67,7 +69,6 @@ class SessionStore {
   transcriptScrollMax = Number.POSITIVE_INFINITY;
 
   private turnEvents: { t: number; tokens: number }[] = [];
-  private creditBaselineUsed: number | null = null;
 
   private nextId = 1;
   private version = 0;
@@ -375,42 +376,22 @@ class SessionStore {
     return this.turnEvents.filter((event) => event.t >= cutoff).reduce((sum, event) => sum + event.tokens, 0);
   }
 
-  setHiddenMetrics(metrics: string[]): void {
-    this.hiddenMetrics = metrics;
-    this.emit();
-  }
-
-  // Tab is an optional zoom-in: it expands one metric into a wide bar, cycling
-  // through them and wrapping back to the always-visible compact view.
-  tabFooter(): void {
-    const all = ['session', 'context', 'cache', 'today', 'credit', 'speed'];
-    const visible = all.filter((metric) => !this.hiddenMetrics.includes(metric));
-    if (visible.length === 0) {
-      this.footerExpanded = null;
-      this.emit();
-      return;
-    }
-    if (this.footerExpanded === null) {
-      this.footerExpanded = visible[0];
-    } else {
-      const index = visible.indexOf(this.footerExpanded);
-      this.footerExpanded = visible[index + 1] ?? null;
-    }
-    this.emit();
-  }
-
-  escapeFooter(): void {
-    this.footerExpanded = null;
-    this.emit();
-  }
-
   setCredit(used: number, limit: number, remaining: number, accountWide: boolean): void {
-    if (this.creditBaselineUsed === null) this.creditBaselineUsed = used;
-    this.spend = Math.max(0, used - this.creditBaselineUsed);
     this.creditUsed = used;
     this.creditLimit = limit;
     this.creditRemaining = remaining;
     this.creditIsAccount = accountWide;
+    this.emit();
+  }
+
+  setTodaySpend(amount: number): void {
+    this.todaySpend = amount;
+    this.emit();
+  }
+
+  setPlanResetAt(value: string | null): void {
+    if (this.planResetAt === value) return;
+    this.planResetAt = value;
     this.emit();
   }
 

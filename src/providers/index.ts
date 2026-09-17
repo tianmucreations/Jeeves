@@ -1,5 +1,7 @@
 import type { Provider } from './types.js';
-import { createOpenRouterProvider, fetchCreditInfo } from './openrouter.js';
+import { createOpenRouterProvider, fetchCreditInfo, fetchKeyUsage } from './openrouter.js';
+import { getSpendReading, setSpendReading } from '../platform/config.js';
+import { nextSpendReading, spentToday } from '../state/today-spend.js';
 import { createOllamaProvider } from './ollama.js';
 import { createZaiProvider } from './zai.js';
 import { session } from '../state/session.js';
@@ -149,6 +151,7 @@ export function getActiveProvider(): Provider {
 // Local Ollama has no credit balance, and failures are silent.
 export async function refreshCredit(): Promise<void> {
   if (session.providerId !== 'openrouter') return;
+  void refreshTodaySpend();
   const managementKey = await getKey('openrouter-management');
   if (managementKey) {
     const info = await fetchCreditInfo(managementKey);
@@ -162,6 +165,16 @@ export async function refreshCredit(): Promise<void> {
   if (info) {
     session.setCredit(info.used, info.limit, info.remaining, false);
   }
+}
+
+// Today's spend on the key Jeeves uses, in the user's local calendar day.
+async function refreshTodaySpend(): Promise<void> {
+  if (!resolvedKey) return;
+  const usage = await fetchKeyUsage(resolvedKey);
+  if (usage === null) return;
+  const reading = nextSpendReading(getSpendReading(), usage, new Date());
+  setSpendReading(reading);
+  session.setTodaySpend(spentToday(reading));
 }
 
 // Which providers have a key in the OS credential store.

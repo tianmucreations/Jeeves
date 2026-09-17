@@ -1,7 +1,7 @@
 import { session } from '../state/session.js';
 import { getActiveProvider, refreshCredit } from '../providers/index.js';
 import { getTools } from '../tools/index.js';
-import { buildTurnMessages, getSystemPrompt } from './context.js';
+import { buildTurnMessages, getSystemPrompt, contextLimitFor, shouldAutoSummarise, summariseHistory } from './context.js';
 import { plainError, type ErrorKind } from './errors.js';
 import { toggleVerbose } from '../commands/verbose.js';
 import { openModelPicker } from '../commands/model.js';
@@ -34,6 +34,10 @@ export async function runTurn(input: string): Promise<void> {
   }
 
   session.addUser(input);
+  // A long conversation is summarised before it fills the model's memory.
+  if (shouldAutoSummarise(session.estimateContextTokens(), contextLimitFor(session.model, session.models))) {
+    await summariseHistory('auto');
+  }
   session.beginTurn();
   session.setStatus('working');
   let assistantId: number | null = null;
@@ -69,11 +73,13 @@ export async function runTurn(input: string): Promise<void> {
     session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);
     session.setRateLimit(result.rateLimit);
     void refreshCredit();
+    session.setPlanResetAt(null);
     session.setStatus('idle');
   } catch (error) {
     const plain = plainError(error, session.providerId);
     if (assistantId !== null) session.finishAssistant(assistantId);
     session.addError(plain.message);
+    if (plain.resetAt !== undefined) session.setPlanResetAt(plain.resetAt);
     // The technical text stays off screen unless /verbose is on.
     if (session.verbose && plain.detail) session.addNotice(`Technical details: ${plain.detail}`);
     session.setStatus(DISCONNECTING.has(plain.kind) ? 'disconnected' : 'idle');

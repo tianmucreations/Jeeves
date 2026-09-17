@@ -48,6 +48,21 @@ export async function fetchCreditInfo(apiKey: string): Promise<CreditInfo | null
   }
 }
 
+// The key's all-time spend in dollars, from GET /api/v1/key (field "usage",
+// confirmed against a live response). Used to work out today's spend in local time.
+export async function fetchKeyUsage(apiKey: string): Promise<number | null> {
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/key', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { data?: { usage?: number } };
+    return typeof body.data?.usage === 'number' ? body.data.usage : null;
+  } catch {
+    return null;
+  }
+}
+
 function headerNumber(headers: Record<string, string> | undefined, name: string): number | null {
   const raw = headers?.[name];
   if (raw === undefined) return null;

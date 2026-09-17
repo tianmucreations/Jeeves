@@ -65,14 +65,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       s.toggleShowLastReasoning();
       return;
     }
-    if (key.tab) {
-      s.tabFooter();
-      return;
-    }
-    if (key.escape) {
-      s.escapeFooter();
-      return;
-    }
     // The alternate screen has no native scrollback, so these keys scroll the
     // transcript region itself (Claude Code's bindings): arrows move 3 rows,
     // Page Up/Down a full page, End jumps back to the newest and re-follows.

@@ -17,7 +17,6 @@ export const KEY_BINDINGS: HelpEntry[] = [
   { command: 'up down', description: 'move in lists' },
   { command: 'Enter', description: 'select' },
   { command: 'Esc', description: 'go back' },
-  { command: 'Tab', description: 'zoom a number in the bottom bar' },
   { command: 'Ctrl+R', description: "show the model's last thinking" },
   { command: 'y / n', description: 'allow or deny a permission request' },
   { command: 'arrows', description: 'scroll the conversation up and down; Page Up / Page Down jump a whole screen; End returns to the newest' },

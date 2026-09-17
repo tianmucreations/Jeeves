@@ -6,7 +6,7 @@ import { Input } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session, useSession } from './state/session.js';
 import { initKeys, hasCredentials, refreshCredit } from './providers/index.js';
-import { getHiddenMetrics, getFavorites, getRecents, getRecentProjects, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
+import { getFavorites, getRecents, getRecentProjects, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
 import { loadModels } from './models/registry.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
@@ -32,7 +32,6 @@ export function App() {
   const separator = '─'.repeat(inner);
 
   useEffect(() => {
-    session.setHiddenMetrics(getHiddenMetrics());
     session.setFavorites(getFavorites());
     session.setRecents(getRecents());
     session.setRecentProjects(getRecentProjects());
