@@ -29,6 +29,7 @@ import React, { useEffect, useInsertionEffect } from 'react';
 import { Box, useStdout } from 'ink';
 import { createRequire } from 'node:module';
 import { DEFAULT_CURSOR } from './cursor.js';
+import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './mouse.js';
 import { killAllRunningCommands } from '../tools/runBash.js';
 
 type SignalExit = (
@@ -62,9 +63,8 @@ function write(data: string): void {
 
 // Claude Code's Ink fork exposes this on the render instance; stock Ink has no
 // such method, so the notification lives here: the flag that says the alternate
-// screen owns the terminal, consulted by every exit path below. The mouseTracking
-// parameter keeps the fork-shaped API; the app does not enable mouse reporting
-// (copy-on-select was reverted - the terminal's own selection is used instead).
+// screen owns the terminal, consulted by every exit path below. Mouse tracking
+// is now genuinely on (wheel scrolling), so the flag reports it truthfully.
 export function setAltScreenActive(active: boolean, mouseTracking: boolean): void {
   altScreenActive = active;
   void mouseTracking;
@@ -73,11 +73,12 @@ export function setAltScreenActive(active: boolean, mouseTracking: boolean): voi
 // Hands the terminal back. Safe to call from anywhere, any number of times.
 // The scrollback erase follows the switch back because macOS Terminal.app
 // archives the app's own frames into the scrollback at hand-back (measured),
+// mouse tracking is switched off so the terminal's own selection works again,
 // and the cursor shape returns to the shell default with the cursor back on.
 export function leaveAltScreen(): void {
   if (!altScreenActive) return;
   altScreenActive = false;
-  write(LEAVE_ALT_SCREEN + ERASE_SCROLLBACK + DEFAULT_CURSOR + SHOW_CURSOR);
+  write(LEAVE_ALT_SCREEN + ERASE_SCROLLBACK + DISABLE_MOUSE_TRACKING + DEFAULT_CURSOR + SHOW_CURSOR);
 }
 
 // The terminal must always be restored, and any command the agent is running
@@ -107,13 +108,15 @@ export function AlternateScreen({ children }: { children: React.ReactNode }) {
 
   // Entered once, before the first frame, in Claude Code's order: take over
   // the window first, then clear the fresh alternate screen, erase the
-  // scrollback the switch archived, and home the cursor. Because the main
+  // scrollback the switch archived, home the cursor, and enable SGR mouse
+  // tracking so wheel events reach the app (the alternate screen has no native
+  // scrollback - wheel gestures scroll the transcript instead). Because the main
   // screen is never wiped, the shell's own screen survives for a perfect
   // restore on exit. The cursor is hidden for the same reason Ink's own mode
   // hides it. Empty dependency array: this runs exactly once, on mount.
   useInsertionEffect(() => {
-    write(ENTER_ALT_SCREEN + CLEAR_SCREEN + ERASE_SCROLLBACK + HOME_CURSOR + HIDE_CURSOR);
-    setAltScreenActive(true, false);
+    write(ENTER_ALT_SCREEN + CLEAR_SCREEN + ERASE_SCROLLBACK + HOME_CURSOR + HIDE_CURSOR + ENABLE_MOUSE_TRACKING);
+    setAltScreenActive(true, true);
     registerCleanup();
   }, []);
 

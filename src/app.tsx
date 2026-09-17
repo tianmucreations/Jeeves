@@ -97,7 +97,7 @@ export function App() {
       <Box height={1}>
         <Text dimColor>│ </Text>
         <Box width={inner - 2}>
-          <Input scrollPage={midHeight} />
+          <Input scrollPage={midHeight} width={inner - 2} />
         </Box>
         <Text dimColor> │</Text>
       </Box>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { session } from '../state/session.js';
 import { getAddress, setAddress } from '../platform/config.js';
+import { isMouseSequence } from '../ink/mouse.js';
 
 // The first-launch question, in Jeeves' own voice, asked once before the project
 // picker whenever no address is saved; /address reopens the same screen later.
@@ -10,6 +11,7 @@ export function AddressPrompt({ rows }: { rows: number }) {
   const firstRun = session.launchStage === 'address';
 
   useInput((input, key) => {
+    if (isMouseSequence(input)) return;
     if (key.return) {
       const address = value.trim() || getAddress() || 'Sir';
       setAddress(address.slice(0, 30));

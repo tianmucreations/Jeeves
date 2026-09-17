@@ -1,15 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Text, useCursor, useInput, useStdout } from 'ink';
 import { runTurn } from '../agent/loop.js';
 import { answerApproval } from '../agent/permissions.js';
 import { useSession } from '../state/session.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
+import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
+import { inputView, dropLastChar } from './input-layout.js';
 
-export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
+export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; width?: number }) {
   const [value, setValue] = useState('');
+  // The text lives in a ref as well as state: the keystroke handler reads and
+  // writes the ref, so two keys arriving before React re-renders never build on
+  // a stale value.
+  const valueRef = useRef('');
   const s = useSession();
   const { stdout } = useStdout();
   const { setCursorPosition } = useCursor();
+  const view = inputView(valueRef.current, width);
+  const showingText = !s.approvalPending && s.transcriptScrollUp === 0;
+
+  // The block cursor sits at the text insertion point: two columns in (the
+  // border's │ and its padding space) plus the visible text's width, measured
+  // with stringWidth so wide characters count. y is the input row, third from
+  // the bottom (info bar, bottom border, input); inputFrameRow carries the +1
+  // Ink's fullscreen frames need. Set during render, as Ink documents: useCursor
+  // hands the position to Ink in its own useInsertionEffect, which runs before
+  // this commit's frame is written - a useLayoutEffect call runs after that and
+  // only lands a frame late (measured: the cursor stayed hidden when the window
+  // opened). Hidden while the row shows a hint instead of the text.
+  setCursorPosition(
+    showingText ? { x: 2 + view.width, y: inputFrameRow(stdout.rows ?? 24) } : undefined
+  );
 
   // The terminal's real cursor becomes a steady block for the whole session; it is
   // restored to the shell's default shape by the AlternateScreen exit paths.
@@ -22,6 +43,13 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
   }, []);
 
   useInput((input, key) => {
+    // SGR mouse events arrive as CSI chunks Ink cannot resolve; the wheel
+    // scrolls the transcript and every other mouse event is consumed here so
+    // none of it ever lands in the text.
+    if (isMouseSequence(input)) {
+      handleMouseInput(input);
+      return;
+    }
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
     if (s.approvalPending) {
       const answer = input.toLowerCase();
@@ -70,10 +98,11 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
     }
     // Anything typed while reading history returns to the newest first.
     if (key.return) {
-      const text = value.trim();
+      const text = valueRef.current.trim();
       // /exit is honoured even mid-turn so a wedged request can never trap the user.
       if (text === '/exit' || (text && s.status !== 'working')) {
         s.followTranscript();
+        valueRef.current = '';
         setValue('');
         void runTurn(text);
       }
@@ -81,22 +110,15 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
     }
     if (key.backspace || key.delete) {
       s.followTranscript();
-      setValue((v) => v.slice(0, -1));
+      valueRef.current = dropLastChar(valueRef.current);
+      setValue(valueRef.current);
       return;
     }
     if (!input || key.ctrl || key.meta) return;
     s.followTranscript();
-    setValue((v) => v + input);
+    valueRef.current += input;
+    setValue(valueRef.current);
   });
-
-  // The block cursor sits exactly at the text insertion point, tracking typing and
-  // screen changes. Coordinates are relative to the Ink frame origin (the alternate
-  // screen's home). The input row is the third row from the bottom (border 1,
-  // separator 1 below it); inputFrameRow carries the +1 that Ink's fullscreen
-  // frames require (the cursor draws one row above the y passed). Text starts two
-  // columns in - the border's │ and its padding space - so x = 2 + value.length.
-  // There is no "> " prompt character; the block cursor alone marks the position.
-  setCursorPosition({ x: 2 + value.length, y: inputFrameRow(stdout.rows ?? 24) });
 
   if (s.approvalPending) {
     return <Text color="yellow">y = allow · n = deny</Text>;
@@ -109,9 +131,19 @@ export function Input({ scrollPage = 10 }: { scrollPage?: number }) {
     return <Text dimColor>reading history — press End to return</Text>;
   }
 
+  // Trailing spaces are dimmed: invisible on screen, but it makes the frame's
+  // bytes differ from the same text without them, keeping Ink on its full-frame
+  // path (see input-layout.ts).
   return (
     <Text>
-      {value ? <Text>{value}</Text> : <Text dimColor>ask anything</Text>}
+      {value ? (
+        <Text>
+          {view.text}
+          {view.trailingSpaces ? <Text dimColor>{view.trailingSpaces}</Text> : null}
+        </Text>
+      ) : (
+        <Text dimColor>ask anything</Text>
+      )}
     </Text>
   );
 }

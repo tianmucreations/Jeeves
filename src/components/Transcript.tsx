@@ -1,14 +1,17 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
-import { useSession, type TranscriptEntry } from '../state/session.js';
+import { session, useSession, type TranscriptEntry } from '../state/session.js';
 import { buildDisplayLines } from './transcript-layout.js';
 
 // Claude Code's ScrollBox pattern (ch13-14-terminal-ui.md): the outer box clips at
 // the viewport with overflow="hidden" and flexGrow={1}, so the transcript fills
 // every row left over by the fixed header, input, and footer slots - no dead space.
-// The inner box slides the whole content up with a negative top margin as the user
-// scrolls; scrollTop is clamped between 0 and contentHeight - viewportHeight, both
-// measured live. While scrollTop is 0 the newest line sits at the bottom edge
+// The content is anchored to the bottom (justifyContent flex-end), so the inner box
+// scrolls with a negative BOTTOM margin, which pushes it down past the bottom edge
+// and brings older lines in at the top. (A negative top margin, as in Claude Code's
+// top-anchored ScrollBox, does nothing to a bottom-anchored box - measured with
+// renderToString: the same last lines showed at every offset.) scrollTop is
+// clamped between 0 and contentHeight - viewportHeight, both measured live. While scrollTop is 0 the newest line sits at the bottom edge
 // (auto-follow): new content arrives and the view stays pinned to it.
 export function Transcript({ width }: { width: number }) {
   const s = useSession();
@@ -30,10 +33,14 @@ export function Transcript({ width }: { width: number }) {
   // Virtual scroll: never above the first line, never below the newest.
   const maxScroll = Math.max(0, content.height - viewport.height);
   const scrollTop = Math.min(s.transcriptScrollUp, maxScroll);
+  // The session clamps key and wheel scrolling to this same limit.
+  useEffect(() => {
+    session.setTranscriptScrollMax(maxScroll);
+  }, [maxScroll]);
 
   return (
     <Box flexDirection="column" overflow="hidden" flexGrow={1} justifyContent="flex-end" ref={outer}>
-      <Box flexDirection="column" flexShrink={0} marginTop={-scrollTop} ref={inner}>
+      <Box flexDirection="column" flexShrink={0} marginBottom={-scrollTop} ref={inner}>
         {lines.map((line, index) => (
           <Text key={index} color={line.color} dimColor={line.dim}>
             {line.text}

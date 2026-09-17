@@ -62,6 +62,9 @@ class SessionStore {
   lastReasoning = '';
   // Lines the transcript view is scrolled up from the bottom; 0 means "follow the newest".
   transcriptScrollUp = 0;
+  // The furthest the transcript can scroll up (contentHeight - viewportHeight),
+  // reported by the Transcript from its live measurements.
+  transcriptScrollMax = Number.POSITIVE_INFINITY;
 
   private turnEvents: { t: number; tokens: number }[] = [];
   private creditBaselineUsed: number | null = null;
@@ -316,13 +319,23 @@ class SessionStore {
 
   // Internal scrolling for the alternate-screen era: the terminal's own scrollback is
   // unavailable there, so the transcript region scrolls itself. Positive deltas go up
-  // (older); the count is clamped to zero so the view can never sink past the newest.
+  // (older); the count is clamped between zero (the newest) and the measured maximum
+  // (the oldest), so overshooting the top never leaves wheel or arrow presses to
+  // unwind before the view moves again.
   scrollTranscript(delta: number): void {
     if (delta === 0) return;
-    const next = Math.max(0, this.transcriptScrollUp + delta);
+    const next = Math.min(this.transcriptScrollMax, Math.max(0, this.transcriptScrollUp + delta));
     if (next === this.transcriptScrollUp) return;
     this.transcriptScrollUp = next;
     this.emit();
+  }
+
+  setTranscriptScrollMax(max: number): void {
+    this.transcriptScrollMax = Math.max(0, max);
+    if (this.transcriptScrollUp > this.transcriptScrollMax) {
+      this.transcriptScrollUp = this.transcriptScrollMax;
+      this.emit();
+    }
   }
 
   followTranscript(): void {

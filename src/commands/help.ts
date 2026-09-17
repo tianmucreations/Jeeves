@@ -21,4 +21,6 @@ export const KEY_BINDINGS: HelpEntry[] = [
   { command: 'Ctrl+R', description: "show the model's last thinking" },
   { command: 'y / n', description: 'allow or deny a permission request' },
   { command: 'arrows', description: 'scroll the conversation up and down; Page Up / Page Down jump a whole screen; End returns to the newest' },
+  { command: 'wheel', description: 'the trackpad or mouse wheel scrolls the conversation too' },
+  { command: 'copying', description: 'hold Fn and drag to select text (Option in iTerm2, Shift elsewhere)' },
 ];

@@ -21,7 +21,7 @@ On first launch you are asked for an OpenRouter API key, which is stored securel
 
 Everything is visible on screen: arrow keys move, Enter selects, Esc goes back. `Tab` zooms a footer metric. `Ctrl+R` reveals the model's last reasoning. Slash commands: `/model`, `/keys`, `/verbose`.
 
-Jeeves takes over the whole terminal window (the same way vim does). The shell's own scrollback is unavailable while it runs, so the up and down arrows scroll the conversation instead - `Page Up` / `Page Down` jump a whole screen. When you quit, the terminal returns exactly as it was.
+Jeeves takes over the whole terminal window (the same way vim does). The shell's own scrollback is unavailable while it runs, so the trackpad, mouse wheel, and up and down arrows scroll the conversation instead - `Page Up` / `Page Down` jump a whole screen and `End` returns to the newest. To select text for copying, hold `Fn` while dragging in Terminal.app (`Option` in iTerm2, `Shift` in most other terminals). When you quit, the terminal returns exactly as it was.
 
 ## Providers
 
