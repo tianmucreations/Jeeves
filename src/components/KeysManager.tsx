@@ -53,7 +53,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   function statusFor(rowId: string): string {
     if (rowId === 'openrouter') {
       if (getKeySource() === 'keychain') return 'key stored in your Mac keychain';
-      if (getKeySource() === 'env') return 'key in the .env development file';
+      if (getKeySource() === 'env') return 'key in a local file - add it with /keys to store it safely';
       return stored.includes('openrouter') ? 'key stored in your Mac keychain' : 'no key';
     }
     if (rowId === 'openrouter-management') {
@@ -64,7 +64,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     if (rowId === 'zai') {
       return stored.includes('zai') ? 'key stored - GLM Coding Plan ready' : 'no key - add one to use the flat plan';
     }
-    if (rowId === 'ollama') return 'local - no key needed';
+    if (rowId === 'ollama') return 'runs on this computer - no key needed';
     return stored.includes(rowId) ? 'key saved - direct connection coming' : 'add key with /keys';
   }
 
@@ -140,7 +140,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       refreshStored();
       const message =
         fallback === 'env'
-          ? 'The key was removed from your keychain - the .env development key is still active.'
+          ? 'The key was removed from your keychain - a key in a local file is still being used.'
           : 'The key was removed. You are signed out until a new key is added.';
       if (fallback !== 'env') session.setStatus('disconnected');
       setPhase({ kind: 'saved', message });
@@ -156,7 +156,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       await deleteKey(provider);
       refreshStored();
       void refreshCredit();
-      setPhase({ kind: 'saved', message: 'The management key was removed - the info bar shows the key cap again.' });
+      setPhase({ kind: 'saved', message: "The management key was removed - the info bar shows the key's spending limit again." });
       return;
     }
     await deleteKey(provider);
@@ -249,7 +249,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       const row = KEY_ROWS[cursor];
       if (!row || row.id === 'ollama') {
         if (mode === 'wizard' && row?.id === 'ollama') {
-          finishWizard('Ollama runs locally - no key needed.', false);
+          finishWizard('Ollama runs on this computer - no key needed.', false);
         }
         return;
       }
@@ -280,7 +280,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           : phase.kind === 'saved'
             ? 'Saved'
             : mode === 'wizard'
-              ? 'Which provider should provide your AI?'
+              ? 'Which AI service should do the thinking?'
               : 'Keys - stored in your Mac keychain';
 
   const hint =

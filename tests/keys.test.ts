@@ -31,7 +31,8 @@ describe('key validation', () => {
 
   it('describes the key source in plain English', () => {
     expect(describeKeySource('keychain')).toContain('keychain');
-    expect(describeKeySource('env')).toContain('.env');
+    expect(describeKeySource('env')).toContain('local file');
+    expect(describeKeySource('env')).not.toContain('.env');
     expect(describeKeySource(null)).toBe('no key');
   });
 });

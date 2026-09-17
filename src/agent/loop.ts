@@ -28,7 +28,7 @@ export async function runTurn(input: string): Promise<void> {
     } else if (input === '/exit') {
       session.requestExit();
     } else {
-      session.addNotice('Unknown command. Try /help.');
+      session.addNotice("I don't know that command - type /help to see them all.");
     }
     return;
   }
@@ -71,9 +71,11 @@ export async function runTurn(input: string): Promise<void> {
     void refreshCredit();
     session.setStatus('idle');
   } catch (error) {
-    const plain = plainError(error);
+    const plain = plainError(error, session.providerId);
     if (assistantId !== null) session.finishAssistant(assistantId);
     session.addError(plain.message);
+    // The technical text stays off screen unless /verbose is on.
+    if (session.verbose && plain.detail) session.addNotice(`Technical details: ${plain.detail}`);
     session.setStatus(DISCONNECTING.has(plain.kind) ? 'disconnected' : 'idle');
   }
 }

@@ -24,7 +24,7 @@ if (existsSync(envPath)) {
 // Graceful degradation: without an interactive terminal there is nothing to draw,
 // so explain in plain English instead of crashing on raw mode.
 if (!process.stdin.isTTY) {
-  console.error('This app needs an interactive terminal window to run.');
+  console.error('This needs to be opened in a Terminal window.');
   process.exit(1);
 }
 

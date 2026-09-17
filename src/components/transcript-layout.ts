@@ -44,18 +44,25 @@ function wrapWithPrefix(s: string, width: number, prefix: string, indent: string
   return raw.map((line, index) => (index === 0 ? prefix + line : indent + line));
 }
 
+// The tools' everyday names on screen; the internal names are for the model only.
+const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: 'Run' };
+
+export function toolName(tool: string): string {
+  return TOOL_NAMES[tool] ?? tool;
+}
+
 function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'; dim?: boolean } {
   if (d.state === 'awaiting') {
-    return { text: `? ${d.tool} ${d.summary} — allow? (y/n)`, color: 'yellow' };
+    return { text: `? ${toolName(d.tool)} ${d.summary} — allow? (y/n)`, color: 'yellow' };
   }
   if (d.state === 'running') {
-    return { text: `… ${d.tool} ${d.summary}`, dim: true };
+    return { text: `… ${toolName(d.tool)} ${d.summary}`, dim: true };
   }
   if (d.state === 'declined') {
-    return { text: `✗ ${d.tool} declined`, color: 'red' };
+    return { text: `✗ ${toolName(d.tool)} ${clipLine(d.summary, 50)} - you said no`, color: 'red' };
   }
   if (d.state === 'failed') {
-    return { text: `✗ ${d.tool} failed: ${clipLine(d.label, 60)}`, color: 'red' };
+    return { text: `✗ ${toolName(d.tool)} failed: ${clipLine(d.label, 60)}`, color: 'red' };
   }
   return { text: `✓ ${d.label}` };
 }

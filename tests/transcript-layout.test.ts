@@ -59,6 +59,23 @@ describe('buildDisplayLines', () => {
     expect(lines[1].text).toContain('failed');
   });
 
+  it('shows tools by their everyday names, never the internal ones', () => {
+    const entries: TranscriptEntry[] = [
+      { id: 1, kind: 'tool', data: { tool: 'writeFile', summary: 'notes.txt (12 characters)', state: 'awaiting', label: '' } },
+      { id: 2, kind: 'tool', data: { tool: 'runBash', summary: 'npm test', state: 'running', label: '' } },
+      { id: 3, kind: 'tool', data: { tool: 'runBash', summary: 'rm old.txt', state: 'declined', label: '' } },
+      { id: 4, kind: 'tool', data: { tool: 'readFile', summary: 'x', state: 'failed', label: "couldn't find that file or folder" } },
+    ];
+    const text = buildDisplayLines(entries, 80).map((line) => line.text);
+    expect(text).toEqual([
+      '? Write notes.txt (12 characters) — allow? (y/n)',
+      '… Run npm test',
+      '✗ Run rm old.txt - you said no',
+      "✗ Read failed: couldn't find that file or folder",
+    ]);
+    expect(text.join(' ')).not.toMatch(/writeFile|runBash|readFile|listDir/);
+  });
+
   it('renders reasoning dim and errors red', () => {
     const entries: TranscriptEntry[] = [
       { id: 1, kind: 'reasoning', text: 'thinking aloud' },

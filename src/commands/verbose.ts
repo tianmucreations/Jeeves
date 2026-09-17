@@ -5,5 +5,5 @@ import { setVerbosePreference } from '../platform/config.js';
 export function toggleVerbose(): string {
   session.setVerbose(!session.verbose);
   setVerbosePreference(session.verbose);
-  return session.verbose ? 'Verbose reasoning: on' : 'Verbose reasoning: off';
+  return session.verbose ? "Showing the model's thinking and technical details: on" : "Showing the model's thinking and technical details: off";
 }

@@ -80,7 +80,7 @@ export function Footer() {
         value: s.creditLimit - s.creditRemaining,
         max: s.creditLimit,
         unit: 'used',
-        suffix: `· $${s.creditRemaining.toFixed(2)} ${s.creditIsAccount ? 'left' : 'key cap'}`,
+        suffix: `· $${s.creditRemaining.toFixed(2)} ${s.creditIsAccount ? 'left' : 'key limit'}`,
       };
     } else if (s.footerExpanded === 'speed' && s.rateLimit && s.rateLimit.limit > 0) {
       bar = {
@@ -133,7 +133,7 @@ export function Footer() {
           {s.creditRemaining !== null
             ? s.creditIsAccount
               ? `$${s.creditRemaining.toFixed(2)} left`
-              : `$${s.creditRemaining.toFixed(2)} key cap`
+              : `$${s.creditRemaining.toFixed(2)} key limit`
             : '$— left'}
         </Text>
       ),

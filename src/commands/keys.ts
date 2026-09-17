@@ -10,6 +10,6 @@ export function keyLooksValid(key: string, provider: string): boolean {
 
 export function describeKeySource(source: 'keychain' | 'env' | null): string {
   if (source === 'keychain') return 'key stored in your Mac keychain';
-  if (source === 'env') return 'key in the .env development file';
+  if (source === 'env') return 'key in a local file - add it with /keys to store it safely';
   return 'no key';
 }

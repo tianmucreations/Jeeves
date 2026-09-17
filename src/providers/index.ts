@@ -23,7 +23,7 @@ export const PROVIDER_ROWS = [
   { id: 'xai', label: 'xAI', description: 'direct connection' },
   { id: 'groq', label: 'Groq', description: 'direct connection' },
   { id: 'mistral', label: 'Mistral', description: 'direct connection' },
-  { id: 'ollama', label: 'Ollama', description: 'local models, no key needed' },
+  { id: 'ollama', label: 'Ollama', description: 'models on this computer, no key needed' },
 ];
 
 export function getKeySource(): 'keychain' | 'env' | null {
@@ -61,9 +61,9 @@ export async function initKeys(): Promise<void> {
     const moved = await setKey('openrouter', envKey);
     if (moved) {
       removeEnvFile();
-      session.addNotice('Your API key was moved from the .env file into your Mac keychain. The .env file has been removed.');
+      session.addNotice('Your key was moved from a local file into your Mac keychain, and the file was removed.');
     } else {
-      session.addNotice('The Mac keychain was not reachable, so the .env development file is being used. Run /keys to store the key securely.');
+      session.addNotice('The Mac keychain was not reachable, so the key is being read from a local file for now. Type /keys to store it securely.');
     }
     resolvedKey = envKey;
     keySource = moved ? 'keychain' : 'env';
@@ -131,12 +131,12 @@ export function getActiveProvider(): Provider {
   }
   if (session.providerId === 'zai') {
     if (!zaiKey) {
-      throw new Error('No Z.ai key found. Add one with /keys.');
+      throw new Error('No Z.ai key yet. Add one with /keys.');
     }
     return createZaiProvider(zaiKey);
   }
   if (!resolvedKey) {
-    throw new Error('No OpenRouter API key found. Add one with /keys.');
+    throw new Error('No OpenRouter API key yet. Add one with /keys.');
   }
   if (!active) {
     active = createOpenRouterProvider(resolvedKey);

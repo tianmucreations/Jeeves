@@ -24,12 +24,20 @@ function describeError(error: unknown): string {
 export function plainToolFailure(error: unknown): string {
   const raw = describeError(error);
   const text = raw.toLowerCase();
-  if (text.includes('enoent')) return 'file or folder not found';
-  if (text.includes('eacces') || text.includes('eperm')) return 'permission denied';
-  if (text.includes('timed out') || text.includes('etimedout') || text.includes('stopped after')) return 'took too long';
+  // Codes and meanings per the Node.js docs' "Common system errors" list.
+  if (text.includes('enoent')) return "couldn't find that file or folder";
+  if (text.includes('eacces') || text.includes('eperm')) return "the computer wouldn't allow it";
+  if (text.includes('eisdir')) return 'that is a folder, not a file';
+  if (text.includes('enotdir')) return 'part of that location is not a folder';
+  if (text.includes('eexist')) return 'something with that name already exists';
+  if (text.includes('enotempty')) return 'that folder is not empty';
+  if (text.includes('no space left')) return 'the disk is full';
+  if (text.includes('timed out') || text.includes('etimedout') || text.includes('stopped after') || text.includes("didn't finish")) return 'took too long';
   if (text.includes('binary file')) return 'not a text file';
-  const firstLine = raw.split('\n')[0].trim();
-  return firstLine.length > 0 ? firstLine : 'failed';
+  if (text.includes('needs an interactive terminal')) return 'that program needs typing in a window of its own';
+  // Anything unrecognised stays off screen; the model receives the full message
+  // and explains it in plain English.
+  return 'something unexpected went wrong'
 }
 
 function clip(text: string, max: number): string {

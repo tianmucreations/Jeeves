@@ -175,7 +175,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       const matched = fuzzyMatch(pool, query);
       const flat: Item[] = [{ kind: 'back' }];
       if (providerChoice === 'ollama') {
-        flat.push({ kind: 'header', label: 'Ollama (local)' });
+        flat.push({ kind: 'header', label: 'Ollama (on this computer)' });
         for (const model of matched) flat.push({ kind: 'model', model });
       } else {
         const groups = groupModels(matched);
@@ -334,7 +334,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       if (key.return) {
         if (pending) {
           applyModel(pending);
-          s.addNotice('Chat-only mode - this model cannot call tools.');
+          s.addNotice("Chat-only mode - this model can't read files or run commands.");
         }
         s.closePicker();
       } else if (key.escape) {
@@ -459,7 +459,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   if (step === 'providers') {
     return (
       <Box flexDirection="column" height={rows}>
-        <Text dimColor>Choose an AI provider</Text>
+        <Text dimColor>Choose an AI service</Text>
         <Box flexDirection="column" flexGrow={1}>
           {PROVIDER_ROWS.map((row, index) => {
             const enabled = providerEnabled(row.id);
@@ -552,7 +552,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const emptyMessage =
     providerChoice === 'ollama'
       ? ollamaModels === null
-        ? 'Loading local models…'
+        ? 'Loading the models on this computer…'
         : ollamaModels.length === 0
           ? 'Could not reach Ollama - is the app still running?'
           : ''
@@ -572,7 +572,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
 
   const hint =
     phase === 'tool-warning'
-      ? `This model can't call tools, so reading files and running commands won't work.  Enter: continue in chat-only mode · Esc: pick another`
+      ? `This model can't use tools, so it can't read files or run commands.  Enter: continue in chat-only mode · Esc: pick another`
       : phase === 'switch-confirm'
         ? `Keep this conversation (k) · Summarise it first (s) · Start fresh (f) · Esc: cancel`
         : `Tab list · ↑↓ move · type to search · + favorite · Enter select · Esc back`;
@@ -596,7 +596,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         <Text>{query}</Text>
         <Text dimColor>{query ? '' : 'type to filter'}</Text>
       </Box>
-      <Text dimColor>context in tokens · prices per million tokens · ✓ tools · » fast</Text>
+      <Text dimColor>memory in tokens (word pieces) · price per million tokens · ✓ tools · » fast</Text>
       <Box flexDirection="column" height={listHeight}>
         {emptyMessage ? (
           <Text dimColor>

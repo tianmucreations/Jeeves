@@ -64,7 +64,7 @@ export async function loadModels(): Promise<{ models: ModelInfo[]; error: string
     if (cache) {
       return { models: normalizeModels(cache.raw), error: 'Could not refresh the model list - showing the saved copy.' };
     }
-    return { models: [], error: `Could not load the model list: ${error instanceof Error ? error.message : String(error)}` };
+    return { models: [], error: "Could not load the model list - check the internet connection, then open /model again." };
   }
 }
 

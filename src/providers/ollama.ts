@@ -92,7 +92,7 @@ export function mapOllamaTags(body: unknown): ModelInfo[] {
 
 export async function listLocalOllamaModels(): Promise<ModelInfo[]> {
   const response = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(1500) });
-  if (!response.ok) throw new Error('local Ollama did not respond');
+  if (!response.ok) throw new Error('Ollama on this computer did not respond');
   return mapOllamaTags(await response.json());
 }
 
