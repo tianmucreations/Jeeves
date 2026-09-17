@@ -8,8 +8,9 @@ import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
 import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
-import { isAuto, workingModelId, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion } from './auto.js';
-import { requestApproval } from './permissions.js';
+import { isAuto, workingModelId, AUTO_WORKER_MODEL, AUTO_EXPERT_MODEL, AUTO_TOP_MODEL, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion, reviewFinishedJob, REVIEW_FINISHED_JOBS } from './auto.js';
+import { requestApproval, isReadOnlyBashCommand } from './permissions.js';
+import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportSpend, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
@@ -68,6 +69,7 @@ export async function runTurn(input: string): Promise<void> {
   let countedSteps = 0;
   session.beginTurn();
   session.setStatus('working');
+  const turnStart = session.transcript.length;
   let assistantId: number | null = null;
   try {
     const provider = getActiveProvider();
@@ -77,7 +79,7 @@ export async function runTurn(input: string): Promise<void> {
     const toolCapable = !currentModel || isToolCapable(currentModel);
     const tools = toolCapable ? { ...getTools(), ...(auto ? { askExpert: createAskExpertTool(autoState) } : {}) } : {};
     const note = !toolCapable ? CHAT_ONLY_NOTE : auto ? AUTO_NOTE.replaceAll('{{ADDRESS}}', getAddress() ?? 'Sir') : '';
-    const result = await provider.stream({
+    const streamOptions: StreamOptions = {
       modelId,
       messages,
       tools,
@@ -120,11 +122,37 @@ export async function runTurn(input: string): Promise<void> {
         if (assistantId !== null) session.setAssistantText(assistantId, '');
         session.closeReasoningEntry();
       },
-    });
+    };
+    let result = await provider.stream(streamOptions);
+    let allMessages = [...messages, ...result.messages];
+    // Auto's compulsory final check, once, when this job changed files.
+    const changedFiles = session.transcript
+      .slice(turnStart)
+      .some(
+        (entry) =>
+          entry.kind === 'tool' &&
+          entry.data.state === 'done' &&
+          (entry.data.tool === 'writeFile' || (entry.data.tool === 'runBash' && !isReadOnlyBashCommand(entry.data.summary)))
+      );
+    if (auto && REVIEW_FINISHED_JOBS && changedFiles && !stop.signal.aborted) {
+      for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportSpend(cost);
+      countedSteps = result.stepCosts?.length ?? countedSteps;
+      const review = await reviewFinishedJob(allMessages);
+      if (review && !review.ok) {
+        countedSteps = 0;
+        if (assistantId !== null) session.setAssistantText(assistantId, '');
+        const fixMessages = [
+          ...allMessages,
+          { role: 'user' as const, content: `An expert reviewed your work and found problems:\n${review.advice}\nFix them, check the result again, then tell the person briefly what was wrong and what you changed.` },
+        ];
+        result = await provider.stream({ ...streamOptions, messages: fixMessages });
+        allMessages = [...fixMessages, ...result.messages];
+      }
+    }
     if (assistantId === null) assistantId = session.startAssistant();
     session.setAssistantText(assistantId, result.text);
     session.finishAssistant(assistantId);
-    session.setHistory([...messages, ...result.messages]);
+    session.setHistory(allMessages);
     session.setLastReasoning(result.reasoning);
     session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);
     session.setRateLimit(result.rateLimit);

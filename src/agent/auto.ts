@@ -70,6 +70,44 @@ export function conversationForExpert(messages: ModelMessage[], maxChars = 80_00
   return text.length > maxChars ? '…[earlier conversation shortened]\n' + text.slice(-maxChars) : text;
 }
 
+// Off until the owner chooses (17 Sept comparison): with Claude Sonnet 5 reviewing, the
+// hard calculator job went from 2 of 5 to 2 of 2, but each job cost about $0.05 and
+// took 5-7 minutes; a DeepSeek V4 Pro reviewer broke a job the cheap model gets right.
+export const REVIEW_FINISHED_JOBS = process.env.JEEVES_REVIEW === '1';
+
+export const REVIEW_INSTRUCTIONS = `You are the expert reviewer for an assistant doing a job on a computer for someone with no technical background. The assistant believes the job is finished. You see the whole conversation: the request, every action, every file written, and every result.
+Check the work against what the person asked for - including cases the request clearly implies but does not list.
+If nothing is wrong, reply with exactly: OK
+Otherwise reply with a short numbered list of the concrete problems, each saying what input or situation goes wrong and what should happen instead. Do not rewrite the work yourself. Never guess: only report problems the conversation shows.`;
+
+// The compulsory final check: when Auto changed files, the expert reviews the work
+// before the person is told it is done. In testing the cheap model never chose to
+// consult before finishing, so this is not left to its judgement.
+export async function reviewFinishedJob(messages: ModelMessage[], expertModel = AUTO_EXPERT_MODEL): Promise<{ ok: boolean; advice: string } | null> {
+  const key = getOpenRouterKey();
+  if (!key) return null;
+  const lineId = session.addToolLine('askExpert', 'final check of the work', 'running');
+  session.setActiveModel(expertModel);
+  try {
+    const reply = await openrouterChat(key, {
+      model: expertModel,
+      messages: [
+        { role: 'system', content: REVIEW_INSTRUCTIONS },
+        { role: 'user', content: `Conversation:\n${conversationForExpert(messages, 80_000, 6_000)}` },
+      ],
+      max_tokens: 1500,
+    });
+    const ok = /^\s*OK\s*\.?\s*$/i.test(reply.text);
+    session.updateToolLine(lineId, { state: 'done', label: ok ? 'Expert checked the work' : 'Expert found something to fix' });
+    return { ok, advice: reply.text };
+  } catch {
+    session.updateToolLine(lineId, { state: 'failed', label: 'the expert was not available' });
+    return null;
+  } finally {
+    session.setActiveModel(AUTO_WORKER_MODEL);
+  }
+}
+
 export interface AutoTurnState {
   expertTookOver: boolean;
   // The step at which the expert took over (-1 until then), so later failures are
