@@ -34,6 +34,21 @@ describe('system prompt', () => {
     }
   });
 
+  it('forbids guessing: checked facts only, general knowledge flagged with an offer to confirm', () => {
+    for (const rule of [
+      'Facts, Not Guesses',
+      'Never guess and never assume.',
+      'Only state something as fact when you have checked it in this conversation',
+      'That is general knowledge rather than checked fact, {{ADDRESS}}. Shall I confirm it before we rely on it?',
+      '"I don\'t know" and "I haven\'t checked that yet" are always acceptable answers.',
+      'Never invent file names, folder names, commands, settings, version numbers, prices, dates, or quotations.',
+      'Remove any claim you have not checked, or mark it plainly as unchecked.',
+    ]) {
+      expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
+    }
+    expect(buildSystemPrompt('Sir')).toContain('rather than checked fact, Sir. Shall I confirm it');
+  });
+
   it('substitutes the saved address for {{ADDRESS}}', () => {
     expect(buildSystemPrompt('Madam')).toContain('You address the user as Madam.');
     expect(buildSystemPrompt('Madam')).not.toContain('{{ADDRESS}}');
