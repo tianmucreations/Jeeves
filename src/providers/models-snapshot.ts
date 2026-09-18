@@ -771,6 +771,17 @@ export const MODELS_SNAPSHOT: Catalogue = {
    }
   },
   {
+   "id": "zai-glm-5-3",
+   "name": "GLM-5.3",
+   "released": "2026-08-14",
+   "context": 1000000,
+   "cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cacheRead": 0.14
+   }
+  },
+  {
    "id": "open-mixtral-8x22b",
    "name": "Mixtral 8x22B",
    "released": "2024-04-17",
