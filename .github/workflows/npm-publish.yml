@@ -22,4 +22,13 @@ jobs:
       - run: npm ci
       - run: npm run build --if-present
       - run: npm test
-      - run: npm publish
+      # A version already on npm is never published twice (a re-sent release marker
+      # would otherwise fail the run).
+      - name: Publish unless this version is already on npm
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@tianmucreations/jeeves@$VERSION" version >/dev/null 2>&1; then
+            echo "Version $VERSION is already on npm - nothing to publish."
+          else
+            npm publish
+          fi
