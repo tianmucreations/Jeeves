@@ -18,9 +18,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: ['24']
         include:
-          # The oldest Node.js Jeeves supports (package.json "engines").
+          # The oldest Node.js Jeeves supports (package.json "engines": 22.12).
           - os: ubuntu-latest
-            node: '20'
+            node: '22.12'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6

@@ -1,2 +1,9 @@
 #!/usr/bin/env node
-import '../dist/index.js';
+// Jeeves's add-ons need Node.js 22.12 or newer (execa, ink and the AI SDK need 22;
+// commander needs 22.12). An older Node.js gets a plain message instead of a crash.
+const [major, minor] = process.versions.node.split('.').map(Number);
+if (major < 22 || (major === 22 && minor < 12)) {
+  console.error(`Jeeves needs Node.js 22.12 or newer, and this computer has ${process.versions.node}. Download the current version from nodejs.org, install it, then open Jeeves again.`);
+  process.exit(1);
+}
+await import('../dist/index.js');

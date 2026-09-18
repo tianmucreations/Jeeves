@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, symlinkSync, statSync, chmodSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, symlinkSync, statSync, chmodSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CheckpointStore, MAX_FILE_BYTES } from '../src/checkpoints/store.js';
@@ -30,8 +29,13 @@ describe('backups and undo', () => {
     write('notes/todo.md', '- milk');
     const store = new CheckpointStore(storeRoot, folder);
     await store.create('tidy my folder');
-    // What a shell command might do: edit, delete, rename, create a folder of files.
-    execSync('printf "changed" > letter.txt && rm notes/todo.md && mkdir -p new/deep && printf x > new/deep/a.txt && mv letter.txt letter-old.txt', { cwd: folder });
+    // What a shell command might do: edit, delete, rename, create a folder of files
+    // (done directly, so the test runs the same on Windows).
+    write('letter.txt', 'changed');
+    rmSync(path.join(folder, 'notes', 'todo.md'));
+    mkdirSync(path.join(folder, 'new', 'deep'), { recursive: true });
+    write('new/deep/a.txt', 'x');
+    renameSync(path.join(folder, 'letter.txt'), path.join(folder, 'letter-old.txt'));
     const result = await store.restore((await store.latestUndoable())!);
     expect(read('letter.txt')).toBe('Dear Sir');
     expect(read('notes/todo.md')).toBe('- milk');
@@ -67,7 +71,8 @@ describe('backups and undo', () => {
     expect(second.files['run.sh'].hash).toBe(first.files['run.sh'].hash);
     rmSync(path.join(folder, 'run.sh'));
     await store.restore(second, 3);
-    expect(statSync(path.join(folder, 'run.sh')).mode & 0o777).toBe(0o755);
+    // Windows has no such permissions to keep.
+    if (process.platform !== 'win32') expect(statSync(path.join(folder, 'run.sh')).mode & 0o777).toBe(0o755);
   });
 
   it("leaves the person's own .git history and rebuildable add-on folders alone", async () => {

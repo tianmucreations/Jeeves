@@ -11,7 +11,7 @@ Designed and built for **macOS, Windows, and Linux** from a single codebase.
 
 ## Quick start (local development)
 
-1. Install Node.js 20 or later.
+1. Install Node.js 22.12 or later (from nodejs.org).
 2. `npm install`
 3. `npm run dev`
 

@@ -14,7 +14,9 @@ describe('runBash hangs never lock the app', () => {
     // Bare cat with no file would wait for keyboard input forever; with stdin
     // coming from /dev/null it reads end-of-file and exits at once.
     const started = Date.now();
-    const result = await runRunBash({ command: 'cat' });
+    // Windows runs PowerShell, where "cat" means something else; reading all of the
+    // input is the same test there.
+    const result = await runRunBash({ command: process.platform === 'win32' ? '[Console]::In.ReadToEnd()' : 'cat' });
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(result).toContain('exit code: 0');
     expect(result).not.toContain('stdout:\n0');
