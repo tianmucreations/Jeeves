@@ -4,7 +4,10 @@ import type { StepUsage } from './catalogue.js';
 
 // Failed tool actions in one step. A person saying no to a permission is not a failure.
 export function countToolFailures(content: readonly { type: string; error?: unknown }[]): number {
-  return content.filter((part) => part.type === 'tool-error' && !String(part.error).includes('Permission denied by the user')).length;
+  // Nor is an action held until research is done (research-gate.ts).
+  return content.filter(
+    (part) => part.type === 'tool-error' && !String(part.error).includes('Permission denied by the user') && !String(part.error).includes('Held for research:')
+  ).length;
 }
 
 // OpenRouter's own cost figure for one step, from its usage accounting.

@@ -45,7 +45,7 @@ function wrapWithPrefix(s: string, width: number, prefix: string, indent: string
 }
 
 // The tools' everyday names on screen; the internal names are for the model only.
-const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: 'Run', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert' };
+const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: 'Run', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
 
 export function toolName(tool: string): string {
   return TOOL_NAMES[tool] ?? tool;
@@ -60,6 +60,10 @@ function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'
   }
   if (d.state === 'declined') {
     return { text: `✗ ${toolName(d.tool)} ${clipLine(d.summary, 50)} - you said no`, color: 'red' };
+  }
+  // Held until research is done: not a failure and not a refusal, so neither red nor alarming.
+  if (d.state === 'held') {
+    return { text: `· ${toolName(d.tool)} ${clipLine(d.summary, 50)} - ${d.label}`, dim: true };
   }
   if (d.state === 'failed') {
     return { text: `✗ ${toolName(d.tool)} failed: ${clipLine(d.label, 60)}`, color: 'red' };

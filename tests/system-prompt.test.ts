@@ -70,7 +70,7 @@ describe('input cursor row geometry', () => {
 describe('web research rules', () => {
   it('research before stating outside facts, from official sources, with the quote', () => {
     for (const rule of [
-      'You have six tools: readFile, listDir, writeFile, runBash, webSearch, readWebPage.',
+      'You have seven tools: readFile, listDir, writeFile, runBash, webSearch, readWebPage, noteResearch.',
       'webSearch to find where to look. Its snippets are not checked facts.',
       "readWebPage on the most official source: the maker's own website, documentation, release list, or registry",
       'State the fact only once readWebPage has returned the exact quote',

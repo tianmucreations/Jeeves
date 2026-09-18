@@ -5,7 +5,9 @@ models. Every check was proven to FAIL on the untouched job and PASS on a correc
 solution (reference/ holds those correct solutions).
 
 Jobs: chat, research, bugfix, csv, euros, countdown, split, sydney, bank (everyday to
-moderately hard) and calc, fifo, todo (very hard).
+moderately hard) and calc, fifo, todo (very hard). Added 18 Sept for plan step 1b: newbuild (a new timer
+page must be researched - a page opened and a note recorded - before it is written) and
+skipresearch (the same job with "Skip the research": no search, built directly).
 
 Run (from the project folder), for example the cheap model on two jobs, twice:
   PLAN="deepseek/deepseek-v4-flash-0731|calc|1,deepseek/deepseek-v4-flash-0731|calc|2" BUDGET=1 npx tsx bench/bench.mts

@@ -8,6 +8,15 @@ import { listDirSchema, runListDir } from './listDir.js';
 import { runBashSchema, runRunBash } from './runBash.js';
 import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage } from './web/research.js';
 import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
+import { resolveFromCwd } from '../platform/paths.js';
+import {
+  holdForWrite,
+  holdForCommand,
+  recordCommandResult,
+  recordNote,
+  noteResearchSchema,
+  HELD_PREFIX,
+} from '../agent/research-gate.js';
 
 // Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
 const MAX_RESULT_CHARS = 150_000;
@@ -63,6 +72,9 @@ function defineTool<S extends z.ZodObject>(config: {
   changesFiles?: (input: z.output<S>) => boolean;
   // A plain warning shown before asking, when /undo could not reverse this action.
   warning?: (input: z.output<S>) => string | null;
+  // Checked before anything is asked or done (as Claude Code's validateInput): a
+  // reason the action is held, which goes back to the model, or null.
+  hold?: (input: z.output<S>) => Promise<string | null> | string | null;
 }) {
   return tool({
     description: config.description,
@@ -71,6 +83,12 @@ function defineTool<S extends z.ZodObject>(config: {
       // The SDK validates before execute; parsing again keeps this layer strictly typed.
       const input = config.schema.parse(rawInput);
       const summary = config.summarize(input);
+      const held = (await config.hold?.(input)) ?? null;
+      if (held) {
+        const heldLine = session.addToolLine(config.name, summary, 'running');
+        session.updateToolLine(heldLine, { state: 'held', label: 'waits until the research is done' });
+        throw new Error(held);
+      }
       const needsPermission =
         typeof config.permission === 'function' ? config.permission(input) : config.permission;
       const warning = config.warning?.(input) ?? null;
@@ -133,6 +151,7 @@ export const TOOLS: ToolSet = {
     summarize: (input) => `${input.path} (${input.content.length} characters)`,
     label: () => 'Wrote 1 file',
     run: runWriteFile,
+    hold: (input) => holdForWrite(input.path, resolveFromCwd(input.path), process.cwd()),
     changesFiles: () => true,
     warning: (input) =>
       isOutsideProject(input.path)
@@ -166,7 +185,15 @@ export const TOOLS: ToolSet = {
     permission: (input) => !isReadOnlyBashCommand(input.command),
     summarize: (input) => clip(input.command, 60),
     label: (input) => `Ran ${clip(input.command, 60)}`,
-    run: runRunBash,
+    run: async (input) => {
+      const output = await runRunBash(input);
+      // Looking around (a search that finds nothing exits 1) is not a problem to research.
+      if (isReadOnlyBashCommand(input.command)) return output;
+      const exit = output.match(/^exit code: (\d+|unknown)$/m)?.[1];
+      const note = recordCommandResult(input.command, exit === undefined || exit === 'unknown' ? null : Number(exit), output);
+      return note ? output + note : output;
+    },
+    hold: (input) => (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
     changesFiles: (input) => !isReadOnlyBashCommand(input.command),
     warning: (input) =>
       !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
@@ -174,6 +201,25 @@ export const TOOLS: ToolSet = {
         : null,
   }),
 };
+
+// Research before building or patching: the note that releases a hold. Shown to the
+// person in full, because code can make research happen but not make it good.
+TOOLS.noteResearch = defineTool({
+  name: 'noteResearch',
+  description:
+    'Record your research before building something new (kind "build") or after the same failure twice (kind "problem"). List only pages you opened with readWebPage in this conversation.',
+  schema: noteResearchSchema,
+  permission: false,
+  summarize: (input) => clip(input.subject, 60),
+  label: (_input, result) => (result.startsWith('Recorded') ? 'Research noted' : 'Research note not accepted yet'),
+  run: async (input) => {
+    const outcome = recordNote(input);
+    if (outcome.shown) session.addNotice(outcome.shown);
+    return outcome.reply;
+  },
+});
+
+export { HELD_PREFIX };
 
 export function getTools(): ToolSet {
   return TOOLS;

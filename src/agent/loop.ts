@@ -15,6 +15,7 @@ import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
 import { startTurnCheckpoints, undoLastChange } from '../checkpoints/index.js';
+import { noteSkipRequest } from './research-gate.js';
 
 // Added to the rulebook when the chosen model cannot use tools, so a task request
 // gets a plain answer instead of a pretend attempt.
@@ -62,6 +63,9 @@ export async function runTurn(input: string): Promise<void> {
   }
 
   session.addUser(input);
+  // "Skip the research" must come from the person, so it is read from their own words.
+  const skipped = noteSkipRequest(input);
+  if (skipped) session.addNotice(skipped);
   startTurnCheckpoints(input);
   startJob();
   // Nothing is sent once today's limit is reached, unless the person agrees.

@@ -29,8 +29,22 @@ const JOBS: Record<string, { prompt: string; fixture?: string; check: (dir: stri
   calc: { fixture: 'calc', prompt: "Make the calculator in calc.js handle proper sums: + - * / ^ and brackets, with the usual order (^ first, and 2^3^2 means 2^(3^2)), a minus sign in front of a number (-2^2 is -4, 2*-3 is -6). If the sum isn't valid - like '1 +', '2(3)', unmatched brackets, dividing by zero, or letters - it must throw an error instead of giving a number.", check: (d) => runCheck('calc', d) },
   fifo: { fixture: 'fifo', prompt: "My share tracker in stock.js gives the wrong profits. The rules are written at the top of the file and the test shows one case. Please fix it so it follows all the rules, without changing the test.", check: (d) => runCheck('fifo', d, h4) },
   todo: { fixture: 'todo', prompt: "Write todo.js, a to-do list I run with node todo.js. Commands: 'add <text>' prints 'Added <n>: <text>'; 'done <n>' prints 'Done <n>: <text>'; 'remove <n>' prints 'Removed <n>: <text>'; 'list' prints each as '<n>. [ ] <text>' or '<n>. [x] <text>', or 'Nothing to do.' when empty. Numbers start at 1 and are never reused. Save everything in todos.json as {\"items\": [...], \"nextId\": <number>}. If the number doesn't exist print 'There is no to-do number <n>.'; 'add' with no text prints 'Say what to add, like: todo add Buy milk'; if todos.json is damaged print 'The to-do file is damaged, so nothing was changed.' and leave it untouched. All errors must exit with a non-zero code.", check: (d) => runCheck('todo', d) },
+  // Research before building (plan step 1b): a new program in an empty folder must be
+  // researched - a page opened and a note recorded - before the first file is written.
+  newbuild: { prompt: 'Make me a simple countdown timer web page, timer.html: I type a number of minutes, press Start, and it counts down to zero.', check: (d, _t, tools) => researchedFirst(tools) && builtTimer(d) },
+  skipresearch: { prompt: 'Make me a simple countdown timer web page, timer.html: I type a number of minutes, press Start, and it counts down to zero. Skip the research.', check: (d, _t, tools) => !tools.some((x) => x.includes('webSearch') || x.includes('noteResearch')) && builtTimer(d) },
   countdown: { fixture: 'countdown', prompt: 'The countdown sometimes shows the wrong number of days. The tests show the problem - please fix it without changing the tests.', check: (d) => runCheck('countdown', d, h2) },
 };
+function builtTimer(dir: string): boolean {
+  const file = `${dir}/timer.html`;
+  return fs.existsSync(file) && /<input/i.test(fs.readFileSync(file, 'utf8'));
+}
+function researchedFirst(tools: string[]): boolean {
+  const note = tools.findIndex((x) => x.startsWith('✓ noteResearch:Research noted'));
+  const opened = tools.findIndex((x) => x.startsWith('✓ readWebPage'));
+  const wrote = tools.findIndex((x) => x.startsWith('✓ writeFile'));
+  return note >= 0 && opened >= 0 && opened < note && note < wrote;
+}
 function runCheck(job: string, dir: string, hash = ''): boolean {
   try { execSync(`node ${B}/checks/${job}.js ${dir} ${hash}`, { stdio: 'pipe', timeout: 60000 }); return true; } catch { return false; }
 }
@@ -72,7 +86,7 @@ for (const entry of plan) {
   const tools = session.transcript.filter((e: any) => e.kind === 'tool').map((e: any) => `${e.data.state === 'done' ? '✓' : '✗'} ${e.data.tool}:${(e.data.label || e.data.summary).slice(0, 50)}`);
   const text = session.transcript.filter((e: any) => ['assistant', 'error', 'notice'].includes(e.kind)).map((e: any) => e.text).join(' | ');
   const pass = !crashed && spec.check(dir, text, tools);
-  const row = { model, job, rep, pass, cost: +(spentThisSession() - before).toFixed(4), seconds: Math.round((Date.now() - t) / 1000), expert: tools.some((x) => x.includes('askExpert')), takeover: session.activeModel !== null && session.activeModel !== 'deepseek/deepseek-v4-flash-0731' && model === 'jeeves/auto', steps: tools.length, crashed, text: text.slice(0, 300) };
+  const row = { model, job, rep, pass, cost: +(spentThisSession() - before).toFixed(4), seconds: Math.round((Date.now() - t) / 1000), expert: tools.some((x) => x.includes('askExpert')), takeover: session.activeModel !== null && session.activeModel !== 'deepseek/deepseek-v4-flash-0731' && model === 'jeeves/auto', steps: tools.length, tools, crashed, text: text.slice(0, 300) };
   fs.appendFileSync(out, JSON.stringify(row) + '\n');
   log(`${pass ? 'PASS' : 'FAIL'} ${model}${process.env.JEEVES_EXPERT_MODEL ? ' reviewer=' + process.env.JEEVES_EXPERT_MODEL : ''} ${job}#${rep} $${row.cost} ${row.seconds}s tools=${tools.length} expert=${row.expert}${crashed ? ' CRASH ' + crashed : ''}`);
   log(`    tools: ${tools.filter((x) => x.includes('askExpert')).join(' ; ')}`);

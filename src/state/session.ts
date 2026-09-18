@@ -4,7 +4,7 @@ import type { ModelInfo } from '../models/registry.js';
 
 export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
 
-export type ToolLineState = 'awaiting' | 'running' | 'done' | 'failed' | 'declined';
+export type ToolLineState = 'awaiting' | 'running' | 'done' | 'failed' | 'declined' | 'held';
 
 // Assumption: z-ai/glm-5.3's context length; the Phase 6 model registry replaces this constant.
 export const DEFAULT_CONTEXT_TOKENS = 1_310_720;
