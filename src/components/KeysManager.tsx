@@ -10,22 +10,22 @@ import {
   storedKeyProviders,
   getKeySource,
   refreshCredit,
+  storeDirectKey,
+  removeServiceKey,
+  customServiceName,
 } from '../providers/index.js';
+import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
+import { everydayModel } from '../providers/catalogue.js';
+import { setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
 
-// Only services whose key Jeeves actually uses are listed. The model makers
-// (Anthropic, OpenAI...) are reached through OpenRouter, so a key for them would do
-// nothing. The optional OpenRouter management key (it unlocks the real account
-// balance) is for /keys only - the first-run wizard keeps to the essentials.
-const USED_KEYS = ['openrouter', 'zai', 'ollama'];
-const KEY_ROWS = [
-  PROVIDER_ROWS[0],
-  { id: 'openrouter-management', label: 'OpenRouter account' },
-  ...PROVIDER_ROWS.slice(1).filter((row) => USED_KEYS.includes(row.id)),
-];
-const WIZARD_ROWS = KEY_ROWS.filter((row) => row.id !== 'openrouter-management');
+// Every service Jeeves connects to. The optional OpenRouter management key (it unlocks
+// the real account balance) is for /keys only, and the compatible service needs its
+// address too, so it is set up in /model - the first-run wizard keeps to the essentials.
+const KEY_ROWS = [PROVIDER_ROWS[0], { id: 'openrouter-management', label: 'OpenRouter account' }, ...PROVIDER_ROWS.slice(1)];
+const WIZARD_ROWS = KEY_ROWS.filter((row) => row.id !== 'openrouter-management' && row.id !== CUSTOM_SERVICE_ID);
 
 type Phase =
   | { kind: 'ask' }
@@ -70,7 +70,10 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return stored.includes('zai') ? 'key stored - GLM Coding Plan ready' : 'no key - add one to use the flat plan';
     }
     if (rowId === 'ollama') return 'runs on this computer - no key needed';
-    return stored.includes(rowId) ? 'key saved - direct connection coming' : 'add key with /keys';
+    if (rowId === CUSTOM_SERVICE_ID) {
+      return stored.includes(rowId) ? `${customServiceName()} - address and key stored` : 'add it in /model, under Other service';
+    }
+    return stored.includes(rowId) ? 'key stored - direct connection ready' : 'no key';
   }
 
   function finishWizard(message: string, connected: boolean): void {
@@ -112,6 +115,36 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         finishWizard(message, true);
       } else {
         setPhase({ kind: 'saved', message });
+      }
+      return;
+    }
+    if (isDirectService(provider)) {
+      const label = directService(provider)!.label;
+      setNote(`Checking the key with ${label}…`);
+      const result = await storeDirectKey(provider, key);
+      setNote('');
+      if (result === 'rejected') {
+        setNote(`${label} didn't accept that key - press Enter to paste it again.`);
+        return;
+      }
+      if (result === 'keychain') {
+        setNote('The Mac keychain was not reachable - press Enter and try again.');
+        return;
+      }
+      refreshStored();
+      const unchecked = result === 'saved-unchecked' ? ` ${label} couldn't be reached to check it just now.` : '';
+      if (mode === 'wizard') {
+        // First launch: start straight away on the company's everyday model.
+        const model = await everydayModel(provider, key);
+        if (model) {
+          session.setProvider(provider);
+          session.setModel(model);
+          setDefaultProvider(provider);
+          setDefaultModel(model);
+        }
+        finishWizard(`Your ${label} key is saved.${unchecked} Jeeves will use ${model ?? 'its everyday model'} - type /model to change.`, true);
+      } else {
+        setPhase({ kind: 'saved', message: `Your ${label} key is saved.${unchecked} Choose ${label} in /model to use it.` });
       }
       return;
     }
@@ -164,8 +197,9 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       setPhase({ kind: 'saved', message: "The management key was removed - the info bar shows the key's spending limit again." });
       return;
     }
-    await deleteKey(provider);
+    await removeServiceKey(provider);
     refreshStored();
+    if (session.providerId === provider) session.setStatus('disconnected');
     setPhase({ kind: 'saved', message: `The saved key for ${rowLabel(provider)} was removed.` });
   }
 
@@ -252,6 +286,10 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     }
     if (key.return) {
       const row = visibleRows[cursor];
+      if (row?.id === CUSTOM_SERVICE_ID) {
+        setNote('Add it in /model, under Other service - it needs a web address as well as a key.');
+        return;
+      }
       if (!row || row.id === 'ollama') {
         if (mode === 'wizard' && row?.id === 'ollama') {
           finishWizard('Ollama runs on this computer - no key needed.', false);

@@ -34,8 +34,15 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.56",
+    "@ai-sdk/google": "^4.0.74",
+    "@ai-sdk/groq": "^4.0.44",
+    "@ai-sdk/mistral": "^4.0.46",
+    "@ai-sdk/openai": "^4.0.69",
+    "@ai-sdk/openai-compatible": "^3.0.51",
+    "@ai-sdk/xai": "^5.0.2",
     "@openrouter/ai-sdk-provider": "^3.0.0",
-    "ai": "^7.0.100",
+    "ai": "^7.0.105",
     "chalk": "^6.0.0",
     "commander": "^15.0.0",
     "conf": "^15.1.0",

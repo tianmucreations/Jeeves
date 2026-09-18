@@ -14,7 +14,21 @@ import {
   cleanModelName,
 } from '../models/registry.js';
 import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit, hasSavedDailyLimit } from '../platform/config.js';
-import { hasCredentials, hasCredentialsFor, storeZaiKey, PROVIDER_ROWS, storeOpenRouterKey, refreshCredit } from '../providers/index.js';
+import {
+  hasCredentials,
+  hasCredentialsFor,
+  storeZaiKey,
+  PROVIDER_ROWS,
+  storeOpenRouterKey,
+  refreshCredit,
+  storeDirectKey,
+  storeCustomService,
+  serviceKey,
+  customServiceName,
+} from '../providers/index.js';
+import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
+import { loadDirectModels, checkCustomService } from '../providers/catalogue.js';
+import { getCustomService } from '../platform/config.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
@@ -40,6 +54,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   google: 'Google',
   'x-ai': 'xAI',
+  xai: 'xAI (Grok)',
   groq: 'Groq',
   mistral: 'Mistral',
   ollama: 'Ollama',
@@ -52,23 +67,16 @@ type Item =
   | { kind: 'show-free'; count: number }
   | { kind: 'model'; model: ModelInfo; blurb?: string };
 type Phase = 'browse' | 'tool-warning';
-// Key entry happens inside the picker for Z.ai so a new user never leaves the flow.
+// Key entry happens inside the picker so a new user never leaves the flow.
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
-type Step = 'providers' | 'curated' | 'full' | 'key' | 'limit';
-// Which provider's catalog the picker is browsing.
-type ProviderChoice = 'openrouter' | 'ollama' | 'zai';
-
-// Model makers listed as services; they open their own models inside OpenRouter.
-const COMPANY_PREFIX: Record<string, string> = {
-  anthropic: 'anthropic',
-  openai: 'openai',
-  google: 'google',
-  xai: 'x-ai',
-  mistral: 'mistralai',
-  groq: '',
-};
+// The compatible service asks for its address first, then its key.
+type Step = 'providers' | 'curated' | 'full' | 'key' | 'address' | 'limit';
+// Which provider's catalog the picker is browsing: openrouter, zai, ollama, a
+// model maker's id (a direct connection), or custom (the compatible service).
+type ProviderChoice = string;
 
 function providerLabel(provider: string): string {
+  if (provider === CUSTOM_SERVICE_ID) return customServiceName();
   return PROVIDER_LABELS[provider] ?? provider;
 }
 
@@ -158,9 +166,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const [phase, setPhase] = useState<Phase>('browse');
   const [pending, setPending] = useState<ModelInfo | null>(null);
   const [keyValue, setKeyValue] = useState('');
-  // Which service the key prompt is for, and which company's models to show after it.
-  const [keyFor, setKeyFor] = useState<'openrouter' | 'zai'>('zai');
-  const [jumpTo, setJumpTo] = useState<string | null>(null);
+  // Which service the key prompt is for.
+  const [keyFor, setKeyFor] = useState<string>('zai');
+  // A direct connection's or the compatible service's models (null while loading).
+  const [directModels, setDirectModels] = useState<ModelInfo[] | null>(null);
+  const [addressValue, setAddressValue] = useState('');
+  // True while a key is being checked with its company.
+  const [checking, setChecking] = useState(false);
   const [limitValue, setLimitValue] = useState('');
   const [limitNote, setLimitNote] = useState('');
   const [limitReturn, setLimitReturn] = useState<'providers' | 'close'>('providers');
@@ -176,7 +188,14 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     };
   }, []);
 
-  const catalog = providerChoice === 'ollama' ? (ollamaModels ?? []) : providerChoice === 'zai' ? ZAI_MODELS : s.models;
+  const catalog =
+    providerChoice === 'ollama'
+      ? (ollamaModels ?? [])
+      : providerChoice === 'zai'
+        ? ZAI_MODELS
+        : providerChoice === 'openrouter'
+          ? s.models
+          : (directModels ?? []);
   const listHeight = Math.max(1, rows - 5);
 
   const items = useMemo<Item[]>(() => {
@@ -218,9 +237,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const visible = items.slice(start, start + listHeight);
   const highlighted = resolved >= 0 && items[resolved]?.kind === 'model' ? (items[resolved] as { model: ModelInfo }).model : null;
 
-  // Every row does something when chosen: OpenRouter and Z.ai ask for their key
-  // right here if it is missing; the model makers open their own models inside
-  // OpenRouter (direct connections to them are not built).
+  // Every row does something when chosen: each service asks for its key right here
+  // if it is missing (the compatible service for its address first).
   function providerEnabled(rowId: string): boolean {
     if (rowId === 'ollama') return ollamaOnline === true;
     return true;
@@ -233,7 +251,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     return '';
   }
 
-  function askForKey(service: 'openrouter' | 'zai'): void {
+  // The compatible service's row names it once it has been added.
+  function rowDescription(row: { id: string; description: string }): string {
+    if (row.id === CUSTOM_SERVICE_ID && hasCredentialsFor(CUSTOM_SERVICE_ID)) return `${customServiceName()} - your compatible service`;
+    return row.description;
+  }
+
+  function askForKey(service: string): void {
     setKeyFor(service);
     setKeyValue('');
     setKeyNote('');
@@ -257,6 +281,23 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     setStep(big ? 'curated' : 'full');
   }
 
+  // A direct connection or the compatible service: its models load from the company.
+  function enterDirectStep(forProvider: string): void {
+    setProviderChoice(forProvider);
+    setQuery('');
+    setTab('all');
+    setCursor(1);
+    setDirectModels(null);
+    setStep('full');
+    const loading =
+      forProvider === CUSTOM_SERVICE_ID
+        ? checkCustomService(getCustomService()?.baseURL ?? '', serviceKey(CUSTOM_SERVICE_ID) ?? '').then((check) => (check.ok ? check.models : []))
+        : isDirectService(forProvider)
+          ? loadDirectModels(forProvider, serviceKey(forProvider) ?? '')
+          : Promise.resolve([]);
+    void loading.then(setDirectModels).catch(() => setDirectModels([]));
+  }
+
   function chooseProvider(): void {
     // The row under the services: the daily spending limit.
     if (providerCursor === PROVIDER_ROWS.length) {
@@ -269,16 +310,22 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     const row = PROVIDER_ROWS[providerCursor];
     if (!row) return;
     if (row.id === 'openrouter') {
-      setJumpTo(null);
       if (!hasCredentialsFor('openrouter')) return askForKey('openrouter');
       enterModelStep('openrouter');
     } else if (row.id === 'zai') {
       if (!hasCredentialsFor('zai')) return askForKey('zai');
       enterModelStep('zai');
-    } else if (row.id in COMPANY_PREFIX) {
-      setJumpTo(COMPANY_PREFIX[row.id]);
-      if (!hasCredentialsFor('openrouter')) return askForKey('openrouter');
-      openCompanyModels();
+    } else if (isDirectService(row.id)) {
+      if (!hasCredentialsFor(row.id)) return askForKey(row.id);
+      enterDirectStep(row.id);
+    } else if (row.id === CUSTOM_SERVICE_ID) {
+      if (!hasCredentialsFor(CUSTOM_SERVICE_ID)) {
+        setAddressValue('');
+        setKeyNote('');
+        setStep('address');
+        return;
+      }
+      enterDirectStep(CUSTOM_SERVICE_ID);
     } else if (row.id === 'ollama') {
       if (ollamaOnline !== true) return;
       enterModelStep('ollama');
@@ -288,27 +335,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     }
   }
 
-  // A model maker's row opens the full OpenRouter list at that company's models.
-  function openCompanyModels(): void {
-    setProviderChoice('openrouter');
-    setQuery('');
-    setTab('all');
-    setCursor(1);
-    setStep('full');
-  }
-
-  useEffect(() => {
-    if (step !== 'full' || jumpTo === null) return;
-    const header = items.findIndex((item) => item.kind === 'header' && item.label === providerLabel(jumpTo));
-    if (header >= 0) setCursor(header + 1);
-    setJumpTo(null);
-  }, [step, jumpTo, items]);
-
   function goBack(): void {
-    if (step === 'key') {
+    if (step === 'key' || step === 'address') {
       setKeyValue('');
       setKeyNote('');
-      setStep('providers');
+      setStep(step === 'key' && keyFor === CUSTOM_SERVICE_ID ? 'address' : 'providers');
       return;
     }
     if (step === 'full' && providerChoice === 'openrouter') {
@@ -379,7 +410,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   // The first time a model that costs money is chosen, the daily limit is set, so
   // spending is visible in the bar from the first message.
   function finishChoice(model: ModelInfo): void {
-    if (providerChoice === 'openrouter' && !isFreeModel(model) && !hasSavedDailyLimit()) {
+    const paid = providerChoice === 'openrouter' || isDirectService(providerChoice);
+    if (paid && !isFreeModel(model) && !hasSavedDailyLimit()) {
       setLimitReturn('close');
       setLimitValue('');
       setLimitNote('');
@@ -404,9 +436,86 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       }
       return;
     }
-    if (step === 'key') {
+    if (step === 'address') {
       if (key.escape) {
         goBack();
+        return;
+      }
+      if (key.return) {
+        if (addressValue.trim().length < 4) {
+          setKeyNote("Paste the service's web address - its documentation gives it - or Esc");
+          return;
+        }
+        askForKey(CUSTOM_SERVICE_ID);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setAddressValue((v) => v.slice(0, -1));
+        return;
+      }
+      if (!input || key.ctrl || key.meta) return;
+      setKeyNote('');
+      setAddressValue((v) => v + input);
+      return;
+    }
+    if (step === 'key') {
+      if (checking) return;
+      if (key.escape) {
+        goBack();
+        return;
+      }
+      if (key.return && keyFor === CUSTOM_SERVICE_ID) {
+        // A service on this computer may need no key, so an empty key is allowed here.
+        setChecking(true);
+        setKeyNote(`Checking ${addressValue.trim()}…`);
+        void storeCustomService(addressValue, keyValue.trim()).then((result) => {
+          setChecking(false);
+          setKeyValue('');
+          if (result === 'saved' || result === 'saved-unchecked') {
+            if (result === 'saved-unchecked') {
+              s.addNotice(`${customServiceName()} shows its models to anyone, so the key couldn't be checked yet. If it's wrong, you'll be told on your first message.`);
+            }
+            setKeyNote('');
+            enterDirectStep(CUSTOM_SERVICE_ID);
+          } else if (result === 'rejected') {
+            setKeyNote("The service didn't accept that key - paste it again, or Esc");
+          } else if (result === 'keychain') {
+            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+          } else {
+            setStep('address');
+            setKeyNote("Couldn't find a compatible service at that address - check it, or Esc");
+          }
+        });
+        return;
+      }
+      if (key.return && isDirectService(keyFor)) {
+        const trimmed = keyValue.trim();
+        const label = directService(keyFor)!.label;
+        if (!keyLooksValid(trimmed, keyFor)) {
+          setKeyNote('That looks too short to be a key - paste it again, or Esc');
+          setKeyValue('');
+          return;
+        }
+        setChecking(true);
+        setKeyNote(`Checking the key with ${label}…`);
+        void storeDirectKey(keyFor, trimmed).then((result) => {
+          setChecking(false);
+          setKeyValue('');
+          if (result === 'rejected') {
+            setKeyNote(`${label} didn't accept that key - paste it again, or Esc`);
+            return;
+          }
+          if (result === 'keychain') {
+            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            return;
+          }
+          if (result === 'saved-unchecked') {
+            s.addNotice(`Your ${label} key is saved, but ${label} couldn't be reached to check it. If it's wrong, you'll be told on your first message.`);
+          }
+          setKeyNote('');
+          if (s.status === 'disconnected') s.setStatus('idle');
+          enterDirectStep(keyFor);
+        });
         return;
       }
       if (key.return) {
@@ -431,8 +540,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           } else {
             void refreshCredit();
             if (s.status === 'disconnected') s.setStatus('idle');
-            if (jumpTo !== null) openCompanyModels();
-            else enterModelStep('openrouter');
+            enterModelStep('openrouter');
           }
         });
         return;
@@ -547,7 +655,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
             return (
               <Text key={row.id} inverse={selected} dimColor={!enabled && !selected}>
                 {column(' ' + row.label, 16)}
-                {enabled ? <Text dimColor>{row.description}</Text> : <Text>{providerHint(row.id)}</Text>}
+                {enabled ? <Text dimColor>{rowDescription(row)}</Text> : <Text>{providerHint(row.id)}</Text>}
               </Text>
             );
           })}
@@ -583,20 +691,52 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     );
   }
 
-  if (step === 'key') {
-    const service = keyFor === 'openrouter' ? 'OpenRouter' : 'Z.ai';
+  if (step === 'address') {
     return (
       <Box flexDirection="column" height={rows}>
-        <Text dimColor>{keyFor === 'openrouter' ? 'OpenRouter — one key unlocks 400+ models' : 'Z.ai — GLM Coding Plan'}</Text>
+        <Text dimColor>Other service — any service that accepts the OpenAI request format</Text>
+        <Box flexDirection="column" flexGrow={1} justifyContent="center">
+          <Text>
+            <Text>Paste the service's web address: </Text>
+            <Text>{addressValue}</Text>
+            <Text inverse> </Text>
+          </Text>
+          <Text dimColor>Its documentation gives it, for example https://api.together.xyz/v1</Text>
+        </Box>
+        {keyNote ? <Text color="yellow">{keyNote}</Text> : <Text dimColor>paste the address · Enter next · Esc back</Text>}
+      </Box>
+    );
+  }
+
+  if (step === 'key') {
+    const direct = directService(keyFor);
+    const service = keyFor === 'openrouter' ? 'OpenRouter' : keyFor === 'zai' ? 'Z.ai' : keyFor === CUSTOM_SERVICE_ID ? 'service' : (direct?.label ?? keyFor);
+    const title =
+      keyFor === 'openrouter'
+        ? 'OpenRouter — one key unlocks 400+ models'
+        : keyFor === 'zai'
+          ? 'Z.ai — GLM Coding Plan'
+          : keyFor === CUSTOM_SERVICE_ID
+            ? `Other service — ${addressValue.trim()}`
+            : `${service} — a direct connection with your own key`;
+    const where =
+      keyFor === 'openrouter'
+        ? 'Get one at openrouter.ai/settings/keys. '
+        : direct
+          ? `Get one at ${direct.keyPage}. `
+          : keyFor === CUSTOM_SERVICE_ID
+            ? 'No key needed for a service on this computer - just press Enter. '
+            : '';
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Text dimColor>{title}</Text>
         <Box flexDirection="column" flexGrow={1} justifyContent="center">
           <Text>
             <Text>Paste your {service} API key (it stays hidden): </Text>
             <Text dimColor>{keyValue ? `${keyValue.length} characters ` : ''}</Text>
             <Text inverse> </Text>
           </Text>
-          <Text dimColor>
-            {keyFor === 'openrouter' ? 'Get one at openrouter.ai/settings/keys. ' : ''}It is stored in your Mac keychain and never shown again.
-          </Text>
+          <Text dimColor>{where}It is stored in your Mac keychain and never shown again.</Text>
         </Box>
         {keyNote ? (
           <Text color="yellow">{keyNote}</Text>
@@ -676,6 +816,16 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         : ollamaModels.length === 0
           ? 'Could not reach Ollama - is the app still running?'
           : ''
+      : providerChoice !== 'openrouter' && providerChoice !== 'zai'
+        ? directModels === null
+          ? `Loading the ${providerLabel(providerChoice)} models…`
+          : directModels.length === 0
+            ? `Couldn't load the ${providerLabel(providerChoice)} models - check the internet connection, then open /model again.`
+            : items.length <= 1
+              ? query
+                ? `No models match "${query}".`
+                : 'No models in this list.'
+              : ''
       : s.models.length === 0 && s.modelsNote
         ? s.modelsNote
         : s.models.length === 0

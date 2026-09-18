@@ -3,6 +3,7 @@ import { Box, Text, useStdout } from 'ink';
 import { useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
+import { isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
 
 export function shortModelName(model: string): string {
   const short = model.split('/').pop();
@@ -34,7 +35,8 @@ const money = (value: number) => `$${value.toFixed(2)}`;
 // plan, whether it has allowance. Warnings appear only when they matter.
 export function footerSegments(info: FooterInfo): FooterSegment[] {
   const busy = info.busyNote ?? (info.tidying ? 'tidying up…' : null);
-  if (busy && info.providerId !== 'openrouter') return [{ text: busy }];
+  const direct = isDirectService(info.providerId);
+  if (busy && info.providerId !== 'openrouter' && !direct) return [{ text: busy }];
   if (info.providerId === 'zai') {
     if (info.planResetAt === null) return [{ text: 'flat-rate plan' }];
     const when = info.planResetAt ? ` · resets @ ${info.planResetAt}` : '';
@@ -43,17 +45,24 @@ export function footerSegments(info: FooterInfo): FooterSegment[] {
   if (info.providerId === 'ollama') {
     return [{ text: 'on this computer · free' }];
   }
+  // A compatible service lists no prices, so its spending can't be worked out.
+  if (info.providerId === CUSTOM_SERVICE_ID) {
+    return [{ text: 'cost not tracked' }];
+  }
   const spent = info.todaySpend ?? 0;
   // Compared in whole cents, so $2.40 of $3.00 is exactly 80%.
   const cents = Math.round(spent * 100);
   const limitCents = Math.round(info.allowance * 100);
   const segments: FooterSegment[] = [
     {
-      text: `today ${info.todaySpend === null ? '$—' : money(spent)} of ${money(info.allowance)}`,
+      // "~": worked out from the company's price list, not reported by it.
+      text: `today ${direct ? '~' : ''}${info.todaySpend === null ? '$—' : money(spent)} of ${money(info.allowance)}`,
       color: cents >= limitCents ? 'red' : cents * 10 >= limitCents * 8 ? 'yellow' : undefined,
     },
   ];
   if (busy) segments.unshift({ text: busy });
+  // The companies don't tell a key what credit is left.
+  if (direct) return segments;
   if (info.creditRemaining === null) {
     segments.push({ text: '$— left' });
     return segments;

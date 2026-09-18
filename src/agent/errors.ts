@@ -1,3 +1,6 @@
+import { directService, serviceNameFor, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
+import { getCustomService } from '../platform/config.js';
+
 export type ErrorKind = 'auth' | 'payment' | 'rate-limit' | 'network' | 'model' | 'context' | 'other';
 
 export interface PlainError {
@@ -13,6 +16,12 @@ export interface PlainError {
 function serviceName(providerId: string | undefined): string {
   if (providerId === 'zai') return 'Z.ai';
   if (providerId === 'ollama') return 'Ollama';
+  if (providerId === CUSTOM_SERVICE_ID) {
+    const saved = getCustomService();
+    return saved ? serviceNameFor(saved.baseURL) : 'The service';
+  }
+  const direct = providerId ? directService(providerId) : undefined;
+  if (direct) return direct.label;
   return 'OpenRouter';
 }
 
@@ -38,7 +47,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   const service = serviceName(providerId);
   const make = (message: string, kind: ErrorKind): PlainError => ({ message, kind, detail: raw });
 
-  if (text.includes('no openrouter api key') || text.includes('no z.ai key')) {
+  if (/^no .*\bkey\b/.test(text)) {
     return make("There's no key yet - type /keys to add one.", 'auth');
   }
   if (
@@ -47,6 +56,11 @@ export function plainError(error: unknown, providerId?: string): PlainError {
     text.includes('401') ||
     text.includes('unauthorized') ||
     text.includes('invalid api key') ||
+    // Google answers 400 "API key not valid"; OpenAI "Incorrect API key provided";
+    // Anthropic "invalid x-api-key".
+    text.includes('api key not valid') ||
+    text.includes('incorrect api key') ||
+    text.includes('invalid x-api-key') ||
     text.includes('not authenticated') ||
     text.includes('authentication failed') ||
     text.includes('user not found')
@@ -64,8 +78,17 @@ export function plainError(error: unknown, providerId?: string): PlainError {
       resetAt: reset ? reset[1] : '',
     };
   }
-  if (status === 402 || text.includes('402') || text.includes('insufficient') || text.includes('out of credit') || text.includes('quota')) {
-    return make(`${service} credit ran out - top up at openrouter.ai/credits, then ask again.`, 'payment');
+  if (
+    status === 402 ||
+    text.includes('402') ||
+    text.includes('insufficient') ||
+    text.includes('out of credit') ||
+    text.includes('quota') ||
+    // Anthropic: "Your credit balance is too low to access the Anthropic API".
+    text.includes('credit balance')
+  ) {
+    const topUp = service === 'OpenRouter' ? 'top up at openrouter.ai/credits' : `add credit on the ${service} website`;
+    return make(`${service} credit ran out - ${topUp}, then ask again.`, 'payment');
   }
   if (status === 429 || text.includes('429') || text.includes('rate limit') || text.includes('rate_limit') || text.includes('too many requests')) {
     return make(`${service} is asking us to slow down - wait a few seconds and ask again.`, 'rate-limit');

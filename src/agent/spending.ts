@@ -1,6 +1,7 @@
 import { session } from '../state/session.js';
 import { requestApproval } from './permissions.js';
-import { getDailyExtra, setDailyExtra } from '../platform/config.js';
+import { getDailyExtra, setDailyExtra, getEstimatedSpend, setEstimatedSpend } from '../platform/config.js';
+import { isEstimatedCostService } from '../providers/direct-services.js';
 import { localDate } from '../state/today-spend.js';
 
 // Spending guard rails. Costs come from OpenRouter's own figures (the cost it reports
@@ -35,9 +36,16 @@ export function spentThisSession(): number {
   return sessionTotal;
 }
 
-// Every paid request reports here.
-export function reportSpend(amount: number | undefined): void {
+// Every paid request reports here. A figure worked out from a price list (a direct
+// connection) is also saved, so today's total survives a restart; OpenRouter's own
+// figures are read back from OpenRouter instead.
+export function reportSpend(amount: number | undefined, estimated = false, now = new Date()): void {
   if (!amount || amount <= 0) return;
+  if (estimated) {
+    const saved = getEstimatedSpend();
+    const today = localDate(now);
+    setEstimatedSpend({ date: today, amount: (saved && saved.date === today ? saved.amount : 0) + amount });
+  }
   sessionTotal += amount;
   if (job) job.spent += amount;
   session.setTodaySpend((session.todaySpend ?? 0) + amount);
@@ -72,4 +80,9 @@ export async function withinLimits(now = new Date()): Promise<boolean> {
     job.nextAsk = job.spent + JOB_ASK_EVERY;
   }
   return true;
+}
+
+// A model's step costs, reported: estimated when the service in use is a direct connection.
+export function reportStepCost(amount: number | undefined, providerId = session.providerId): void {
+  reportSpend(amount, isEstimatedCostService(providerId));
 }

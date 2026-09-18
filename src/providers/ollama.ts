@@ -34,6 +34,9 @@ export function createOllamaProvider(): Provider {
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
         prepareStep: prepareStepFor(beforeStep, (id) => client.chat(id)),
         abortSignal,
+        // The library prints every failure to the screen by default, over Jeeves's
+        // window; the failure still arrives below and is explained in plain English.
+        onError: () => {},
       });
       let streamedError: unknown = null;
       for await (const part of result.stream) {

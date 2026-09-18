@@ -12,7 +12,7 @@ import { isAuto, workingModelId, workerModel, expertModel, topModel, AUTO_NOTE, 
 import { requestApproval, isReadOnlyBashCommand } from './permissions.js';
 import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
-import { startJob, endJob, reportSpend, withinLimits } from './spending.js';
+import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
 import { startTurnCheckpoints, undoLastChange } from '../checkpoints/index.js';
 
@@ -104,7 +104,7 @@ export async function runTurn(input: string): Promise<void> {
       instructions: getSystemPrompt() + note,
       abortSignal: stop.signal,
       beforeStep: async ({ stepFailures, stepCosts, messages: stepMessages }) => {
-        for (const cost of stepCosts.slice(countedSteps)) reportSpend(cost);
+        for (const cost of stepCosts.slice(countedSteps)) reportStepCost(cost);
         countedSteps = stepCosts.length;
         if (!(await withinLimits())) {
           stop.abort();
@@ -161,7 +161,7 @@ export async function runTurn(input: string): Promise<void> {
           (entry.data.tool === 'writeFile' || (entry.data.tool === 'runBash' && !isReadOnlyBashCommand(entry.data.summary)))
       );
     if (auto && REVIEW_FINISHED_JOBS && changedFiles && !stop.signal.aborted) {
-      for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportSpend(cost);
+      for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
       countedSteps = result.stepCosts?.length ?? countedSteps;
       const review = await reviewFinishedJob(allMessages);
       if (review && !review.ok) {
@@ -183,7 +183,7 @@ export async function runTurn(input: string): Promise<void> {
     session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);
     session.setRateLimit(result.rateLimit);
     void refreshCredit();
-    for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportSpend(cost);
+    for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
     session.setPlanResetAt(null);
     session.setActiveModel(auto ? workerModel() : null);
     endJob();

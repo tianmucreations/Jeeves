@@ -14,6 +14,9 @@ interface JeevesConfig {
   defaultProvider?: string;
   verbose?: boolean;
   address?: string;
+  directCatalogue?: { catalogue: unknown; fetchedAt: number };
+  customService?: { baseURL: string };
+  estimatedSpend?: { date: string; amount: number };
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -127,4 +130,33 @@ export function getAddress(): string | null {
 
 export function setAddress(address: string): void {
   config.set('address', address);
+}
+// The trimmed models.dev catalogue for direct connections (prices and abilities).
+export function getDirectCatalogue(): { catalogue: unknown; fetchedAt: number } | null {
+  return config.get('directCatalogue') ?? null;
+}
+
+export function setDirectCatalogue(catalogue: unknown, fetchedAt: number): void {
+  config.set('directCatalogue', { catalogue, fetchedAt });
+}
+
+// The address of the "any compatible service" the person added (its key is in the keychain).
+export function getCustomService(): { baseURL: string } | null {
+  return config.get('customService') ?? null;
+}
+
+export function setCustomService(service: { baseURL: string } | null): void {
+  if (service) config.set('customService', service);
+  else config.delete('customService');
+}
+
+// Today's spending worked out from price lists (direct connections), kept between
+// launches so the daily limit still holds after a restart. OpenRouter's own
+// figures are read from OpenRouter instead.
+export function getEstimatedSpend(): { date: string; amount: number } | undefined {
+  return config.get('estimatedSpend');
+}
+
+export function setEstimatedSpend(spend: { date: string; amount: number }): void {
+  config.set('estimatedSpend', spend);
 }

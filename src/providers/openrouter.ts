@@ -94,6 +94,9 @@ export function createOpenRouterProvider(apiKey: string): Provider {
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
         prepareStep: prepareStepFor(beforeStep, (id) => openrouter.chat(id, { usage: { include: true } })),
         abortSignal,
+        // The library prints every failure to the screen by default, over Jeeves's
+        // window; the failure still arrives below and is explained in plain English.
+        onError: () => {},
         providerOptions: {
           openrouter: {
             session_id: stickySessionId,

@@ -4,9 +4,10 @@ import { getActiveProvider } from '../providers/index.js';
 import { getSystemPrompt } from './systemPrompt.js';
 import { DEFAULT_CONTEXT_TOKENS } from '../state/session.js';
 import { ZAI_MODELS } from '../providers/zai.js';
+import { findSeenModel } from '../providers/catalogue.js';
 import { SUMMARY_TRIGGER_TOKENS, SUMMARY_INSTRUCTIONS } from './housekeeping.js';
 import { workerModel, workingModelId } from './auto.js';
-import { reportSpend } from './spending.js';
+import { reportStepCost } from './spending.js';
 
 // The model's identity and rulebook. AI SDK 7 rejects role:'system' messages in the
 // messages array ("Use the instructions option instead"), so the prompt travels as
@@ -21,9 +22,12 @@ export function buildTurnMessages(history: ModelMessage[], userText: string): Mo
 }
 
 // How much the current model can hold in mind, from the model lists (OpenRouter's
-// catalogue, or Z.ai's own list); the long-standing default when it isn't listed.
+// catalogue, Z.ai's own list, or a direct connection's); the long-standing default when it isn't listed.
 export function contextLimitFor(modelId: string, models: { id: string; contextLength: number }[]): number {
-  const found = models.find((model) => model.id === modelId) ?? ZAI_MODELS.find((model) => model.id === modelId);
+  const found =
+    models.find((model) => model.id === modelId) ??
+    ZAI_MODELS.find((model) => model.id === modelId) ??
+    findSeenModel(session.providerId, modelId);
   return found && found.contextLength > 0 ? found.contextLength : DEFAULT_CONTEXT_TOKENS;
 }
 
@@ -73,7 +77,7 @@ export async function summariseHistory(): Promise<void> {
       onReasoning: () => {},
       onToolCall: () => {},
     });
-    for (const cost of result.stepCosts ?? []) reportSpend(cost);
+    for (const cost of result.stepCosts ?? []) reportStepCost(cost);
     const summary = result.text.trim();
     // Silent either way: the user can do nothing about it (a failure retries later).
     if (summary) {

@@ -5,7 +5,9 @@ import { Transcript } from './components/Transcript.js';
 import { Input } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session, useSession } from './state/session.js';
-import { initKeys, hasCredentials, refreshCredit } from './providers/index.js';
+import { initKeys, hasCredentials, refreshCredit, serviceKey } from './providers/index.js';
+import { isDirectService, type DirectServiceId } from './providers/direct-services.js';
+import { loadDirectModels } from './providers/catalogue.js';
 import { getDailyLimit, getFavorites, getRecents, getRecentProjects, getDefaultModel, getDefaultProvider, getVerbosePreference } from './platform/config.js';
 import { loadModels } from './models/registry.js';
 import { ModelPicker } from './components/ModelPicker.js';
@@ -45,6 +47,9 @@ export function App() {
     // Keys resolve from the Mac keychain first; the first-run wizard now starts
     // after the project is chosen (the project list always shows first).
     void initKeys().then(() => {
+      // A direct connection's models (memory sizes, prices) load in the background.
+      const directKey = isDirectService(session.providerId) ? serviceKey(session.providerId) : null;
+      if (directKey) void loadDirectModels(session.providerId as DirectServiceId, directKey).catch(() => {});
       if (hasCredentials()) {
         void refreshCredit();
       } else {
