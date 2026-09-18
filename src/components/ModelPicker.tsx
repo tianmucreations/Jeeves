@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import Fuse from 'fuse.js';
@@ -30,6 +30,7 @@ import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/
 import { loadDirectModels, checkCustomService } from '../providers/catalogue.js';
 import { autoRowFor, noAutoNote } from '../agent/auto.js';
 import { getCustomService } from '../platform/config.js';
+import { signInWithOpenRouter } from '../providers/openrouter-signin.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
@@ -174,6 +175,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const [addressValue, setAddressValue] = useState('');
   // True while a key is being checked with its company.
   const [checking, setChecking] = useState(false);
+  // The browser sign-in in progress, so Esc can cancel it.
+  const signInAbort = useRef<AbortController | null>(null);
   const [limitValue, setLimitValue] = useState('');
   const [limitNote, setLimitNote] = useState('');
   const [limitReturn, setLimitReturn] = useState<'providers' | 'close'>('providers');
@@ -468,7 +471,10 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     if (step === 'key') {
-      if (checking) return;
+      if (checking) {
+        if (key.escape && signInAbort.current) signInAbort.current.abort();
+        return;
+      }
       if (key.escape) {
         goBack();
         return;
@@ -524,6 +530,30 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           setKeyNote('');
           if (s.status === 'disconnected') s.setStatus('idle');
           enterDirectStep(keyFor);
+        });
+        return;
+      }
+      // OpenRouter with nothing pasted: sign in through the browser instead.
+      if (key.return && keyFor === 'openrouter' && keyValue.trim() === '') {
+        const controller = new AbortController();
+        signInAbort.current = controller;
+        setChecking(true);
+        setKeyNote('Opening your browser - approve Jeeves on OpenRouter, then come back here. (Esc to cancel)');
+        void signInWithOpenRouter({ signal: controller.signal }).then(async (result) => {
+          setChecking(false);
+          signInAbort.current = null;
+          if (!result.ok) {
+            setKeyNote(result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived - press Enter to try again, or paste a key.' : "OpenRouter didn't complete the sign-in - press Enter to try again, or paste a key.");
+            return;
+          }
+          if (!(await storeOpenRouterKey(result.key))) {
+            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            return;
+          }
+          setKeyNote('');
+          void refreshCredit();
+          if (s.status === 'disconnected') s.setStatus('idle');
+          enterModelStep('openrouter');
         });
         return;
       }
@@ -730,7 +760,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
             : `${service} — a direct connection with your own key`;
     const where =
       keyFor === 'openrouter'
-        ? 'Get one at openrouter.ai/settings/keys. '
+        ? 'Get one at openrouter.ai/settings/keys - or press Enter with nothing pasted to sign in through your browser, no key to copy. '
         : direct
           ? `Get one at ${direct.keyPage}. `
           : keyFor === CUSTOM_SERVICE_ID

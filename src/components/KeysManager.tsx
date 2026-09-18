@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { session, useSession } from '../state/session.js';
 import {
@@ -20,6 +20,7 @@ import { setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
+import { signInWithOpenRouter } from '../providers/openrouter-signin.js';
 
 // Every service Jeeves connects to. The optional OpenRouter management key (it unlocks
 // the real account balance) is for /keys only, and the compatible service needs its
@@ -46,6 +47,8 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   const [hidden, setHidden] = useState('');
   const [stored, setStored] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  // The browser sign-in in progress, so Esc can cancel it.
+  const signingIn = useRef<AbortController | null>(null);
 
   const refreshStored = useCallback(() => {
     void storedKeyProviders().then((names) => setStored(names));
@@ -233,6 +236,27 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return;
     }
     if (phase.kind === 'enter-key') {
+      if (signingIn.current) {
+        if (key.escape) signingIn.current.abort();
+        return;
+      }
+      // OpenRouter with nothing pasted: sign in through the browser instead.
+      if (key.return && phase.provider === 'openrouter' && hidden.trim() === '') {
+        const controller = new AbortController();
+        signingIn.current = controller;
+        setNote('Opening your browser - approve Jeeves on OpenRouter, then come back here. (Esc to cancel)');
+        void signInWithOpenRouter({ signal: controller.signal }).then((result) => {
+          signingIn.current = null;
+          if (result.ok) {
+            setNote('');
+            void saveKey('openrouter', result.key);
+            setPhase({ kind: 'list' });
+          } else {
+            setNote(result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived - press Enter to try again, or paste a key.' : "OpenRouter didn't complete the sign-in - press Enter to try again, or paste a key.");
+          }
+        });
+        return;
+      }
       if (key.escape) {
         setPhase({ kind: 'list' });
         setNote('');
@@ -356,6 +380,9 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
             <Text>Paste the {phase.label} key (it stays hidden): </Text>
             <Text inverse> </Text>
           </Text>
+        )}
+        {phase.kind === 'enter-key' && phase.provider === 'openrouter' && (
+          <Text dimColor>Or press Enter with nothing pasted to sign in through your browser - no key to copy.</Text>
         )}
         {phase.kind === 'confirm-remove' && (
           <Text>
