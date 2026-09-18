@@ -85,7 +85,7 @@ export function fixRequest(problems: ReviewProblem[]): string {
   const list = problems
     .map((p, i) => `${i + 1}. ${p.problem}\n   Example: ${p.example}\n   Expected: ${p.expected || '(not given)'}\n   Actual: ${p.actual || '(not given)'}`)
     .join('\n');
-  return `An expert reviewed your work and reported these problems:\n${list}\n\nThe expert can be wrong. For each one, first reproduce it: run the example, or read the file and find the exact words. Only fix a problem you have reproduced; if you cannot reproduce one, leave the work as it is for that one. Then check the result again and tell the person briefly what was wrong and what you changed, or that the expert's concern did not hold.`;
+  return `An expert reviewed your work and reported these problems:\n${list}\n\nThe expert can be wrong. For each one, first reproduce it: run the example, or read the file and find the exact words. Only fix a problem you have reproduced; if you cannot reproduce one, leave the work as it is for that one. Then check the result again. Tell the person, briefly, that the job is done, then in one sentence what the double-check caught and what you changed (or that its concern did not hold). They never saw the earlier version, so do not describe your reply as a fix to something they saw.`;
 }
 
 // The reviewers, in order: the service's expert models still in its catalogue.

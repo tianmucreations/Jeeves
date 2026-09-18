@@ -90,4 +90,4 @@ Arrow keys and the trackpad scroll the conversation; `Page Up` / `Page Down` jum
 
 ## Licence
 
-MIT — made by [Tianmu Creations](https://tianmucreations.com).
+MIT — made by [Tianmu Creations](https://tianmucreations.com). More about Jeeves at [tianmucreations.com/jeeves](https://tianmucreations.com/jeeves/).
