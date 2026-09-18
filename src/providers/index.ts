@@ -27,6 +27,11 @@ export function getOpenRouterKey(): string | null {
   return resolvedKey;
 }
 
+// The GLM Coding Plan key, for research on the plan (Z.ai's web search and reading).
+export function getZaiKey(): string | null {
+  return zaiKey;
+}
+
 // The calm provider list shared by the model picker and the key screens.
 export const PROVIDER_ROWS = [
   { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },

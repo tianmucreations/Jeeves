@@ -1,10 +1,22 @@
 import { z } from 'zod';
 import { session } from '../../state/session.js';
-import { getOpenRouterKey } from '../../providers/index.js';
+import { getOpenRouterKey, getZaiKey, PROVIDER_ROWS } from '../../providers/index.js';
+import { zaiSearch, zaiRead } from './zai-search.js';
+import { expertChat } from '../../agent/expert-chat.js';
+import { isDirectService } from '../../providers/direct-services.js';
 import { htmlToText } from './htmlToText.js';
 import { openrouterChat, OpenRouterRequestError, type Citation } from './openrouterChat.js';
-import { workingModelId, workerModel } from '../../agent/auto.js';
+import { workingModelId, workerModel, hasAuto } from '../../agent/auto.js';
 import { recordPageOpened, recordSearchResults, recordWebUnavailable } from '../../agent/research-gate.js';
+
+// The service chosen is the service used (owner's rule, 18 Sept): "if someone has a plan
+// and selects plan then the plan should be the thing being used". So:
+// - OpenRouter: search and reading on OpenRouter, as below;
+// - Z.ai's GLM Coding Plan: search with the plan's own Web Search service and reading
+//   with GLM-5.3-Flash on the plan - never OpenRouter, even when a key is saved;
+// - any other service: reading with that service; search has no equivalent there yet,
+//   so it borrows OpenRouter only after the person says yes (once per conversation),
+//   and without an OpenRouter key says plainly that search isn't available.
 
 // Web research, built only on OpenRouter's standard (non-beta) features, with
 // automatic fallbacks so no single service leaving creates a hole:
@@ -33,7 +45,7 @@ export const PROVEN_READING_MODELS = ['deepseek/deepseek-v4-flash-0731', 'openai
 // Reading models in the order tried: the cheap one first, then Jeeves's own model
 // when that is also an OpenRouter model, then the proven ones.
 export function readingModels(): string[] {
-  // Research always runs through OpenRouter, so it uses OpenRouter's Auto worker.
+  // Used only for research on OpenRouter, so it is OpenRouter's Auto worker.
   const models = [workerModel('openrouter')];
   const current = workingModelId(session.model);
   if (session.providerId === 'openrouter' && current && !models.includes(current)) models.push(current);
@@ -53,7 +65,62 @@ function isAccountProblem(error: unknown): boolean {
   return error instanceof OpenRouterRequestError && (error.status === 401 || error.status === 402);
 }
 
+// Which service web research runs on for the service in use.
+export function researchService(providerId = session.providerId): 'openrouter' | 'zai' | 'borrowed' {
+  if (providerId === 'openrouter') return 'openrouter';
+  if (providerId === 'zai') return 'zai';
+  return 'borrowed';
+}
+
+export function serviceLabel(providerId = session.providerId): string {
+  return PROVIDER_ROWS.find((row) => row.id === providerId)?.label ?? 'this service';
+}
+
+// Whether the person agreed, in this conversation, to searches using their OpenRouter
+// account while another service is in use. /clear forgets it.
+let borrowAgreed = false;
+export function agreeToBorrowedSearch(): void {
+  borrowAgreed = true;
+}
+export function resetBorrowedSearch(): void {
+  borrowAgreed = false;
+}
+
+// Asked before a search on OpenRouter while another service is in use.
+export function borrowedSearchNeedsAsking(): boolean {
+  return researchService() === 'borrowed' && getOpenRouterKey() !== null && !borrowAgreed;
+}
+
+export function borrowedSearchQuestion(): string {
+  return `Web search isn't available with ${serviceLabel()} yet, so this search would use your OpenRouter account (about a cent each). Allow searches through OpenRouter for this conversation? (y/n)`;
+}
+
+async function searchOnPlan(query: string, site?: string): Promise<Citation[]> {
+  const key = getZaiKey();
+  if (!key) {
+    recordWebUnavailable();
+    throw new Error('Web search on the Z.ai plan needs your Z.ai key - type /keys to add it.');
+  }
+  try {
+    const results = await zaiSearch(key, query, site);
+    recordSearchResults(results.map((result) => result.url));
+    return results;
+  } catch (error) {
+    recordWebUnavailable();
+    throw new Error(`Web search is not available right now on the Z.ai plan (${error instanceof Error ? error.message : String(error)}).`);
+  }
+}
+
 export async function searchWeb(query: string, site?: string): Promise<Citation[]> {
+  const service = researchService();
+  if (service === 'zai') return searchOnPlan(query, site);
+  if (service === 'borrowed' && !getOpenRouterKey()) {
+    recordWebUnavailable();
+    throw new Error(`Web search isn't available with ${serviceLabel()} yet.`);
+  }
+  if (service === 'borrowed' && !borrowAgreed) {
+    throw new Error('Web search through OpenRouter was not allowed in this conversation.');
+  }
   const key = getOpenRouterKey();
   if (!key) {
     recordWebUnavailable();
@@ -97,7 +164,11 @@ export function formatSearchResults(query: string, results: Citation[]): string 
     const snippet = result.content.replace(/\s+/g, ' ').trim().slice(0, SNIPPET_CHARS);
     return `${index + 1}. ${result.title || result.url}\n   ${result.url}${snippet ? `\n   ${snippet}` : ''}`;
   });
-  return `${lines.join('\n')}\n\nThese are search snippets, not checked facts. Open the most official page with readWebPage before stating anything as fact.`;
+  const planNote =
+    researchService() === 'zai'
+      ? ' These results often point to a site\'s front page with a short summary: open the page, and if the exact fact is not there, say plainly that it could not be confirmed.'
+      : '';
+  return `${lines.join('\n')}\n\nThese are search snippets, not checked facts. Open the most official page with readWebPage before stating anything as fact.${planNote}`;
 }
 
 export const webSearchSchema = z.object({
@@ -105,6 +176,8 @@ export const webSearchSchema = z.object({
 });
 
 export async function runWebSearch(input: z.output<typeof webSearchSchema>): Promise<string> {
+  // Only reached after the person said yes when the search is borrowed from OpenRouter.
+  if (researchService() === 'borrowed' && getOpenRouterKey()) agreeToBorrowedSearch();
   return formatSearchResults(input.query, await searchWeb(input.query));
 }
 
@@ -157,6 +230,7 @@ export async function runReadWebPage(input: z.output<typeof readWebPageSchema>):
   let sourceNote = `Source: ${url.href}`;
   if (pageText === null) {
     // The site refused or needs a browser: fall back to search excerpts from that site.
+    // (Not tried when the search would be borrowed from OpenRouter without a yes.)
     const results = await searchWeb(input.question, url.hostname).catch(() => [] as Citation[]);
     if (results.length === 0) throw new Error(`Couldn't open ${url.hostname} - the site refused or needs a browser.`);
     pageText = results.map((result) => `[${result.url}]\n${result.content}`).join('\n\n');
@@ -164,22 +238,43 @@ export async function runReadWebPage(input: z.output<typeof readWebPageSchema>):
     sourceNote = `Source: search excerpts from ${url.hostname} (the page itself could not be opened)`;
   }
   const page = pageText.slice(0, MAX_PAGE_CHARS);
-  const key = getOpenRouterKey();
-  if (key) {
-    for (const model of readingModels()) {
+  const messages = [
+    { role: 'system' as const, content: READING_INSTRUCTIONS },
+    { role: 'user' as const, content: `Question: ${input.question}\nPage: ${url.href}\n\n<page>\n${page}\n</page>` },
+  ];
+  const service = researchService();
+  if (service === 'zai') {
+    // On the plan: GLM-5.3-Flash reads the page, included in the plan.
+    const key = getZaiKey();
+    if (key) {
       try {
-        const reply = await openrouterChat(key, {
-          model,
-          messages: [
-            { role: 'system', content: READING_INSTRUCTIONS },
-            { role: 'user', content: `Question: ${input.question}\nPage: ${url.href}\n\n<page>\n${page}\n</page>` },
-          ],
-          max_tokens: 1500,
-          reasoning: { effort: 'low' },
-        });
-        if (reply.text) return `${reply.text}\n\n${sourceNote}`;
-      } catch (error) {
-        if (isAccountProblem(error)) throw error;
+        const text = await zaiRead(key, messages);
+        if (text) return `${text}\n\n${sourceNote}`;
+      } catch {
+        // Falls through to the page text below.
+      }
+    }
+  } else if (service === 'borrowed') {
+    // Reading uses the service in use (a direct company); others get the page text.
+    if (isDirectService(session.providerId)) {
+      try {
+        const model = hasAuto(session.providerId) ? workerModel() : workingModelId(session.model);
+        const text = await expertChat(model, messages, 1500);
+        if (text) return `${text}\n\n${sourceNote}`;
+      } catch {
+        // Falls through to the page text below.
+      }
+    }
+  } else {
+    const key = getOpenRouterKey();
+    if (key) {
+      for (const model of readingModels()) {
+        try {
+          const reply = await openrouterChat(key, { model, messages, max_tokens: 1500, reasoning: { effort: 'low' } });
+          if (reply.text) return `${reply.text}\n\n${sourceNote}`;
+        } catch (error) {
+          if (isAccountProblem(error)) throw error;
+        }
       }
     }
   }

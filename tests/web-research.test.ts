@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../src/providers/index.js', () => ({ getOpenRouterKey: () => 'sk-or-test' }));
+vi.mock('../src/providers/index.js', () => ({ getOpenRouterKey: () => 'sk-or-test', getZaiKey: () => null, serviceKey: () => null, PROVIDER_ROWS: [] }));
 
 const { htmlToText, decodeEntities } = await import('../src/tools/web/htmlToText.js');
 const research = await import('../src/tools/web/research.js');

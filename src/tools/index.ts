@@ -6,7 +6,7 @@ import { readFileSchema, runReadFile } from './readFile.js';
 import { writeFileSchema, runWriteFile } from './writeFile.js';
 import { listDirSchema, runListDir } from './listDir.js';
 import { runBashSchema, runRunBash } from './runBash.js';
-import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage } from './web/research.js';
+import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage, researchService, borrowedSearchNeedsAsking, borrowedSearchQuestion } from './web/research.js';
 import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
 import { resolveFromCwd } from '../platform/paths.js';
 import { isProjectTrusted } from '../agent/trust.js';
@@ -50,12 +50,20 @@ export function plainToolFailure(error: unknown): string {
   if (text.includes('binary file')) return 'not a text file';
   if (text.includes('web search needs an openrouter key')) return 'needs an OpenRouter key (type /keys)';
   if (text.includes('web search is not available')) return 'web search is not available right now';
+  if (text.includes("web search isn't available with")) return "web search isn't available with this service yet";
+  if (text.includes('was not allowed in this conversation')) return 'not allowed';
+  if (text.includes('needs your z.ai key')) return 'needs your Z.ai key (type /keys)';
   if (text.includes("couldn't open")) return "that website wouldn't open";
   if (text.includes('not a valid web address') || text.includes('only web pages')) return 'not a web address';
   if (text.includes('needs an interactive terminal')) return 'that program needs typing in a window of its own';
   // Anything unrecognised stays off screen; the model receives the full message
   // and explains it in plain English.
   return 'something unexpected went wrong'
+}
+
+function researchLabel(): string {
+  const service = researchService();
+  return service === 'zai' ? ' (Z.ai plan)' : service === 'borrowed' ? ' (via OpenRouter)' : '';
 }
 
 function clip(text: string, max: number): string {
@@ -172,10 +180,13 @@ export const TOOLS: ToolSet = {
     name: 'webSearch',
     description: 'Search the web. Returns titles, addresses and short snippets - a list of where to look, not checked facts.',
     schema: webSearchSchema,
-    permission: false,
+    // On a service with no search of its own, a search borrows OpenRouter (about a cent
+    // each) only after a yes, asked once per conversation - never "always allowed".
+    permission: () => borrowedSearchNeedsAsking(),
+    warning: () => (borrowedSearchNeedsAsking() ? borrowedSearchQuestion() : null),
     summarize: (input) => clip(input.query, 60),
-    // On another service, searches still go through OpenRouter (about a cent each), so say so.
-    label: (input) => `Searched ${clip(input.query, 50)}${session.providerId === 'openrouter' ? '' : ' (via OpenRouter)'}`,
+    // Every search line says which service it went through.
+    label: (input) => `Searched ${clip(input.query, 50)}${researchLabel()}`,
     run: runWebSearch,
   }),
   readWebPage: defineTool({
@@ -184,7 +195,7 @@ export const TOOLS: ToolSet = {
     schema: readWebPageSchema,
     permission: false,
     summarize: (input) => clip(input.url, 60),
-    label: (input) => `Read ${clip(input.url.replace(/^https?:\/\//, ''), 50)}${session.providerId === 'openrouter' ? '' : ' (via OpenRouter)'}`,
+    label: (input) => `Read ${clip(input.url.replace(/^https?:\/\//, ''), 50)}${researchService() === 'zai' ? ' (Z.ai plan)' : ''}`,
     run: runReadWebPage,
   }),
   runBash: defineTool({
