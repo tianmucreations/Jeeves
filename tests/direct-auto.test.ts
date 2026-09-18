@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { session } from '../src/state/session.js';
 import { rememberModels, toModelInfo } from '../src/providers/catalogue.js';
-import { hasAuto, workerModel, expertModel, topModel, autoRowFor, workingModelId, topModelName, readableModelName } from '../src/agent/auto.js';
+import { noAutoNote, hasAuto, workerModel, expertModel, topModel, autoRowFor, workingModelId, topModelName, readableModelName } from '../src/agent/auto.js';
 import { reviewers } from '../src/agent/review.js';
 import { readingModels } from '../src/tools/web/research.js';
 
@@ -57,5 +57,15 @@ describe('Auto on a direct connection (OpenAI)', () => {
   it('writes readable names when the catalogue has not loaded', () => {
     expect(readableModelName('anthropic/claude-opus-5')).toBe('Claude Opus 5');
     expect(readableModelName('gpt-5.6-sol')).toBe('GPT 5.6 Sol');
+  });
+});
+
+describe('a plain line where Auto is not offered', () => {
+  it('names the services that have Auto, and says nothing where Auto exists', () => {
+    expect(noAutoNote('anthropic', 'Anthropic')).toBe("Auto isn't available with Anthropic yet - choose OpenRouter, OpenAI or Google for Auto.");
+    expect(noAutoNote('ollama', 'Ollama')).toContain('with Ollama yet');
+    expect(noAutoNote('openai', 'OpenAI')).toBeNull();
+    expect(noAutoNote('google', 'Google')).toBeNull();
+    expect(noAutoNote('openrouter', 'OpenRouter')).toBeNull();
   });
 });

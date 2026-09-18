@@ -48,6 +48,18 @@ export function topModel(providerId = session.providerId): string | null {
   return firstAvailable(profile.top, catalogue);
 }
 
+// Where Auto is offered, by name, for the note in lists without it.
+export const AUTO_SERVICE_NAMES: Record<string, string> = { openrouter: 'OpenRouter', openai: 'OpenAI', google: 'Google' };
+
+// Jeeves only offers Auto where a pairing was proven to do good work (the owner's rule,
+// 18 Sept: Jeeves's name carries the blame). Elsewhere, one plain line says so.
+export function noAutoNote(providerId: string, label: string): string | null {
+  if (hasAuto(providerId)) return null;
+  const names = Object.keys(AUTO_PROFILES).map((id) => AUTO_SERVICE_NAMES[id] ?? id);
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
+  return `Auto isn't available with ${label} yet - choose ${list} for Auto.`;
+}
+
 // The Auto row in a company's model list, when it has Auto and its worker is available.
 export function autoRowFor(providerId: string, models: ModelInfo[]): ModelInfo | null {
   const profile = autoProfile(providerId);

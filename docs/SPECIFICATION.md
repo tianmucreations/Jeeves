@@ -8,6 +8,15 @@ Progress, decisions and measured results are in PROGRESS.md.
 Build Jeeves: a cross-platform terminal CLI that behaves like Claude Code — natural-language driven, agentic, able to read and write files and run shell commands — but model-agnostic and provider-agnostic, switchable through a scrollable picker, with an extremely clean and quiet interface.
 Jeeves is designed first for non-coders who want to describe what they need in plain English and have the tool do it. It is also built to be robust enough for professional developers who want simplicity without clutter.
 
+## CORE PRINCIPLE — JEEVES'S NAME IS ON EVERY RESULT
+
+Whatever model does the work, the person judges Jeeves. So Jeeves only offers what has been proven to do good work:
+- Auto is offered only on services where a pairing of models was measured doing the everyday and hard jobs well. Elsewhere, one plain line says Auto isn't available there yet and where to find it.
+- A default is chosen by measurement, never by reputation or a guess, and is re-checked when models change.
+- A service or model that fails too often is left out, however popular, until it is proven.
+- When Jeeves cannot check something, or a job could not be double-checked, he says so plainly.
+- Experienced users may still choose any model themselves; that choice is theirs.
+
 ## SECTION 2 — THE INTERFACE (WHAT IT LOOKS LIKE)
 
 The window is divided into three fixed zones. Nothing else appears on screen.

@@ -28,7 +28,7 @@ import {
 } from '../providers/index.js';
 import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
 import { loadDirectModels, checkCustomService } from '../providers/catalogue.js';
-import { autoRowFor } from '../agent/auto.js';
+import { autoRowFor, noAutoNote } from '../agent/auto.js';
 import { getCustomService } from '../platform/config.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
@@ -197,7 +197,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         : providerChoice === 'openrouter'
           ? s.models
           : (directModels ?? []);
-  const listHeight = Math.max(1, rows - 5);
+  // A service without Auto says so in one line above its list.
+  const autoNote = step === 'full' ? noAutoNote(providerChoice, providerLabel(providerChoice)) : null;
+  const listHeight = Math.max(1, rows - 5 - (autoNote ? 1 : 0));
 
   const items = useMemo<Item[]>(() => {
     if (step === 'curated') {
@@ -876,6 +878,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           ? 'free models: no charge, but OpenRouter limits requests per day · » fast'
           : 'memory in tokens (word pieces) · price per million tokens · ✓ tools · » fast'}
       </Text>
+      {autoNote ? <Text color="yellow">{autoNote}</Text> : null}
       <Box flexDirection="column" height={listHeight}>
         {emptyMessage ? (
           <Text dimColor>
