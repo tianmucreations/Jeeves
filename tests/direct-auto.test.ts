@@ -16,10 +16,11 @@ afterEach(() => {
 });
 
 describe('Auto on a direct connection (OpenAI)', () => {
-  it('exists for OpenAI and OpenRouter only - the pairs measured so far', () => {
+  it('exists for OpenRouter, OpenAI and Google only - the pairs measured so far', () => {
     expect(hasAuto('openai')).toBe(true);
     expect(hasAuto('openrouter')).toBe(true);
-    for (const id of ['anthropic', 'google', 'xai', 'groq', 'mistral', 'zai', 'ollama', 'custom']) expect(hasAuto(id), id).toBe(false);
+    expect(hasAuto('google')).toBe(true);
+    for (const id of ['anthropic', 'xai', 'groq', 'mistral', 'zai', 'ollama', 'custom']) expect(hasAuto(id), id).toBe(false);
   });
 
   it("uses OpenAI's own models: GPT-5.6 Luna working, Terra as expert, Sol as the strongest", () => {

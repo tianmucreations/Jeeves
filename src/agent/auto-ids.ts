@@ -45,6 +45,12 @@ export const AUTO_PROFILES: Record<string, AutoProfile> = {
   // (letter, website, calculator, share tracker) at about 4 cents a job. Replacements:
   // GPT-5.4 mini (OpenAI's small model for tool work) and GPT-5.5 - not measured.
   openai: { workers: ['gpt-5.6-luna', 'gpt-5.4-mini'], experts: ['gpt-5.6-terra', 'gpt-5.5'], top: ['gpt-5.6-sol'] },
+  // Google with the person's own key (the owner's choice, 18 Sept). Measured through
+  // OpenRouter: Gemini 3.8 Flash working with 3.5 Flash as expert passed 4 of 5 of the
+  // telling jobs (the failure was a web-search fault since fixed), at 10-14 cents a job -
+  // about three times OpenAI's. Replacements (not measured): the Flash "latest" alias and
+  // 3.5 Flash; the strongest: 3.1 Pro.
+  google: { workers: ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash'], experts: ['gemini-3.5-flash', 'gemini-3.1-pro-preview'], top: ['gemini-3.1-pro-preview'] },
 };
 
 export function autoProfile(providerId: string): AutoProfile | null {
