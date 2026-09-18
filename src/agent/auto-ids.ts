@@ -14,7 +14,14 @@ export const AUTO_MODEL_ID = 'jeeves/auto';
 // - expert: Claude Sonnet 5 (6 of 6; its reviews fixed the hard failures), then
 //   GLM 5.3 (6 of 6 alone), then Claude Opus 5;
 // - strongest model for the last rung: Claude Opus 5.
-export const WORKER_MODELS = ['deepseek/deepseek-v4-flash-0731', 'deepseek/deepseek-v4-flash', 'z-ai/glm-5.3-flash', 'z-ai/glm-5.3'];
+// JEEVES_WORKER_MODEL lets the bench try another worker, as JEEVES_EXPERT_MODEL does the expert.
+export const WORKER_MODELS = [
+  ...(process.env.JEEVES_WORKER_MODEL ? [process.env.JEEVES_WORKER_MODEL] : []),
+  'deepseek/deepseek-v4-flash-0731',
+  'deepseek/deepseek-v4-flash',
+  'z-ai/glm-5.3-flash',
+  'z-ai/glm-5.3',
+];
 export const EXPERT_MODELS = [
   ...(process.env.JEEVES_EXPERT_MODEL ? [process.env.JEEVES_EXPERT_MODEL] : []),
   'anthropic/claude-sonnet-5',

@@ -79,7 +79,9 @@ const plan = (process.env.PLAN ?? '').split(',').filter(Boolean); // model:job:r
 for (const entry of plan) {
   const [model, job, rep] = entry.split('|');
   const keyNow = ((await fetchKeyUsage(key)) ?? startUsage) - startUsage;
-  const spent = Math.max(spentThisSession(), keyNow);
+  // Side-by-side runs share the key, so OWN_BUDGET=1 counts only this run's own reported
+  // spending (which matched the key's total on every check, 18 Sept).
+  const spent = process.env.OWN_BUDGET === '1' ? spentThisSession() : Math.max(spentThisSession(), keyNow);
   if (spent > BUDGET) { log(`BUDGET STOP at $${spent.toFixed(3)}`); break; }
   const spec = JOBS[job];
   const dir = `${B}/runs/${model.replace(/\//g, '_')}${process.env.JEEVES_EXPERT_MODEL ? '+' + process.env.JEEVES_EXPERT_MODEL.replace(/\//g, '_') : ''}-${job}-${rep}`;
@@ -99,7 +101,7 @@ for (const entry of plan) {
   const tools = session.transcript.filter((e: any) => e.kind === 'tool').map((e: any) => `${e.data.state === 'done' ? '✓' : '✗'} ${e.data.tool}:${(e.data.label || e.data.summary).slice(0, 50)}`);
   const text = session.transcript.filter((e: any) => ['assistant', 'error', 'notice'].includes(e.kind)).map((e: any) => e.text).join(' | ');
   const pass = !crashed && spec.check(dir, text, tools);
-  const row = { model, job, rep, pass, cost: +(spentThisSession() - before).toFixed(4), seconds: Math.round((Date.now() - t) / 1000), expert: tools.some((x) => x.includes('askExpert')), takeover: session.activeModel !== null && session.activeModel !== 'deepseek/deepseek-v4-flash-0731' && model === 'jeeves/auto', steps: tools.length, tools, crashed, text: text.slice(0, 300) };
+  const row = { model, job, rep, pass, cost: +(spentThisSession() - before).toFixed(4), seconds: Math.round((Date.now() - t) / 1000), expert: tools.some((x) => x.includes('askExpert')), takeover: session.activeModel !== null && session.activeModel !== (process.env.JEEVES_WORKER_MODEL ?? 'deepseek/deepseek-v4-flash-0731') && model === 'jeeves/auto', worker: process.env.JEEVES_WORKER_MODEL ?? null, expertModel: process.env.JEEVES_EXPERT_MODEL ?? null, steps: tools.length, tools, crashed, text: text.slice(0, 300) };
   fs.appendFileSync(out, JSON.stringify(row) + '\n');
   log(`${pass ? 'PASS' : 'FAIL'} ${model}${process.env.JEEVES_EXPERT_MODEL ? ' reviewer=' + process.env.JEEVES_EXPERT_MODEL : ''} ${job}#${rep} $${row.cost} ${row.seconds}s tools=${tools.length} expert=${row.expert}${crashed ? ' CRASH ' + crashed : ''}`);
   log(`    tools: ${tools.filter((x) => x.includes('askExpert')).join(' ; ')}`);

@@ -95,7 +95,7 @@ describe('reading a page', () => {
     session.model = 'z-ai/glm-5.3';
     const calls = mockFetch((url) => (url.startsWith('https://site.test') ? { text: 'The answer is 42.'.repeat(5), type: 'text/plain' } : { status: 404, json: { error: { message: 'model gone' } } }));
     const out = await research.runReadWebPage({ url: 'https://site.test/a', question: 'q' });
-    expect(calls.filter((c) => c.url.includes('openrouter')).map((c) => c.body.model)).toEqual(['deepseek/deepseek-v4-flash-0731', 'z-ai/glm-5.3']);
+    expect(calls.filter((c) => c.url.includes('openrouter')).map((c) => c.body.model)).toEqual(['deepseek/deepseek-v4-flash-0731', 'z-ai/glm-5.3', 'openai/gpt-5.6-luna']);
     expect(out).toContain('The reading model was unavailable');
     expect(out).toContain('The answer is 42.');
   });
@@ -103,5 +103,27 @@ describe('reading a page', () => {
   it('refuses anything that is not a web address', async () => {
     await expect(research.runReadWebPage({ url: 'file:///etc/passwd', question: 'q' })).rejects.toThrow('Only web pages');
     await expect(research.runReadWebPage({ url: 'not a url', question: 'q' })).rejects.toThrow('not a valid web address');
+  });
+});
+
+describe('web search with a model that must think first', () => {
+  it('retries without "reasoning off" when the model refuses it (measured on Gemini 3.8 Flash, 18 Sept)', async () => {
+    session.model = 'google/gemini-3.8-flash';
+    const calls = mockFetch((_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.reasoning?.enabled === false) return { status: 400, json: { error: { message: 'Reasoning is mandatory for this endpoint and cannot be disabled.' } } };
+      return { json: citationReply('https://nodejs.org/en/about/previous-releases') };
+    });
+    const results = await research.searchWeb('Node.js LTS');
+    expect(results.map((r: { url: string }) => r.url)).toEqual(['https://nodejs.org/en/about/previous-releases']);
+    expect(calls.map((c) => c.body.reasoning)).toEqual([{ enabled: false }, undefined]);
+  });
+
+  it('falls back to the proven reading models after the ones in use', () => {
+    session.model = 'jeeves/auto';
+    const models = research.readingModels();
+    expect(models.slice(-2)).toEqual(['deepseek/deepseek-v4-flash-0731', 'openai/gpt-5.6-luna'].filter((m, i, all) => all.indexOf(m) === i).slice(-2));
+    expect(models).toContain('openai/gpt-5.6-luna');
+    expect(new Set(models).size).toBe(models.length);
   });
 });

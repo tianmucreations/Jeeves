@@ -26,13 +26,25 @@ const MAX_PAGE_CHARS = 120_000;
 const FALLBACK_PAGE_CHARS = 20_000;
 const SNIPPET_CHARS = 300;
 
+// Models proven to run web search and reading, measured 18 Sept: the fallbacks when
+// the models below them cannot.
+export const PROVEN_READING_MODELS = ['deepseek/deepseek-v4-flash-0731', 'openai/gpt-5.6-luna'];
+
 // Reading models in the order tried: the cheap one first, then Jeeves's own model
-// when that is also an OpenRouter model.
+// when that is also an OpenRouter model, then the proven ones.
 export function readingModels(): string[] {
   const models = [workerModel()];
   const current = workingModelId(session.model);
   if (session.providerId === 'openrouter' && current && !models.includes(current)) models.push(current);
+  for (const proven of PROVEN_READING_MODELS) if (!models.includes(proven)) models.push(proven);
   return models;
+}
+
+// Some models must think before answering and refuse "reasoning off" (Gemini 3.8 Flash,
+// Grok Build, gpt-oss-120b - measured 18 Sept: "Reasoning is mandatory for this
+// endpoint and cannot be disabled"). Search then runs with the model's default instead.
+export function reasoningIsMandatory(error: unknown): boolean {
+  return /reasoning is mandatory/i.test(error instanceof Error ? error.message : String(error));
 }
 
 // A rejected key or empty credit won't be fixed by trying another engine or model.
@@ -50,17 +62,16 @@ export async function searchWeb(query: string, site?: string): Promise<Citation[
   for (const model of readingModels()) {
     for (const { engine, mode } of SEARCH_ENGINES) {
       try {
-        const reply = await openrouterChat(
-          key,
-          {
-            model,
-            messages: [{ role: 'user', content: query }],
-            plugins: [{ id: 'web', engine, max_results: 5, ...(mode ? { mode } : {}), ...(site ? { include_domains: [site] } : {}) }],
-            max_tokens: 16,
-            reasoning: { enabled: false },
-          },
-          45_000
-        );
+        const request = {
+          model,
+          messages: [{ role: 'user', content: query }],
+          plugins: [{ id: 'web', engine, max_results: 5, ...(mode ? { mode } : {}), ...(site ? { include_domains: [site] } : {}) }],
+          max_tokens: 16,
+        };
+        const reply = await openrouterChat(key, { ...request, reasoning: { enabled: false } }, 45_000).catch((error: unknown) => {
+          if (reasoningIsMandatory(error)) return openrouterChat(key, request, 45_000);
+          throw error;
+        });
         if (reply.citations.length > 0) {
           recordSearchResults(reply.citations.map((citation) => citation.url));
           return reply.citations;
