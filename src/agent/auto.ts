@@ -51,8 +51,8 @@ export function topModel(providerId = session.providerId): string | null {
 // Where Auto is offered, by name, for the note in lists without it.
 export const AUTO_SERVICE_NAMES: Record<string, string> = { openrouter: 'OpenRouter', openai: 'OpenAI', google: 'Google' };
 
-// Jeeves only offers Auto where a pairing was proven to do good work (the owner's rule,
-// 18 Sept: Jeeves's name carries the blame). Elsewhere, one plain line says so.
+// Jeeves only offers Auto where a pairing was proven to do good work (the project's
+// core principle: Jeeves's name carries the blame - docs/SPECIFICATION.md). Elsewhere, one plain line says so.
 export function noAutoNote(providerId: string, label: string): string | null {
   if (hasAuto(providerId)) return null;
   const names = Object.keys(AUTO_PROFILES).map((id) => AUTO_SERVICE_NAMES[id] ?? id);
@@ -125,7 +125,7 @@ export function conversationForExpert(messages: ModelMessage[], maxChars = 80_00
   return text.length > maxChars ? '…[earlier conversation shortened]\n' + text.slice(-maxChars) : text;
 }
 
-// On in Auto mode - the owner's choice, 18 Sept: Auto must be excellent without anyone
+// On in Auto mode (decided 18 Sept): Auto must be excellent without anyone
 // having to think about models. Targeted to programs and documents (review.ts), it
 // rescued 2 of 3 letters and cost 0.2-2.5 cents per checked job. JEEVES_REVIEW=0 turns
 // it off for testing.

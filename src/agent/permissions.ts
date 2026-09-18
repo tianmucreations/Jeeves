@@ -4,7 +4,7 @@ interface PendingApproval {
   resolve: (approved: boolean) => void;
 }
 
-// Pure-output commands that never require permission (the owner's rule: harmless
+// Pure-output commands that never require permission (the rule: harmless
 // output must never prompt). A command is auto-approved only when every stage of
 // it - across pipes, && and || - is one of the commands below, and the only
 // redirection anywhere is to /dev/null. Anything that writes, deletes, installs,

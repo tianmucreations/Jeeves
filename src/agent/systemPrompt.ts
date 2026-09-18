@@ -1,7 +1,7 @@
 import { getAddress } from '../platform/config.js';
 
 // The system prompt is the personality and the rulebook, copied verbatim from the
-// owner's specification. {{ADDRESS}} is replaced with the user's saved form of
+// product specification. {{ADDRESS}} is replaced with the user's saved form of
 // address (config key "address", asked once on first launch, changeable via
 // /address); "Sir" is the fallback if none is saved yet.
 export const SYSTEM_PROMPT_TEMPLATE = `Identity

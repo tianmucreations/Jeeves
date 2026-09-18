@@ -8,3 +8,7 @@ AGENTS.md
 NEXT SESSION PROMPT.txt
 .jeeves-history-backup-*.bundle
 Jeeves CLI Project/
+PROGRESS.md
+bench/bench.log
+bench/bench-17sept.log
+bench/results.jsonl

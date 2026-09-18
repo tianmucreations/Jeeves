@@ -32,7 +32,7 @@ export function settingsFolder(): string {
   return path.dirname(config.path);
 }
 
-// The daily spending limit in dollars (default $3, the owner's choice).
+// The daily spending limit in dollars (default $3).
 export function getDailyLimit(): number {
   const stored = config.get('dailyLimit');
   return typeof stored === 'number' && stored > 0 ? stored : 3;
@@ -123,7 +123,7 @@ export function setVerbosePreference(value: boolean): void {
   config.set('verbose', value);
 }
 
-// How Jeeves addresses the owner (spec: asked once on first launch, changeable via /address).
+// How Jeeves addresses the person (spec: asked once on first launch, changeable via /address).
 export function getAddress(): string | null {
   return config.get('address') ?? null;
 }

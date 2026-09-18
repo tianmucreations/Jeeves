@@ -1,7 +1,6 @@
 # Jeeves - Product Specification
 
 What Jeeves is, what it looks like, how it behaves, and how it is built.
-Progress, decisions and measured results are in PROGRESS.md.
 
 ## SECTION 1 — OBJECTIVE
 

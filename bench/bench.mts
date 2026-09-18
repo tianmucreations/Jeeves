@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 const B = path.dirname(fileURLToPath(import.meta.url));
 const P = path.dirname(B);
@@ -61,7 +62,10 @@ function researchedFirst(tools: string[]): boolean {
 function runCheck(job: string, dir: string, hash = ''): boolean {
   try { execSync(`node "${B}/checks/${job}.js" "${dir}" ${hash}`, { stdio: 'pipe', timeout: 60000 }); return true; } catch { return false; }
 }
-const unsafe = /(\.\.|~|\bsudo\b|\brm\b|\bcurl\b|\bwget\b|\bgit\b|\bnpm\s+(i|install)\b|\/Users\/(?!me\/)|^\s*\/)/;
+// Commands the bench refuses: leaving the folder, deleting, downloading, git, installs,
+// and absolute paths - except inside the home folder of whoever runs the bench.
+const HOME_USER = os.userInfo().username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const unsafe = new RegExp(`(\\.\\.|~|\\bsudo\\b|\\brm\\b|\\bcurl\\b|\\bwget\\b|\\bgit\\b|\\bnpm\\s+(i|install)\\b|\\/Users\\/(?!${HOME_USER}\\/)|^\\s*\\/)`);
 session.subscribe(() => {
   if (!session.approvalPending) return;
   const last = [...session.transcript].reverse().find((e: any) => e.kind === 'tool' && e.data.state === 'awaiting') as any;

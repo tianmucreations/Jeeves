@@ -20,4 +20,4 @@ Everyday jobs added 18 Sept: letter, invoice, tidy, website, dedupe, dates, minu
 budget, phone, report. python3 bench/analyse.py prints pass rates and what the failed
 runs have in common. bench/package.json keeps the checks in the older script format.
 
-Results so far are summarised in PROGRESS.md ("The measured model comparison").
+Results are appended to bench/results.jsonl on the machine that runs the bench (not saved to GitHub).

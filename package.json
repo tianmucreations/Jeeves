@@ -1,7 +1,26 @@
 {
   "name": "@tianmucreations/jeeves",
   "version": "0.2.1",
-  "description": "A clean terminal assistant. Plain English in, job done. Works with any model.",
+  "description": "Your personal assistant in the terminal: say what you need in plain English and Jeeves does the work carefully - asks first, can undo, watches your spending. Auto mode picks the right AI model for you.",
+  "keywords": [
+    "ai",
+    "assistant",
+    "cli",
+    "terminal",
+    "agent",
+    "ai-agent",
+    "plain-english",
+    "no-code",
+    "openrouter",
+    "openai",
+    "anthropic",
+    "claude",
+    "gemini",
+    "ollama",
+    "llm",
+    "automation",
+    "productivity"
+  ],
   "author": {
     "name": "tianmucreations",
     "url": "https://tianmucreations.com"

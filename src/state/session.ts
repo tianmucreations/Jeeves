@@ -26,7 +26,7 @@ export type TranscriptEntry =
   | { id: number; kind: 'tool'; data: ToolLineData };
 
 class SessionStore {
-  // Auto until the person chooses otherwise (the owner's choice, 18 Sept): someone who
+  // Auto until the person chooses otherwise (decided 18 Sept): someone who
   // leaves the model list without picking still gets the recommended experience.
   model = AUTO_MODEL_ID;
   providerId = 'openrouter';
