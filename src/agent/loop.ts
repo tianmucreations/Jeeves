@@ -8,8 +8,9 @@ import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
 import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
-import { isAuto, workingModelId, workerModel, expertModel, topModel, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion, reviewFinishedJob, REVIEW_FINISHED_JOBS } from './auto.js';
-import { requestApproval, isReadOnlyBashCommand } from './permissions.js';
+import { isAuto, workingModelId, workerModel, expertModel, topModel, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion, REVIEW_FINISHED_JOBS } from './auto.js';
+import { jobNeedsReview, reviewJob, fixRequest, startReproducing, stopReproducing, UNCHECKED_NOTICE } from './review.js';
+import { requestApproval } from './permissions.js';
 import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
@@ -153,35 +154,35 @@ export async function runTurn(input: string): Promise<void> {
         session.closeReasoningEntry();
       },
     };
+    let uncheckedNotice = false;
     let result = await provider.stream(streamOptions);
     let allMessages = [...messages, ...result.messages];
-    // Auto's compulsory final check, once, when this job changed files.
-    const changedFiles = session.transcript
-      .slice(turnStart)
-      .some(
-        (entry) =>
-          entry.kind === 'tool' &&
-          entry.data.state === 'done' &&
-          (entry.data.tool === 'writeFile' || (entry.data.tool === 'runBash' && !isReadOnlyBashCommand(entry.data.summary)))
-      );
-    if (auto && REVIEW_FINISHED_JOBS && changedFiles && !stop.signal.aborted) {
+    // Auto's double-check, once, when this job changed a program or wrote a document
+    // (where the cheap worker's mistakes were measured - see review.ts).
+    if (auto && REVIEW_FINISHED_JOBS && jobNeedsReview(session.transcript.slice(turnStart)) && !stop.signal.aborted) {
       for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
       countedSteps = result.stepCosts?.length ?? countedSteps;
-      const review = await reviewFinishedJob(allMessages);
-      if (review && !review.ok) {
+      const review = await reviewJob(allMessages);
+      if (review.kind === 'unavailable') {
+        uncheckedNotice = true;
+      } else if (review.kind === 'problems') {
         countedSteps = 0;
         if (assistantId !== null) session.setAssistantText(assistantId, '');
-        const fixMessages = [
-          ...allMessages,
-          { role: 'user' as const, content: `An expert reviewed your work and found problems:\n${review.advice}\nFix them, check the result again, then tell the person briefly what was wrong and what you changed.` },
-        ];
-        result = await provider.stream({ ...streamOptions, messages: fixMessages });
+        const fixMessages = [...allMessages, { role: 'user' as const, content: fixRequest(review.problems) }];
+        // Changing files waits until the worker has reproduced a problem.
+        startReproducing();
+        try {
+          result = await provider.stream({ ...streamOptions, messages: fixMessages });
+        } finally {
+          stopReproducing();
+        }
         allMessages = [...fixMessages, ...result.messages];
       }
     }
     if (assistantId === null) assistantId = session.startAssistant();
     session.setAssistantText(assistantId, result.text);
     session.finishAssistant(assistantId);
+    if (uncheckedNotice) session.addNotice(UNCHECKED_NOTICE);
     session.setHistory(allMessages);
     session.setLastReasoning(result.reasoning);
     session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);

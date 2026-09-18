@@ -16,7 +16,9 @@ import {
   recordNote,
   noteResearchSchema,
   HELD_PREFIX,
+  commandEditsFiles,
 } from '../agent/research-gate.js';
+import { holdUntilReproduced } from '../agent/review.js';
 
 // Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
 const MAX_RESULT_CHARS = 150_000;
@@ -86,7 +88,10 @@ function defineTool<S extends z.ZodObject>(config: {
       const held = (await config.hold?.(input)) ?? null;
       if (held) {
         const heldLine = session.addToolLine(config.name, summary, 'running');
-        session.updateToolLine(heldLine, { state: 'held', label: 'waits until the research is done' });
+        session.updateToolLine(heldLine, {
+          state: 'held',
+          label: held.includes('reproduce the reported problem') ? 'waits until the problem is reproduced' : 'waits until the research is done',
+        });
         throw new Error(held);
       }
       const needsPermission =
@@ -133,6 +138,7 @@ export const TOOLS: ToolSet = {
     summarize: (input) => input.path,
     label: (input) => `Read ${input.path}`,
     run: runReadFile,
+    hold: (input) => holdUntilReproduced('readFile', input.path, false),
   }),
   listDir: defineTool({
     name: 'listDir',
@@ -142,6 +148,7 @@ export const TOOLS: ToolSet = {
     summarize: (input) => input.path,
     label: (input, result) => `Listed ${input.path} (${result.split('\n').length} items)`,
     run: runListDir,
+    hold: (input) => holdUntilReproduced('listDir', input.path, false),
   }),
   writeFile: defineTool({
     name: 'writeFile',
@@ -151,7 +158,7 @@ export const TOOLS: ToolSet = {
     summarize: (input) => `${input.path} (${input.content.length} characters)`,
     label: () => 'Wrote 1 file',
     run: runWriteFile,
-    hold: (input) => holdForWrite(input.path, resolveFromCwd(input.path), process.cwd()),
+    hold: async (input) => holdUntilReproduced('writeFile', input.path, true) ?? (await holdForWrite(input.path, resolveFromCwd(input.path), process.cwd())),
     changesFiles: () => true,
     warning: (input) =>
       isOutsideProject(input.path)
@@ -193,7 +200,9 @@ export const TOOLS: ToolSet = {
       const note = recordCommandResult(input.command, exit === undefined || exit === 'unknown' ? null : Number(exit), output);
       return note ? output + note : output;
     },
-    hold: (input) => (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
+    hold: (input) =>
+      holdUntilReproduced('runBash', input.command, commandEditsFiles(input.command)) ??
+      (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
     changesFiles: (input) => !isReadOnlyBashCommand(input.command),
     warning: (input) =>
       !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
