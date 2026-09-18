@@ -1,0 +1,38 @@
+name: Tests on Windows, Linux and macOS
+
+# Every save to GitHub runs Jeeves's own tests and a start-up check on all three
+# operating systems (GitHub's free machines for public projects). Only macOS is tried
+# by hand, so this is how Windows and Linux problems are found.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['24']
+        include:
+          # The oldest Node.js Jeeves supports (package.json "engines").
+          - os: ubuntu-latest
+            node: '20'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+        env:
+          # Tests never touch a real keychain.
+          JEEVES_SKIP_KEYCHAIN: '1'
+      - name: Start-up check
+        run: node bin/jeeves --version

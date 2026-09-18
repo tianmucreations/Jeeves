@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from 'ink';
 import { Command } from 'commander';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
@@ -21,21 +21,31 @@ if (existsSync(envPath)) {
   }
 }
 
-// Graceful degradation: without an interactive terminal there is nothing to draw,
-// so explain in plain English instead of crashing on raw mode.
-if (!process.stdin.isTTY) {
-  console.error('This needs to be opened in a Terminal window.');
-  process.exit(1);
+// The version comes from package.json, so it can never drift from the release.
+function packageVersion(): string {
+  try {
+    const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+    return (JSON.parse(readFileSync(file, 'utf8')) as { version?: string }).version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 const program = new Command();
 
 program
   .name('jeeves')
-  .version('0.2.1')
+  .version(packageVersion())
   .description('A plain-English terminal assistant.')
   .argument('[prompt]', 'optional prompt to start with')
   .action((prompt) => {
+    // Graceful degradation: without an interactive terminal there is nothing to draw,
+    // so explain in plain English instead of crashing on raw mode. (Checked here, not
+    // earlier, so --version and --help still answer anywhere.)
+    if (!process.stdin.isTTY) {
+      console.error('This needs to be opened in a Terminal window.');
+      process.exit(1);
+    }
     // The address question comes before the project picker on first launch only;
     // a saved address skips straight to the picker.
     if (getAddress()) session.skipAddressStage();
