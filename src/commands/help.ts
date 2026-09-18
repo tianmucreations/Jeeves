@@ -10,6 +10,7 @@ export const COMMANDS: HelpEntry[] = [
   { command: '/address', description: 'change how Jeeves addresses you' },
   { command: '/verbose', description: "show the model's thinking and technical details" },
   { command: '/undo', description: 'put the project folder back to how it was before the last change' },
+  { command: '/ask', description: 'ask before every change in this project folder again (after "always allow")' },
   { command: '/clear', description: 'start a fresh conversation and clear the screen' },
   { command: '/exit', description: 'quit' },
 ];

@@ -81,6 +81,10 @@ class SessionStore {
   // The furthest the transcript can scroll up (contentHeight - viewportHeight),
   // reported by the Transcript from its live measurements.
   transcriptScrollMax = Number.POSITIVE_INFINITY;
+  // What is being typed in the input box (the window sizes the box to fit it).
+  inputText = '';
+  // Messages sent while Jeeves was busy, in order; each is sent when he finishes.
+  queued: string[] = [];
 
   private turnEvents: { t: number; tokens: number }[] = [];
 
@@ -99,6 +103,24 @@ class SessionStore {
   private emit(): void {
     this.version += 1;
     for (const listener of this.listeners) listener();
+  }
+
+  setInputText(text: string): void {
+    if (text === this.inputText) return;
+    this.inputText = text;
+    this.emit();
+  }
+
+  queueMessage(text: string): void {
+    this.queued = [...this.queued, text];
+    this.emit();
+  }
+
+  takeQueued(): string | undefined {
+    const [next, ...rest] = this.queued;
+    this.queued = rest;
+    this.emit();
+    return next;
   }
 
   setStatus(status: Status): void {

@@ -12,3 +12,7 @@ PROGRESS.md
 bench/bench.log
 bench/bench-17sept.log
 bench/results.jsonl
+*.jpeg
+*.jpg
+*.png
+!bench/**/*.png

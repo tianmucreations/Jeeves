@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { Header } from './components/Header.js';
 import { Transcript } from './components/Transcript.js';
-import { Input } from './components/Input.js';
+import { Input, inputRowsFor } from './components/Input.js';
 import { Footer } from './components/Footer.js';
 import { session, useSession } from './state/session.js';
 import { initKeys, hasCredentials, refreshCredit, serviceKey } from './providers/index.js';
@@ -29,7 +29,12 @@ export function App() {
   const rows = Math.max(stdout.rows ?? 24, 8);
   const columns = Math.max(stdout.columns ?? 80, 40);
   const inner = columns - 2;
-  const midHeight = Math.max(1, rows - 6);
+  // The input box grows with the message (up to MAX_INPUT_ROWS); the transcript gives
+  // up the rows. A hint or question in the input row is always one row.
+  const inputRows = s.approvalPending || s.transcriptScrollUp > 0 ? 1 : inputRowsFor(s.inputText, inner - 2);
+  const midHeight = Math.max(1, rows - 5 - inputRows);
+  const inputSideLeft = Array.from({ length: inputRows }, () => '│ ').join('\n');
+  const inputSideRight = Array.from({ length: inputRows }, () => ' │').join('\n');
   const side = '│\n'.repeat(midHeight - 1) + '│';
   const separator = '─'.repeat(inner);
 
@@ -99,12 +104,12 @@ export function App() {
         </Box>
       </Box>
       <Text dimColor>├{separator}┤</Text>
-      <Box height={1}>
-        <Text dimColor>│ </Text>
+      <Box height={inputRows}>
+        <Text dimColor>{inputSideLeft}</Text>
         <Box width={inner - 2}>
           <Input scrollPage={midHeight} width={inner - 2} />
         </Box>
-        <Text dimColor> │</Text>
+        <Text dimColor>{inputSideRight}</Text>
       </Box>
       <Text dimColor>╰{separator}╯</Text>
       <Box height={1} flexDirection="column">

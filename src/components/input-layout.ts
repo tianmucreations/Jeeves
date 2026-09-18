@@ -41,3 +41,73 @@ export function inputView(value: string, rowWidth: number): InputView {
 export function dropLastChar(value: string): string {
   return Array.from(value).slice(0, -1).join('');
 }
+
+export interface InputRow {
+  text: string;
+  trailingSpaces: string;
+}
+
+export interface InputLayout {
+  // The rows to draw, newest last; at most maxRows (older rows scroll away).
+  rows: InputRow[];
+  // Terminal columns the last row occupies; the cursor sits right after it.
+  cursorX: number;
+}
+
+// The input box grows as the message does (as in Claude Code): the text wraps at
+// word boundaries onto new rows, up to maxRows, then the oldest rows scroll away so
+// the end of the message - where the typing is - always shows. Pasted line breaks
+// start new rows. One column is kept spare so the cursor stays inside the box.
+// This keeps inputView's two rules: every keystroke still changes what is drawn (a
+// wrap adds a row, which resizes the box), and the last row's trailing spaces are
+// returned apart so they can be styled.
+export function inputLayout(value: string, rowWidth: number, maxRows = 6): InputLayout {
+  const maxWidth = Math.max(1, rowWidth - 1);
+  const lines: string[] = [];
+  for (const paragraph of value.split('\n')) {
+    let line = '';
+    for (const ch of Array.from(paragraph)) {
+      if (stringWidth(line + ch) <= maxWidth) {
+        line += ch;
+        continue;
+      }
+      if (ch === ' ') {
+        // A space at the edge ends the row; the next word starts the next row.
+        lines.push(line);
+        line = '';
+        continue;
+      }
+      const lastSpace = line.lastIndexOf(' ');
+      if (lastSpace > 0) {
+        lines.push(line.slice(0, lastSpace));
+        line = line.slice(lastSpace + 1) + ch;
+      } else {
+        lines.push(line);
+        line = ch;
+      }
+    }
+    lines.push(line);
+  }
+  const shown = lines.slice(-maxRows);
+  const rows = shown.map((line, index) => {
+    if (index < shown.length - 1) return { text: line, trailingSpaces: '' };
+    const text = line.replace(/ +$/, '');
+    return { text, trailingSpaces: line.slice(text.length) };
+  });
+  return { rows, cursorX: stringWidth(shown[shown.length - 1] ?? '') };
+}
+
+// A burst of typed characters can arrive together with Enter (when Jeeves is busy
+// and the keyboard runs ahead). The text before the first line break is typed text,
+// and the break itself is Enter. Measured 18 Sept: the break was otherwise stored in
+// the message as a carriage return, which pushed the text over the window's border.
+export function splitTypedBurst(input: string): { typed: string; enter: boolean; rest: string } {
+  const match = /\r\n|\r|\n/.exec(input);
+  if (!match) return { typed: input, enter: false, rest: '' };
+  return { typed: input.slice(0, match.index), enter: true, rest: input.slice(match.index + match[0].length).replace(/\r\n|\r/g, '\n') };
+}
+
+// Pasted text keeps its line breaks (as newlines) and never sends by itself.
+export function cleanPaste(text: string): string {
+  return text.replace(/\r\n|\r/g, '\n').replace(/\t/g, '  ');
+}

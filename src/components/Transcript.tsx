@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { session, useSession, type TranscriptEntry } from '../state/session.js';
-import { buildDisplayLines } from './transcript-layout.js';
+import { buildDisplayLines, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
 
 // Claude Code's ScrollBox pattern (ch13-14-terminal-ui.md): the outer box clips at
 // the viewport with overflow="hidden" and flexGrow={1}, so the transcript fills
@@ -42,7 +42,12 @@ export function Transcript({ width }: { width: number }) {
     <Box flexDirection="column" overflow="hidden" flexGrow={1} justifyContent="flex-end" ref={outer}>
       <Box flexDirection="column" flexShrink={0} marginBottom={-scrollTop} ref={inner}>
         {lines.map((line, index) => (
-          <Text key={index} color={line.color} dimColor={line.dim}>
+          <Text
+            key={index}
+            color={line.own ? OWN_MESSAGE_TEXT : line.color}
+            backgroundColor={line.own ? OWN_MESSAGE_BACKGROUND : undefined}
+            dimColor={line.dim}
+          >
             {line.text}
           </Text>
         ))}

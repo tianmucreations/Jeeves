@@ -9,6 +9,7 @@ import { runBashSchema, runRunBash } from './runBash.js';
 import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage } from './web/research.js';
 import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
 import { resolveFromCwd } from '../platform/paths.js';
+import { isProjectTrusted } from '../agent/trust.js';
 import {
   holdForWrite,
   holdForCommand,
@@ -94,13 +95,15 @@ function defineTool<S extends z.ZodObject>(config: {
         });
         throw new Error(held);
       }
-      const needsPermission =
-        typeof config.permission === 'function' ? config.permission(input) : config.permission;
       const warning = config.warning?.(input) ?? null;
+      // A change inside the project folder (no outside warning) may be "always allowed".
+      const trustable = warning === null;
+      const needsPermission =
+        (typeof config.permission === 'function' ? config.permission(input) : config.permission) && !(trustable && isProjectTrusted());
       if (warning) session.addNotice(warning);
       const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
       if (needsPermission) {
-        const approved = await requestApproval();
+        const approved = await requestApproval({ trustable });
         if (!approved) {
           session.updateToolLine(lineId, { state: 'declined' });
           throw new Error(`Permission denied by the user - ${config.name} ${summary} was not executed.`);
@@ -171,7 +174,8 @@ export const TOOLS: ToolSet = {
     schema: webSearchSchema,
     permission: false,
     summarize: (input) => clip(input.query, 60),
-    label: (input) => `Searched ${clip(input.query, 60)}`,
+    // On another service, searches still go through OpenRouter (about a cent each), so say so.
+    label: (input) => `Searched ${clip(input.query, 50)}${session.providerId === 'openrouter' ? '' : ' (via OpenRouter)'}`,
     run: runWebSearch,
   }),
   readWebPage: defineTool({
@@ -180,7 +184,7 @@ export const TOOLS: ToolSet = {
     schema: readWebPageSchema,
     permission: false,
     summarize: (input) => clip(input.url, 60),
-    label: (input) => `Read ${clip(input.url.replace(/^https?:\/\//, ''), 60)}`,
+    label: (input) => `Read ${clip(input.url.replace(/^https?:\/\//, ''), 50)}${session.providerId === 'openrouter' ? '' : ' (via OpenRouter)'}`,
     run: runReadWebPage,
   }),
   runBash: defineTool({

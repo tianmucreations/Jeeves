@@ -1,10 +1,19 @@
+import stringWidth from 'string-width';
 import type { TranscriptEntry, ToolLineData } from '../state/session.js';
 
 export interface DisplayLine {
   text: string;
   color?: 'yellow' | 'red';
   dim?: boolean;
+  // The person's own words: drawn on a soft grey band across the full width.
+  own?: boolean;
 }
+
+// Claude Code marks the person's messages the same way: a blank line above and a
+// grey band behind (its dark theme's userMessageBackground, rgb(55, 55, 55)), with
+// white text so the band reads on light and dark terminals alike.
+export const OWN_MESSAGE_BACKGROUND = '#373737';
+export const OWN_MESSAGE_TEXT = '#ffffff';
 
 // Greedy word-wrap for plain text. Long unbreakable words are hard-broken at the width.
 export function wrapParagraph(s: string, max: number): string[] {
@@ -81,9 +90,14 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number): Di
   };
   for (const entry of entries) {
     switch (entry.kind) {
-      case 'user':
-        pushWrapped(entry.text, '> ', '  ');
+      case 'user': {
+        // A single space: an empty line would be drawn with no height at all.
+        if (lines.length > 0) lines.push({ text: ' ' });
+        for (const line of wrapWithPrefix(entry.text, width, '> ', '  ')) {
+          lines.push({ text: line + ' '.repeat(Math.max(0, width - stringWidth(line))), own: true });
+        }
         break;
+      }
       case 'assistant':
         pushWrapped(entry.text, '', '');
         break;

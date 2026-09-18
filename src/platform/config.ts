@@ -17,6 +17,7 @@ interface JeevesConfig {
   directCatalogue?: { catalogue: unknown; fetchedAt: number };
   customService?: { baseURL: string };
   estimatedSpend?: { date: string; amount: number };
+  trustedProjects?: string[];
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -159,4 +160,14 @@ export function getEstimatedSpend(): { date: string; amount: number } | undefine
 
 export function setEstimatedSpend(spend: { date: string; amount: number }): void {
   config.set('estimatedSpend', spend);
+}
+
+// Project folders where the person chose "always allow": changes inside them need no
+// yes/no (they are still backed up, so /undo works). /ask removes a folder again.
+export function getTrustedProjects(): string[] {
+  return config.get('trustedProjects') ?? [];
+}
+
+export function setTrustedProjects(folders: string[]): void {
+  config.set('trustedProjects', folders);
 }

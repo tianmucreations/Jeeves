@@ -32,7 +32,9 @@ Needs [Node.js](https://nodejs.org) 22.12 or newer, and a key from an AI service
 
 **He doesn't guess.** Facts about the outside world are looked up on the web, read from the most official page, and given with their source. Before building something new, he checks what already exists and shows you a short research note: use an existing tool, adapt one (licence permitting), or build new — and why. If the same problem happens twice, he researches the cause instead of patching blindly.
 
-**Safe to say yes to.** Anything that changes your computer asks first. Before any change in your project folder he quietly takes a backup, so `/undo` puts the folder back — changed and deleted files return, new ones disappear. Changes outside the folder come with a warning, because they can't be undone.
+**Safe to say yes to.** Anything that changes your computer asks first — or answer **a** once to always allow changes inside that project folder (`/ask` turns asking back on). Before any change in your project folder he quietly takes a backup, so `/undo` puts the folder back — changed and deleted files return, new ones disappear. Changes outside the folder always ask, with a warning, because they can't be undone.
+
+**Type while he works.** Your message box grows as you type, and anything you send while Jeeves is busy waits its turn and goes as soon as he finishes. Your own messages sit on a soft grey band, so they're easy to find when you scroll back.
 
 **Honest about costs.** A daily spending limit (you choose it; $3 to start) stops and asks before going over, and a long job checks in every 50 cents. Nothing is spent without you seeing it — and it can cost nothing at all: OpenRouter's free models, or models running on your own computer with Ollama.
 
@@ -70,6 +72,7 @@ Auto is offered only where a pairing has been measured doing everyday and diffic
 | `/model` | Choose a service and a model (or Auto), and set your daily limit |
 | `/keys` | Add, replace or remove keys |
 | `/undo` | Put the project folder back to before your last request |
+| `/ask` | Ask before every change in this project folder again (after choosing "always allow") |
 | `/clear` | Start a fresh conversation |
 | `/address` | Change how Jeeves addresses you |
 | `/verbose` | Show the technical details as well |

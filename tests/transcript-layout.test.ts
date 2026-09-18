@@ -32,9 +32,23 @@ describe('buildDisplayLines', () => {
   it('renders a user entry with a prompt prefix and wrapped continuation', () => {
     const entries: TranscriptEntry[] = [{ id: 1, kind: 'user', text: 'one two three four five six' }];
     const lines = buildDisplayLines(entries, 14);
-    expect(lines[0].text).toBe('> one two');
-    expect(lines[1].text).toBe('  three four');
+    expect(lines[0].text.trimEnd()).toBe('> one two');
+    expect(lines[1].text.trimEnd()).toBe('  three four');
     expect(lines.length).toBeGreaterThan(2);
+    // The person's own lines carry the grey band, padded to the full width.
+    expect(lines.every((line) => line.own && line.text.length === 14)).toBe(true);
+  });
+
+  it('leaves a blank line above each of the person\'s messages, except the very first', () => {
+    const entries: TranscriptEntry[] = [
+      { id: 1, kind: 'user', text: 'hello' },
+      { id: 2, kind: 'assistant', text: 'Good day.' },
+      { id: 3, kind: 'user', text: 'again' },
+    ];
+    const lines = buildDisplayLines(entries, 20);
+    expect(lines.map((line) => line.text.trimEnd())).toEqual(['> hello', 'Good day.', '', '> again']);
+    expect(lines[2].text).toBe(' ');
+    expect(lines.map((line) => Boolean(line.own))).toEqual([true, false, false, true]);
   });
 
   it('renders each tool action as exactly one physical line', () => {

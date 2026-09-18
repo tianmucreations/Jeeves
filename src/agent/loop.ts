@@ -18,6 +18,7 @@ import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
 import { startTurnCheckpoints, undoLastChange } from '../checkpoints/index.js';
 import { noteSkipRequest } from './research-gate.js';
+import { untrustProject } from './trust.js';
 
 // Added to the rulebook when the chosen model cannot use tools, so a task request
 // gets a plain answer instead of a pretend attempt.
@@ -41,6 +42,12 @@ export async function runTurn(input: string): Promise<void> {
       session.addNotice(toggleVerbose());
     } else if (input === '/address') {
       openAddressPrompt();
+    } else if (input === '/ask') {
+      session.addNotice(
+        untrustProject()
+          ? "I'll ask before every change in this project folder again."
+          : 'I already ask before every change in this project folder.'
+      );
     } else if (input === '/undo') {
       if (session.status === 'working') {
         session.addNotice('Undo works between tasks - wait for this one to finish, then type /undo.');

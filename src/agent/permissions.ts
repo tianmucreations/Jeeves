@@ -1,7 +1,12 @@
 import { session } from '../state/session.js';
+import { trustProject } from './trust.js';
+import { getAddress } from '../platform/config.js';
 
 interface PendingApproval {
   resolve: (approved: boolean) => void;
+  // Whether "always allow in this project" may answer it: a change inside the
+  // project folder. Spending questions and anything outside the folder never are.
+  trustable: boolean;
 }
 
 // Pure-output commands that never require permission (the rule: harmless
@@ -175,18 +180,32 @@ export function hasPendingApproval(): boolean {
   return queue.length > 0;
 }
 
-export function requestApproval(): Promise<boolean> {
+export function requestApproval(options: { trustable?: boolean } = {}): Promise<boolean> {
   return new Promise((resolve) => {
-    queue.push({ resolve });
+    queue.push({ resolve, trustable: options.trustable === true });
     if (queue.length === 1) {
       session.setActiveApproval();
     }
   });
 }
 
-export function answerApproval(approved: boolean): void {
+// Whether the question now on screen may be answered with "always allow".
+export function currentApprovalTrustable(): boolean {
+  return queue[0]?.trustable === true;
+}
+
+// always: "always allow in this project" - approves this change, every other change
+// inside the project already waiting, and all future ones in this folder.
+export function answerApproval(approved: boolean, always = false): void {
   const current = queue.shift();
   if (!current) return;
+  if (always && approved && current.trustable) {
+    trustProject();
+    session.addNotice(`From now on I won't ask before changing things in this project folder, ${getAddress() ?? 'Sir'} - every change is still backed up, so /undo puts it back. I'll still ask about anything outside it. Type /ask to have me ask every time again.`);
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (queue[i].trustable) queue.splice(i, 1)[0].resolve(true);
+    }
+  }
   current.resolve(approved);
   if (queue.length > 0) {
     session.setActiveApproval();
