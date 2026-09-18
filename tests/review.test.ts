@@ -16,10 +16,16 @@ import {
 import { session, type TranscriptEntry } from '../src/state/session.js';
 import { TOOLS } from '../src/tools/index.js';
 import { resetResearchGate } from '../src/agent/research-gate.js';
+import { REVIEW_FINISHED_JOBS } from '../src/agent/auto.js';
 
 const tool = (tool: string, summary: string, state: 'done' | 'failed' = 'done'): TranscriptEntry => ({ id: 1, kind: 'tool', data: { tool, summary, state, label: '' } });
 
 describe('double-check: when it runs', () => {
+  it('is on in Auto mode unless switched off for testing', () => {
+    expect(REVIEW_FINISHED_JOBS).toBe(process.env.JEEVES_REVIEW !== '0');
+    expect(process.env.JEEVES_REVIEW === '0' || REVIEW_FINISHED_JOBS).toBe(true);
+  });
+
   it('after a program file or a document was written', () => {
     expect(jobNeedsReview([tool('writeFile', 'calc.js (2400 characters)')])).toBe(true);
     expect(jobNeedsReview([tool('writeFile', 'letter.txt (800 characters)')])).toBe(true);

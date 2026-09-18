@@ -83,10 +83,11 @@ export function conversationForExpert(messages: ModelMessage[], maxChars = 80_00
   return text.length > maxChars ? '…[earlier conversation shortened]\n' + text.slice(-maxChars) : text;
 }
 
-// Off until the owner chooses (17 Sept comparison): with Claude Sonnet 5 reviewing, the
-// hard calculator job went from 2 of 5 to 2 of 2, but each job cost about $0.05 and
-// took 5-7 minutes; a DeepSeek V4 Pro reviewer broke a job the cheap model gets right.
-export const REVIEW_FINISHED_JOBS = process.env.JEEVES_REVIEW === '1';
+// On in Auto mode - the owner's choice, 18 Sept: Auto must be excellent without anyone
+// having to think about models. Targeted to programs and documents (review.ts), it
+// rescued 2 of 3 letters and cost 0.2-2.5 cents per checked job. JEEVES_REVIEW=0 turns
+// it off for testing.
+export const REVIEW_FINISHED_JOBS = process.env.JEEVES_REVIEW !== '0';
 
 export interface AutoTurnState {
   expertTookOver: boolean;
