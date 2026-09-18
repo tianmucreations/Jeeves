@@ -21,6 +21,13 @@ import { REVIEW_FINISHED_JOBS } from '../src/agent/auto.js';
 const tool = (tool: string, summary: string, state: 'done' | 'failed' = 'done'): TranscriptEntry => ({ id: 1, kind: 'tool', data: { tool, summary, state, label: '' } });
 
 describe('double-check: when it runs', () => {
+  it('Auto is where a new user starts', async () => {
+    const { SessionStore } = await import('../src/state/session.js').then((m) => ({ SessionStore: (m.session as object).constructor as new () => { model: string; providerId: string } }));
+    const fresh = new SessionStore();
+    expect(fresh.model).toBe('jeeves/auto');
+    expect(fresh.providerId).toBe('openrouter');
+  });
+
   it('is on in Auto mode unless switched off for testing', () => {
     expect(REVIEW_FINISHED_JOBS).toBe(process.env.JEEVES_REVIEW !== '0');
     expect(process.env.JEEVES_REVIEW === '0' || REVIEW_FINISHED_JOBS).toBe(true);

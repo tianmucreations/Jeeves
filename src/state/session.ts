@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ModelMessage } from 'ai';
 import type { ModelInfo } from '../models/registry.js';
+import { AUTO_MODEL_ID } from '../agent/auto-ids.js';
 
 export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
 
@@ -25,7 +26,9 @@ export type TranscriptEntry =
   | { id: number; kind: 'tool'; data: ToolLineData };
 
 class SessionStore {
-  model = 'z-ai/glm-5.3';
+  // Auto until the person chooses otherwise (the owner's choice, 18 Sept): someone who
+  // leaves the model list without picking still gets the recommended experience.
+  model = AUTO_MODEL_ID;
   providerId = 'openrouter';
   providerName = 'OpenRouter';
   status: Status = 'idle';

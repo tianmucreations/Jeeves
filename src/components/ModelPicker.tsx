@@ -13,7 +13,7 @@ import {
   isFreeModel,
   cleanModelName,
 } from '../models/registry.js';
-import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit, hasSavedDailyLimit } from '../platform/config.js';
+import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit, hasSavedDailyLimit, getDefaultModel } from '../platform/config.js';
 import {
   hasCredentials,
   hasCredentialsFor,
@@ -391,7 +391,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     const model = current.model;
-    if (model.id === s.model && providerChoice === (s.providerId as ProviderChoice)) {
+    // Choosing the model already in use just closes - unless nothing was ever chosen,
+    // so a first choice of the starting model (Auto) still saves it and sets the daily limit.
+    if (model.id === s.model && providerChoice === (s.providerId as ProviderChoice) && getDefaultModel() !== null) {
       s.closePicker();
       return;
     }
