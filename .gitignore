@@ -1,5 +1,10 @@
 node_modules/
 dist/
 .DS_Store
-.envbench/runs/
+.env
+bench/runs/
 PRIVATE SESSION NOTES.txt
+AGENTS.md
+NEXT SESSION PROMPT.txt
+.jeeves-history-backup-*.bundle
+Jeeves CLI Project/
