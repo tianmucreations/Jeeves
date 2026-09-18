@@ -93,4 +93,4 @@ Arrow keys and the trackpad scroll the conversation; `Page Up` / `Page Down` jum
 
 ## Licence
 
-MIT — made by [Tianmu Creations](https://tianmucreations.com). More about Jeeves at [tianmucreations.com/jeeves](https://tianmucreations.com/jeeves/).
+Free to use, for personal use and for work. All rights reserved — see [LICENSE](LICENSE): you may not copy, change, share or sell Jeeves. Versions up to 0.3.0 were released under the MIT licence. Made by [Tianmu Creations](https://tianmucreations.com). More about Jeeves at [tianmucreations.com/jeeves](https://tianmucreations.com/jeeves/).

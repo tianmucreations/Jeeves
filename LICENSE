@@ -1,21 +1,41 @@
-MIT License
+Jeeves Licence
+Copyright (c) 2026 Tianmu Creations. All rights reserved.
 
-Copyright (c) 2026 tianmucreations
+This licence applies to Jeeves version 0.3.1 and every later version. Versions
+0.3.0 and earlier were released under the MIT licence, which still applies to
+those versions.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. YOU MAY
+   - Install Jeeves and use it free of charge, for personal use and for work,
+     on as many of your own computers as you like.
+   - Read the source code on GitHub.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. YOU MAY NOT, without written permission from Tianmu Creations
+   - copy Jeeves, or any part of its source code, except as needed to install
+     and run it;
+   - change, adapt, translate, or build other software from Jeeves or its
+     source code;
+   - merge Jeeves, or any part of it, into other software;
+   - publish, share, distribute, host, or make Jeeves available to others,
+     changed or unchanged, except by pointing them to the official copies on
+     npm (npmjs.com/package/@tianmucreations/jeeves) and GitHub;
+   - sublicense, rent, lease, lend, or sell Jeeves or access to it; or
+   - remove or change this licence or any copyright notice.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. OTHER PEOPLE'S WORK
+   Jeeves uses add-ons made by others, which are installed alongside it and keep
+   their own licences. Its built-in list of AI models and prices comes from
+   models.dev (MIT licence).
+
+4. NO WARRANTY
+   Jeeves is provided "as is", without any warranty of any kind. Jeeves asks
+   before changing your computer and keeps backups for /undo, but you are
+   responsible for what you approve and for the costs of the AI services you
+   connect it to. To the fullest extent the law allows, Tianmu Creations is not
+   liable for any loss or damage arising from using Jeeves.
+
+5. ENDING
+   This licence ends automatically if you break it. When it ends you must stop
+   using Jeeves and delete your copies.
+
+Questions or permission requests: https://tianmucreations.com
