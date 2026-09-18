@@ -28,6 +28,7 @@ import {
 } from '../providers/index.js';
 import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
 import { loadDirectModels, checkCustomService } from '../providers/catalogue.js';
+import { autoRowFor } from '../agent/auto.js';
 import { getCustomService } from '../platform/config.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
@@ -293,7 +294,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       forProvider === CUSTOM_SERVICE_ID
         ? checkCustomService(getCustomService()?.baseURL ?? '', serviceKey(CUSTOM_SERVICE_ID) ?? '').then((check) => (check.ok ? check.models : []))
         : isDirectService(forProvider)
-          ? loadDirectModels(forProvider, serviceKey(forProvider) ?? '')
+          ? loadDirectModels(forProvider, serviceKey(forProvider) ?? '').then((models) => {
+              // Auto heads the list where the company has it (OpenAI).
+              const auto = autoRowFor(forProvider, models);
+              return auto ? [auto, ...models] : models;
+            })
           : Promise.resolve([]);
     void loading.then(setDirectModels).catch(() => setDirectModels([]));
   }

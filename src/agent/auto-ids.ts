@@ -30,6 +30,27 @@ export const EXPERT_MODELS = [
 ];
 export const TOP_MODELS = ['anthropic/claude-opus-5'];
 
+// Auto's models for each service it runs on. A service without an entry offers no Auto.
+export interface AutoProfile {
+  workers: string[];
+  experts: string[];
+  top: string[];
+}
+
+export const AUTO_PROFILES: Record<string, AutoProfile> = {
+  openrouter: { workers: WORKER_MODELS, experts: EXPERT_MODELS, top: TOP_MODELS },
+  // OpenAI with the person's own key. Chosen 18 Sept from public results (GPT-5.6 Luna
+  // scores near the top models at a tenth of the price), then measured through
+  // OpenRouter: Luna working with Terra as expert passed 6 of 6 of the telling jobs
+  // (letter, website, calculator, share tracker) at about 4 cents a job. Replacements:
+  // GPT-5.4 mini (OpenAI's small model for tool work) and GPT-5.5 - not measured.
+  openai: { workers: ['gpt-5.6-luna', 'gpt-5.4-mini'], experts: ['gpt-5.6-terra', 'gpt-5.5'], top: ['gpt-5.6-sol'] },
+};
+
+export function autoProfile(providerId: string): AutoProfile | null {
+  return AUTO_PROFILES[providerId] ?? null;
+}
+
 // First choices, for places that need a name before the catalogue has loaded.
 export const AUTO_WORKER_MODEL = WORKER_MODELS[0];
 export const AUTO_EXPERT_MODEL = EXPERT_MODELS[0];

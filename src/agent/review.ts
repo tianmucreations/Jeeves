@@ -1,10 +1,10 @@
 import type { ModelMessage } from 'ai';
 import path from 'node:path';
 import { session, type TranscriptEntry } from '../state/session.js';
-import { getOpenRouterKey } from '../providers/index.js';
-import { openrouterChat } from '../tools/web/openrouterChat.js';
-import { EXPERT_MODELS } from './auto-ids.js';
-import { conversationForExpert, workerModel } from './auto.js';
+import { AUTO_PROFILES, autoProfile } from './auto-ids.js';
+import { conversationForExpert, workerModel, autoCatalogue } from './auto.js';
+import { expertChat, type ExpertChat } from './expert-chat.js';
+import type { ModelInfo } from '../models/registry.js';
 import { isProgramFile } from './research-gate.js';
 import { isReadOnlyBashCommand } from './permissions.js';
 
@@ -88,10 +88,11 @@ export function fixRequest(problems: ReviewProblem[]): string {
   return `An expert reviewed your work and reported these problems:\n${list}\n\nThe expert can be wrong. For each one, first reproduce it: run the example, or read the file and find the exact words. Only fix a problem you have reproduced; if you cannot reproduce one, leave the work as it is for that one. Then check the result again and tell the person briefly what was wrong and what you changed, or that the expert's concern did not hold.`;
 }
 
-// The reviewers, in order: the expert models still in the catalogue that can use tools.
-export function reviewers(catalogue = session.models): string[] {
-  if (catalogue.length === 0) return EXPERT_MODELS.slice();
-  return EXPERT_MODELS.filter((id) => {
+// The reviewers, in order: the service's expert models still in its catalogue.
+export function reviewers(catalogue: ModelInfo[] = autoCatalogue(), providerId = session.providerId): string[] {
+  const experts = (autoProfile(providerId) ?? AUTO_PROFILES.openrouter).experts;
+  if (catalogue.length === 0) return experts.slice();
+  return experts.filter((id) => {
     const params = catalogue.find((model) => model.id === id)?.supportedParameters ?? [];
     return params.includes('tools') || params.includes('tool_choice');
   });
@@ -103,21 +104,21 @@ export type ReviewOutcome =
   | { kind: 'unavailable' };
 
 // Asks each reviewer in turn until one answers; says so plainly when none can.
-export async function reviewJob(messages: ModelMessage[], chat = openrouterChat, key = getOpenRouterKey()): Promise<ReviewOutcome> {
+export async function reviewJob(messages: ModelMessage[], chat: ExpertChat = expertChat, candidates: string[] = reviewers()): Promise<ReviewOutcome> {
   const lineId = session.addToolLine('askExpert', 'final check of the work', 'running');
   try {
-    for (const reviewer of key ? reviewers() : []) {
+    for (const reviewer of candidates) {
       session.setActiveModel(reviewer);
       try {
-        const reply = await chat(key!, {
-          model: reviewer,
-          messages: [
+        const reply = await chat(
+          reviewer,
+          [
             { role: 'system', content: REVIEW_INSTRUCTIONS },
             { role: 'user', content: `Conversation:\n${conversationForExpert(messages, 80_000, 6_000)}` },
           ],
-          max_tokens: 1500,
-        });
-        const parsed = parseReview(reply.text);
+          1500
+        );
+        const parsed = parseReview(reply);
         session.updateToolLine(lineId, { state: 'done', label: parsed.ok ? 'Expert checked the work' : 'Expert found something to check' });
         return parsed.ok ? { kind: 'ok', reviewer } : { kind: 'problems', reviewer, problems: parsed.problems };
       } catch {

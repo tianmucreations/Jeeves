@@ -8,6 +8,7 @@ import { openModelPicker } from '../commands/model.js';
 import { clearConversation } from '../commands/clear.js';
 import { openAddressPrompt } from '../commands/address.js';
 import { isToolCapable } from '../models/filter.js';
+import { autoCatalogue } from './auto.js';
 import { isAuto, workingModelId, workerModel, expertModel, topModel, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion, REVIEW_FINISHED_JOBS } from './auto.js';
 import { jobNeedsReview, reviewJob, fixRequest, startReproducing, stopReproducing, UNCHECKED_NOTICE } from './review.js';
 import { requestApproval } from './permissions.js';
@@ -125,7 +126,7 @@ export async function runTurn(input: string): Promise<void> {
         if (autoState.expertTookOver && autoState.takeoverStep < 0) autoState.takeoverStep = stepFailures.length;
         if (auto && strongest && autoState.expertTookOver && !autoState.askedAboutTop && shouldTakeOver(stepFailures.slice(autoState.takeoverStep))) {
           autoState.askedAboutTop = true;
-          session.addNotice(topModelQuestion(getAddress() ?? 'Sir', topModelPriceRatio(session.models)));
+          session.addNotice(topModelQuestion(getAddress() ?? 'Sir', topModelPriceRatio(autoCatalogue())));
           autoState.onTopModel = await requestApproval();
         }
         if (auto && autoState.expertTookOver && expert) {

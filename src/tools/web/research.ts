@@ -33,7 +33,8 @@ export const PROVEN_READING_MODELS = ['deepseek/deepseek-v4-flash-0731', 'openai
 // Reading models in the order tried: the cheap one first, then Jeeves's own model
 // when that is also an OpenRouter model, then the proven ones.
 export function readingModels(): string[] {
-  const models = [workerModel()];
+  // Research always runs through OpenRouter, so it uses OpenRouter's Auto worker.
+  const models = [workerModel('openrouter')];
   const current = workingModelId(session.model);
   if (session.providerId === 'openrouter' && current && !models.includes(current)) models.push(current);
   for (const proven of PROVEN_READING_MODELS) if (!models.includes(proven)) models.push(proven);

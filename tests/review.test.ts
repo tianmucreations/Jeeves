@@ -100,18 +100,18 @@ describe('double-check: reviewers and fallbacks', () => {
   it('tries the next reviewer when one fails, and says plainly when none can check', async () => {
     session.setModels(catalogue(['anthropic/claude-sonnet-5', 'z-ai/glm-5.3']), '');
     const asked: string[] = [];
-    const flaky = async (_key: string, body: Record<string, unknown>) => {
-      asked.push(String(body.model));
-      if (body.model === 'anthropic/claude-sonnet-5') throw new Error('503');
-      return { text: 'OK', citations: [], cost: 0 };
+    const flaky = async (model: string) => {
+      asked.push(model);
+      if (model === 'anthropic/claude-sonnet-5') throw new Error('503');
+      return 'OK';
     };
-    expect(await reviewJob([], flaky, 'test-key')).toEqual({ kind: 'ok', reviewer: 'z-ai/glm-5.3' });
+    expect(await reviewJob([], flaky)).toEqual({ kind: 'ok', reviewer: 'z-ai/glm-5.3' });
     expect(asked).toEqual(['anthropic/claude-sonnet-5', 'z-ai/glm-5.3']);
     const down = async () => {
       throw new Error('down');
     };
-    expect(await reviewJob([], down, 'test-key')).toEqual({ kind: 'unavailable' });
-    expect(await reviewJob([], flaky, null)).toEqual({ kind: 'unavailable' });
+    expect(await reviewJob([], down)).toEqual({ kind: 'unavailable' });
+    expect(await reviewJob([], flaky, [])).toEqual({ kind: 'unavailable' });
     session.setModels([], '');
   });
 });

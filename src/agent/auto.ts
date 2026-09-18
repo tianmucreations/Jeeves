@@ -1,8 +1,9 @@
 import { tool, type ModelMessage } from 'ai';
 import { z } from 'zod';
 import { session } from '../state/session.js';
-import { getOpenRouterKey } from '../providers/index.js';
-import { openrouterChat } from '../tools/web/openrouterChat.js';
+import { expertChat } from './expert-chat.js';
+import { seenModels } from '../providers/catalogue.js';
+import type { ModelInfo } from '../models/registry.js';
 
 // Auto mode: a cheap worker with an expert on call - the pattern Claude Code
 // publishes as its "advisor" (code.claude.com/docs/en/advisor): the main model does
@@ -11,20 +12,49 @@ import { openrouterChat } from '../tools/web/openrouterChat.js';
 // done), which costs less than running the stronger model throughout. No guessing
 // whether a message is "chat" or "work": the cheap model is always first.
 
-import { AUTO_MODEL_ID, AUTO_WORKER_MODEL, WORKER_MODELS, EXPERT_MODELS, TOP_MODELS, firstAvailable } from './auto-ids.js';
+import { AUTO_MODEL_ID, AUTO_WORKER_MODEL, AUTO_PROFILES, autoProfile, firstAvailable, type AutoProfile } from './auto-ids.js';
 export { AUTO_MODEL_ID, AUTO_WORKER_MODEL };
 
+// Auto runs on OpenRouter and on the services with a profile in auto-ids.ts (OpenAI).
+export function hasAuto(providerId: string): boolean {
+  return autoProfile(providerId) !== null;
+}
+
+// The model list Auto chooses from: OpenRouter's catalogue, or the models a company's
+// key can use (loaded when the company is chosen, and at startup).
+export function autoCatalogue(providerId = session.providerId): ModelInfo[] {
+  return providerId === 'openrouter' ? session.models : seenModels(providerId);
+}
+
+// A service without Auto falls back to OpenRouter's choices (used by web research).
+function profileFor(providerId: string): { profile: AutoProfile; catalogue: ModelInfo[] } {
+  const profile = autoProfile(providerId);
+  return profile ? { profile, catalogue: autoCatalogue(providerId) } : { profile: AUTO_PROFILES.openrouter, catalogue: session.models };
+}
+
 // The models Auto uses right now, allowing for retired models (see auto-ids.ts).
-export function workerModel(): string {
-  return firstAvailable(WORKER_MODELS, session.models) ?? AUTO_WORKER_MODEL;
+export function workerModel(providerId = session.providerId): string {
+  const { profile, catalogue } = profileFor(providerId);
+  return firstAvailable(profile.workers, catalogue) ?? profile.workers[0] ?? AUTO_WORKER_MODEL;
 }
 
-export function expertModel(): string | null {
-  return firstAvailable(EXPERT_MODELS, session.models);
+export function expertModel(providerId = session.providerId): string | null {
+  const { profile, catalogue } = profileFor(providerId);
+  return firstAvailable(profile.experts, catalogue);
 }
 
-export function topModel(): string | null {
-  return firstAvailable(TOP_MODELS, session.models);
+export function topModel(providerId = session.providerId): string | null {
+  const { profile, catalogue } = profileFor(providerId);
+  return firstAvailable(profile.top, catalogue);
+}
+
+// The Auto row in a company's model list, when it has Auto and its worker is available.
+export function autoRowFor(providerId: string, models: ModelInfo[]): ModelInfo | null {
+  const profile = autoProfile(providerId);
+  if (!profile || providerId === 'openrouter') return null;
+  const workerId = firstAvailable(profile.workers, models);
+  const worker = models.find((model) => model.id === workerId);
+  return worker ? { ...worker, id: AUTO_MODEL_ID, name: 'Auto', priceLabel: 'cheap, expert when needed' } : null;
 }
 
 export function isAuto(modelId: string): boolean {
@@ -116,9 +146,26 @@ export function topModelPriceRatio(
   return top.promptPrice / expert.promptPrice;
 }
 
-export function topModelQuestion(address: string, ratio: number | null): string {
+export function topModelQuestion(address: string, ratio: number | null, name = topModelName()): string {
   const cost = ratio ? ` It costs about ${Number(ratio.toFixed(1))}× as much as the expert.` : '';
-  return `This is proving difficult, ${address}. Shall I try the strongest model (Claude Opus 5) for this job?${cost} (y/n)`;
+  return `This is proving difficult, ${address}. Shall I try the strongest model (${name}) for this job?${cost} (y/n)`;
+}
+
+// The strongest model's everyday name ("Claude Opus 5"), from the catalogue.
+export function topModelName(providerId = session.providerId): string {
+  const id = topModel(providerId);
+  const found = autoCatalogue(providerId).find((model) => model.id === id);
+  if (found) return found.name.replace(/^[A-Za-z][A-Za-z0-9 .-]*: /, '');
+  return id ? readableModelName(id) : 'the strongest model';
+}
+
+// "anthropic/claude-opus-5" -> "Claude Opus 5", "gpt-5.6-sol" -> "GPT 5.6 Sol", for
+// when the catalogue has not loaded.
+export function readableModelName(id: string): string {
+  return (id.split('/').pop() ?? id)
+    .split('-')
+    .map((word) => (word === 'gpt' ? 'GPT' : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(' ');
 }
 
 export function createAskExpertTool(state: AutoTurnState) {
@@ -127,24 +174,22 @@ export function createAskExpertTool(state: AutoTurnState) {
       'Consult a stronger expert model about the job in hand. It sees the whole conversation. Use at decision points only (see the rules).',
     inputSchema: z.object({ question: z.string().min(1).describe('One clear question for the expert') }),
     execute: async ({ question }, { messages }) => {
-      const key = getOpenRouterKey();
       const expert = expertModel();
-      if (!key) return 'The expert is not available: it needs an OpenRouter key.';
       if (!expert) return 'No expert model is available right now. Carry on carefully, and tell the person the work could not be double-checked.';
       const lineId = session.addToolLine('askExpert', question.slice(0, 60), 'running');
       session.setActiveModel(expert);
       try {
-        const reply = await openrouterChat(key, {
-          model: expert,
-          messages: [
+        const reply = await expertChat(
+          expert,
+          [
             { role: 'system', content: EXPERT_INSTRUCTIONS },
             { role: 'user', content: `Conversation so far:\n${conversationForExpert(messages)}\n\nThe assistant asks: ${question}` },
           ],
-          max_tokens: 1500,
-        });
-        if (reply.text.trimStart().toUpperCase().startsWith('TAKE OVER')) state.expertTookOver = true;
+          1500
+        );
+        if (reply.trimStart().toUpperCase().startsWith('TAKE OVER')) state.expertTookOver = true;
         session.updateToolLine(lineId, { state: 'done', label: 'Checked with the expert' });
-        return reply.text || 'The expert had no advice to add.';
+        return reply || 'The expert had no advice to add.';
       } catch (error) {
         session.updateToolLine(lineId, { state: 'failed', label: 'the expert was not available' });
         return `The expert could not be reached (${error instanceof Error ? error.message : String(error)}). Carry on carefully.`;

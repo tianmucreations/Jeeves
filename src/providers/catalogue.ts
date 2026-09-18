@@ -266,6 +266,10 @@ export function rememberModels(models: ModelInfo[]): void {
   for (const model of models) seen.set(`${model.provider}:${model.id}`, model);
 }
 
+export function seenModels(serviceId: string): ModelInfo[] {
+  return [...seen.values()].filter((model) => model.provider === serviceId);
+}
+
 export function findSeenModel(serviceId: string, modelId: string): ModelInfo | undefined {
   return seen.get(`${serviceId}:${modelId}`);
 }

@@ -55,6 +55,11 @@ export function hasCredentialsFor(providerId: string): boolean {
   return false;
 }
 
+// Uses a key for this session only, without saving it (the bench and tests; never the keychain).
+export function useKeyForThisSession(providerId: string, key: string): void {
+  serviceKeys.set(providerId, key);
+}
+
 // A compatible service may need no key (one running on this computer); this stands in.
 export const NO_KEY = 'no-key';
 
