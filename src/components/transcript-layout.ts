@@ -99,6 +99,9 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number): Di
         break;
       }
       case 'assistant':
+        // Always a gap above Jeeves's answer, so it never runs straight on from the
+        // actions above it (the owner's request, 18 Sept) or from your message.
+        if (lines.length > 0 && lines[lines.length - 1].text.trim() !== '') lines.push({ text: ' ' });
         pushWrapped(entry.text, '', '');
         break;
       case 'reasoning':

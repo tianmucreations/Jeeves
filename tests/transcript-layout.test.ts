@@ -46,9 +46,18 @@ describe('buildDisplayLines', () => {
       { id: 3, kind: 'user', text: 'again' },
     ];
     const lines = buildDisplayLines(entries, 20);
-    expect(lines.map((line) => line.text.trimEnd())).toEqual(['> hello', 'Good day.', '', '> again']);
-    expect(lines[2].text).toBe(' ');
-    expect(lines.map((line) => Boolean(line.own))).toEqual([true, false, false, true]);
+    expect(lines.map((line) => line.text.trimEnd())).toEqual(['> hello', '', 'Good day.', '', '> again']);
+    expect(lines[3].text).toBe(' ');
+    expect(lines.map((line) => Boolean(line.own))).toEqual([true, false, false, false, true]);
+  });
+
+  it('always leaves a gap between the actions and the answer', () => {
+    const entries: TranscriptEntry[] = [
+      { id: 1, kind: 'tool', data: { tool: 'webSearch', summary: 'q', state: 'done', label: 'Searched q' } },
+      { id: 2, kind: 'tool', data: { tool: 'readWebPage', summary: 'u', state: 'done', label: 'Read u' } },
+      { id: 3, kind: 'assistant', text: 'The answer.' },
+    ];
+    expect(buildDisplayLines(entries, 40).map((line) => line.text.trimEnd())).toEqual(['✓ Searched q', '✓ Read u', '', 'The answer.']);
   });
 
   it('renders each tool action as exactly one physical line', () => {
