@@ -1,0 +1,12 @@
+const assert = require('assert');
+const fs = require('fs');
+const dir = process.argv[2];
+const html = fs.readFileSync(dir + '/index.html', 'utf8');
+const css = fs.readFileSync(dir + '/style.css', 'utf8');
+assert(/<link[^>]+href=["']\.?\/?style\.css["']/i.test(html), 'index.html does not use style.css');
+assert(css.replace(/\s/g, '').length > 30, 'style.css is empty');
+const text = html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;|’/g, "'").replace(/\s+/g, ' ');
+for (const fact of ["Rosie's Loaves", '7 Mill Lane', '01632 960 123', '£4.50', '£4.00', '£2.75']) assert(text.includes(fact) || html.includes(fact), 'missing ' + fact);
+for (const item of [/sourdough/i, /\brye\b/i, /cinnamon bun/i, /tue/i, /sat/i, /\b0?8\s*(am|:00|\.00)/i, /\b4\s*(pm|:00|\.00)|16:00/i, /sun/i, /mon/i, /closed/i]) assert(item.test(text), 'missing ' + item);
+assert(!/lorem|ipsum|example\.com|\[your|TODO/i.test(html), 'placeholder text');
+console.log('PASS');

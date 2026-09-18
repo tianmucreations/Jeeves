@@ -29,6 +29,19 @@ const JOBS: Record<string, { prompt: string; fixture?: string; check: (dir: stri
   calc: { fixture: 'calc', prompt: "Make the calculator in calc.js handle proper sums: + - * / ^ and brackets, with the usual order (^ first, and 2^3^2 means 2^(3^2)), a minus sign in front of a number (-2^2 is -4, 2*-3 is -6). If the sum isn't valid - like '1 +', '2(3)', unmatched brackets, dividing by zero, or letters - it must throw an error instead of giving a number.", check: (d) => runCheck('calc', d) },
   fifo: { fixture: 'fifo', prompt: "My share tracker in stock.js gives the wrong profits. The rules are written at the top of the file and the test shows one case. Please fix it so it follows all the rules, without changing the test.", check: (d) => runCheck('fifo', d, h4) },
   todo: { fixture: 'todo', prompt: "Write todo.js, a to-do list I run with node todo.js. Commands: 'add <text>' prints 'Added <n>: <text>'; 'done <n>' prints 'Done <n>: <text>'; 'remove <n>' prints 'Removed <n>: <text>'; 'list' prints each as '<n>. [ ] <text>' or '<n>. [x] <text>', or 'Nothing to do.' when empty. Numbers start at 1 and are never reused. Save everything in todos.json as {\"items\": [...], \"nextId\": <number>}. If the number doesn't exist print 'There is no to-do number <n>.'; 'add' with no text prints 'Say what to add, like: todo add Buy milk'; if todos.json is damaged print 'The to-do file is damaged, so nothing was changed.' and leave it untouched. All errors must exit with a non-zero code.", check: (d) => runCheck('todo', d) },
+  // Everyday jobs (plan step 2, 18 Sept): letters, spreadsheets, folders, a website,
+  // messy data, dates, careful edits, two-file sums, a change across many files, and
+  // finding facts in a long document.
+  letter: { prompt: 'Write a polite letter to my landlord, Mr Graham Patel, asking him to fix the boiler in flat 4B, 12 Elm Road, which has been broken since 3 September 2026. Sign it from Alex Morgan and save it as letter.txt.', check: (d) => runCheck('letter', d) },
+  invoice: { fixture: 'invoice', prompt: 'From hours.csv, make invoice.csv for my client Brightside only: columns date, hours, amount (hours times that row\'s rate), one row per line of work, then a last row with TOTAL and the total amount. Amounts to the cent, no currency signs.', check: (d) => runCheck('invoice', d) },
+  tidy: { fixture: 'tidy', prompt: "Tidy this folder: move pictures into a folder called Pictures, documents (PDF, Word and text files) into Documents, and spreadsheets (CSV and Excel) into Spreadsheets. Don't touch the keep folder, and don't delete anything.", check: (d) => runCheck('tidy', d) },
+  website: { prompt: "Make a one-page website for my bakery, Rosie's Loaves, as index.html with its styling in a separate style.css. Address: 7 Mill Lane. Phone: 01632 960 123. Open Tuesday to Saturday, 8am to 4pm; closed Sunday and Monday. Menu: Sourdough £4.50, Rye £4.00, Cinnamon bun £2.75.", check: (d) => runCheck('website', d) },
+  dedupe: { fixture: 'dedupe', prompt: 'contacts.csv has the same people more than once. Save a copy without the duplicates as clean.csv, with the same columns. The same email address means the same person, whatever the capitals or spaces; keep the first entry for each person exactly as written.', check: (d) => runCheck('dedupe', d) },
+  dates: { fixture: 'dates', prompt: 'Turn events.txt into schedule.csv with the columns event, date, weekday: the date written as YYYY-MM-DD and the weekday as a full name like Monday, earliest first. The dates are written the British way, day first.', check: (d) => runCheck('dates', d) },
+  minutes: { fixture: 'minutes', prompt: "In minutes.md, the meeting has moved: change every mention of Friday 19 September to Monday 22 September. Also correct the misspelling 'recieve'. Don't change anything else.", check: (d) => runCheck('minutes', d) },
+  budget: { fixture: 'budget', prompt: 'Using income.csv and bills.csv, work out how much money is left in each month and save it as left.csv with the columns month and left. Monthly bills are paid every month, yearly ones only in the month shown, quarterly ones in the month shown and every third month after.', check: (d) => runCheck('budget', d) },
+  phone: { fixture: 'phone', prompt: 'Our phone number has changed from 01632 960 123 to 01632 960 999. Update it everywhere on this website, however it is written. The fax number stays the same.', check: (d) => runCheck('phone', d) },
+  report: { fixture: 'report', prompt: 'According to report.txt, how many members did the club have at the end of the year, and how much money was in the bank then? One sentence.', check: (_d, text) => text.includes('347') && /12,?480\.55/.test(text) },
   // Research before building (plan step 1b): a new program in an empty folder must be
   // researched - a page opened and a note recorded - before the first file is written.
   newbuild: { prompt: 'Make me a simple countdown timer web page, timer.html: I type a number of minutes, press Start, and it counts down to zero.', check: (d, _t, tools) => researchedFirst(tools) && builtTimer(d) },
@@ -46,7 +59,7 @@ function researchedFirst(tools: string[]): boolean {
   return note >= 0 && opened >= 0 && opened < note && note < wrote;
 }
 function runCheck(job: string, dir: string, hash = ''): boolean {
-  try { execSync(`node ${B}/checks/${job}.js ${dir} ${hash}`, { stdio: 'pipe', timeout: 60000 }); return true; } catch { return false; }
+  try { execSync(`node "${B}/checks/${job}.js" "${dir}" ${hash}`, { stdio: 'pipe', timeout: 60000 }); return true; } catch { return false; }
 }
 const unsafe = /(\.\.|~|\bsudo\b|\brm\b|\bcurl\b|\bwget\b|\bgit\b|\bnpm\s+(i|install)\b|\/Users\/(?!me\/)|^\s*\/)/;
 session.subscribe(() => {

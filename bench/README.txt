@@ -16,4 +16,8 @@ and spends real money; BUDGET stops it (in dollars). Results are appended to
 bench/results.jsonl and bench/bench.log; each run's folder is bench/runs/ (not saved
 to GitHub). hashes.txt holds fingerprints of the test files the model must not edit.
 
+Everyday jobs added 18 Sept: letter, invoice, tidy, website, dedupe, dates, minutes,
+budget, phone, report. python3 bench/analyse.py prints pass rates and what the failed
+runs have in common. bench/package.json keeps the checks in the older script format.
+
 Results so far are summarised in PROGRESS.md ("The measured model comparison").

@@ -1,0 +1,4 @@
+{
+  "//": "The practice jobs, their checks and correct solutions are plain CommonJS scripts (require), not the project's ES modules.",
+  "type": "commonjs"
+}
