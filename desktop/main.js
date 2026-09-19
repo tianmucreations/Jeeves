@@ -5,7 +5,7 @@
 // to the window and passes the person's messages and answers back.
 // Prototype limits: the engine runs in the main process (a utilityProcess comes
 // later); choosing a model and adding keys still happen in the terminal Jeeves.
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -203,6 +203,8 @@ function createWindow() {
     minHeight: 420,
     backgroundColor: '#000000',
     titleBarStyle: 'hiddenInset',
+    // The window buttons sit level with the larger gold name.
+    trafficLightPosition: { x: 22, y: 30 },
     title: 'Jeeves',
     show: false,
     webPreferences: {
@@ -222,6 +224,16 @@ function createWindow() {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event) => event.preventDefault());
+  // Right-click: Copy on selected text, and Cut / Paste where typing is possible
+  // (OpenCode Desktop does the same with electron-context-menu).
+  win.webContents.on('context-menu', (_event, params) => {
+    const items = [];
+    if (params.isEditable) items.push({ role: 'cut', enabled: params.editFlags.canCut });
+    if (params.selectionText) items.push({ role: 'copy' });
+    if (params.isEditable) items.push({ role: 'paste', enabled: params.editFlags.canPaste });
+    items.push({ role: 'selectAll' });
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
 }
 
 // A pretend conversation (no model is asked, nothing is spent) and a real question.
@@ -297,6 +309,27 @@ async function takeShots(out) {
   session.addToolLine('runBash', 'mkdir -p Photos Documents Spreadsheets Installers', 'awaiting');
   const answered = requestApproval({ trustable: true });
   await shot('2-question.png');
+  // Copying: select the answer text in the window and copy it, as Command+C does.
+  {
+    const { clipboard } = await import('electron');
+    const before = clipboard.readText();
+    await win.webContents.executeJavaScript("(() => { const el = [...document.querySelectorAll('.entry.assistant')].pop(); const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()");
+    win.webContents.copy();
+    await wait(300);
+    console.log(`copied from the window: ${JSON.stringify(clipboard.readText().slice(0, 60))}`);
+    clipboard.writeText(before);
+  }
+  // A real picture, window buttons included (hidden pictures leave them out).
+  if (process.env.JEEVES_DESKTOP_REALSHOT) {
+    const { execFileSync } = await import('node:child_process');
+    win.showInactive();
+    await wait(1500);
+    const id = win.getMediaSourceId().split(':')[1];
+    execFileSync('screencapture', ['-x', '-o', `-l${id}`, path.join(out, '12-real-window.png')]);
+    // A window shown and hidden again stops painting for later hidden pictures, so stop here.
+    app.exit(0);
+    return;
+  }
   win.setSize(620, 700);
   await shot('3-narrow.png');
   app.exit(0);
