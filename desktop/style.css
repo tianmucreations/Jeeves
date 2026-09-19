@@ -1,8 +1,20 @@
 /* Jeeves Desktop: black, silver writing, and the terminal Jeeves's colours for
    meaning - cyan name, grey band for your messages, amber questions, red problems,
    green while working. */
+/* The name is written as on tianmucreations.com: Playfair Display in brushed gold
+   (the site's font file, SIL Open Font Licence - fonts/OFL-Playfair.txt). */
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('fonts/playfair-display-latin.woff2') format('woff2');
+  font-weight: 400 800;
+  font-style: normal;
+}
 :root {
   --black: #000000;
+  --gold-dark: #9c7a41;
+  --gold: #c9a96a;
+  --gold-light: #f0dea8;
+  --serif: 'Playfair Display', Georgia, serif;
   --panel: #0b0b0c;
   --hairline: #1c1c1f;
   --edge: #2a2a2e;
@@ -44,11 +56,17 @@ button { font: inherit; cursor: pointer; }
   -webkit-app-region: drag;
   user-select: none;
 }
-.brand { color: var(--cyan); font-weight: 600; letter-spacing: 0.06em; }
+.gold {
+  background: linear-gradient(180deg, var(--gold-dark) 0%, var(--gold-light) 48%, var(--gold) 72%, var(--gold-dark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand { font-family: var(--serif); font-weight: 600; font-size: 19px; letter-spacing: 0.01em; }
 .folder { color: var(--silver-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .light {
   margin-left: auto;
-  width: 10px; height: 10px; border-radius: 50%;
+  width: 16px; height: 16px; border-radius: 50%;
   background: #808080;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
 }
@@ -60,7 +78,9 @@ button { font: inherit; cursor: pointer; }
 /* Welcome: choose the folder to work in. */
 .welcome { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; }
 .welcome-inner { width: min(520px, 100% - 48px); padding: 40px 0; }
-.welcome-brand { color: var(--cyan); font-size: 44px; font-weight: 200; letter-spacing: 0.08em; margin-bottom: 6px; }
+.welcome-brand { font-family: var(--serif); font-size: 64px; font-weight: 600; line-height: 1.15; letter-spacing: 0.01em; margin-bottom: 10px; }
+/* On the welcome screen the large name is enough - the title bar's small one hides. */
+body.welcoming .brand { visibility: hidden; }
 .welcome-line { color: var(--silver); margin: 0 0 28px; font-size: 16px; }
 .projects { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
 .project {

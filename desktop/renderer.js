@@ -112,6 +112,7 @@ function render(s) {
   els.folder.textContent = s.folderName ?? '';
   els.folder.title = s.folder ?? '';
   renderInfo(s);
+  document.body.classList.toggle('welcoming', !s.folder);
   if (!s.folder) {
     els.welcome.hidden = false;
     els.chat.hidden = true;
