@@ -103,6 +103,10 @@ button { font: inherit; cursor: pointer; }
 .entry.tool.running { animation: breathe 1.4s ease-in-out infinite; }
 @keyframes breathe { 50% { opacity: 0.45; } }
 
+/* While Jeeves is busy and nothing new is on screen: what he's doing, and for how long. */
+.busy { color: var(--silver-dim); font-size: 13.5px; margin: 6px 0 18px; animation: breathe 1.6s ease-in-out infinite; }
+.busy::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #00ff00; margin-right: 10px; vertical-align: middle; box-shadow: 0 0 8px rgba(0,255,0,0.5); }
+
 /* The typing area: grows with the message, then scrolls - a long paste can always
    be read back before sending. */
 .dock { flex-shrink: 0; padding: 10px 0 12px; background: linear-gradient(to bottom, rgba(0,0,0,0), var(--black) 14px); }

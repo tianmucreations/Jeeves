@@ -67,6 +67,9 @@ class SessionStore {
   tidying = false;
   // A short note for the info bar while something quick runs, like 'backing up…'.
   busyNote: string | null = null;
+  // When the model began thinking privately before writing (ms), or null. Thinking
+  // can last half a minute, so the screen says so instead of showing nothing.
+  thinkingSince: number | null = null;
   // Something the model must be told with the next message (for example, that /undo ran).
   pendingContextNote: string | null = null;
   // The daily spending limit in dollars, and any extra allowance granted today.
@@ -428,6 +431,12 @@ class SessionStore {
   setActiveModel(model: string | null): void {
     if (this.activeModel === model) return;
     this.activeModel = model;
+    this.emit();
+  }
+
+  setThinking(on: boolean): void {
+    if (on === (this.thinkingSince !== null)) return;
+    this.thinkingSince = on ? Date.now() : null;
     this.emit();
   }
 

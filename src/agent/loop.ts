@@ -144,13 +144,16 @@ export async function runTurn(input: string): Promise<void> {
         return { modelId: stepModel, messages: tidied.freedTokens > 0 ? tidied.messages : undefined };
       },
       onToken: (token) => {
+        session.setThinking(false);
         if (assistantId === null) assistantId = session.startAssistant();
         session.appendToken(assistantId, token);
       },
       onReasoning: (delta) => {
+        session.setThinking(true);
         if (session.verbose) session.appendReasoning(delta);
       },
       onToolCall: () => {
+        session.setThinking(false);
         // Hide pre-tool chatter so only the final answer stays visible (spec 2.3). The
         // entry is removed, not just emptied, so the final answer appears below the
         // actions it reports on rather than above them.
@@ -199,9 +202,11 @@ export async function runTurn(input: string): Promise<void> {
     for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
     session.setPlanResetAt(null);
     session.setActiveModel(auto ? workerModel() : null);
+    session.setThinking(false);
     endJob();
     session.setStatus('idle');
   } catch (error) {
+    session.setThinking(false);
     endJob();
     session.setActiveModel(auto ? workerModel() : null);
     if (stop.signal.aborted) {

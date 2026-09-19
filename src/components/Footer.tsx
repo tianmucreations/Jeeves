@@ -88,7 +88,7 @@ export function Footer() {
     providerId: s.providerId,
     allowance: allowanceToday(),
     tidying: s.tidying,
-    busyNote: s.busyNote,
+    busyNote: s.busyNote ?? (s.thinkingSince !== null ? 'thinking…' : null),
     todaySpend: s.todaySpend,
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,

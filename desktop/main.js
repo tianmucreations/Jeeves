@@ -75,7 +75,7 @@ function snapshot() {
     providerId: s.providerId,
     allowance: allowanceToday(),
     tidying: s.tidying,
-    busyNote: s.busyNote,
+    busyNote: s.busyNote ?? (s.thinkingSince !== null ? 'thinking…' : null),
     todaySpend: s.todaySpend,
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,
@@ -92,6 +92,8 @@ function snapshot() {
     status: s.status,
     approval: s.approvalPending ? { trustable: currentApprovalTrustable() } : null,
     queued: s.queued.length,
+    thinkingSince: s.thinkingSince,
+    workingSince: s.status === 'idle' || s.status === 'disconnected' ? null : workingSince,
     transcript,
     model: isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model),
     segments,
@@ -101,7 +103,11 @@ function snapshot() {
 // The store changes on every word that streams in; the window is sent at most
 // one picture every 40 ms, and always the latest.
 let pending = null;
+// When the current job started, for the "Working… 5s" note.
+let workingSince = null;
 function sendState() {
+  if (session.status === 'working' && workingSince === null) workingSince = Date.now();
+  if (session.status === 'idle' || session.status === 'disconnected') workingSince = null;
   if (pending || !win) return;
   pending = setTimeout(() => {
     pending = null;
@@ -223,7 +229,10 @@ async function takeShots(out) {
   // JEEVES_DESKTOP_LIVE=1: one real message through the real engine.
   if (process.env.JEEVES_DESKTOP_LIVE) {
     const t = Date.now();
-    await sendAndDrain('Reply with exactly this sentence and nothing else: Good afternoon - the desktop window is working.');
+    const job = sendAndDrain('How Jeeves how are you going. Write me a poem about the sunrise of about 200 words');
+    await wait(12_000);
+    await shot('5-thinking.png');
+    await job;
     console.log(`PATH has node: ${process.env.PATH.split(':').some((dir) => existsSync(path.join(dir, 'node')))}`);
     console.log(`live reply finished in ${Date.now() - t} ms, status ${session.status}`);
     await shot('4-live.png');

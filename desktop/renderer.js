@@ -6,7 +6,7 @@ const els = {
   folder: $('folder'), light: $('light'), welcome: $('welcome'), chat: $('chat'), greeting: $('greeting'),
   projects: $('projects'), choose: $('choose'), nokeys: $('nokeys'), scroller: $('scroller'),
   transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), always: $('always'),
-  composer: $('composer'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
+  composer: $('composer'), busy: $('busy'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
 };
 
 let state = null;
@@ -132,7 +132,27 @@ function render(s) {
   }
   els.input.placeholder = s.status === 'working' || asking ? 'type your next message - it will be sent when I finish' : 'ask anything';
   if (firstChat) els.input.focus();
+  renderBusy();
 }
+
+// "Thinking… 12s" / "Working… 3s": shown while Jeeves is busy, not asking, and not
+// already writing his answer - GLM-5.3 can think for half a minute first.
+function renderBusy() {
+  const s = state;
+  const last = s?.transcript[s.transcript.length - 1];
+  const writing = last && last.kind === 'assistant' && last.text;
+  const since = s?.thinkingSince ?? s?.workingSince;
+  if (!s || !s.folder || s.approval || !since || writing) {
+    els.busy.hidden = true;
+    return;
+  }
+  const seconds = Math.max(0, Math.round((Date.now() - since) / 1000));
+  els.busy.textContent = `${s.thinkingSince ? 'Thinking' : 'Working'}… ${seconds}s`;
+  const follow = nearBottom();
+  els.busy.hidden = false;
+  if (follow) els.scroller.scrollTop = els.scroller.scrollHeight;
+}
+setInterval(renderBusy, 1000);
 
 // The typing box grows with the message up to 40% of the window, then scrolls.
 function fitInput() {
