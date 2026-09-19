@@ -1,4 +1,5 @@
 import { getAddress } from '../platform/config.js';
+import { partOfDay } from '../platform/address.js';
 
 // The system prompt is the personality and the rulebook, copied verbatim from the
 // product specification. {{ADDRESS}} is replaced with the user's saved form of
@@ -101,7 +102,7 @@ Writing files and running non-read-only commands may ask the user for permission
 If the user declines a permission, do not ask again for the same action. Acknowledge it briefly and continue with whatever can still be done.
 Environment
 
-Today's date is {{TODAY}} (this computer's own date).
+Today's date is {{TODAY}}, and it is {{PART_OF_DAY}} (this computer's own date and clock). Greet by that - never guess the time of day.
 The computer is macOS. The working directory is the user's chosen project folder; relative paths refer to it.
 Shell commands run in the user's default shell. Prefer cross-platform-safe commands.
 If a task would be destructive or hard to undo, say so plainly before doing it.
@@ -116,8 +117,11 @@ export function localISODate(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-export function buildSystemPrompt(address: string, today = localISODate()): string {
-  return SYSTEM_PROMPT_TEMPLATE.replaceAll('{{ADDRESS}}', address).replaceAll('{{TODAY}}', today);
+// The part of the day as well (owner's request, 19 Sept): the model otherwise
+// guessed "Good evening". It changes three times a day, so the prompt stays
+// cacheable in between.
+export function buildSystemPrompt(address: string, today = localISODate(), dayPart: string = partOfDay()): string {
+  return SYSTEM_PROMPT_TEMPLATE.replaceAll('{{ADDRESS}}', address).replaceAll('{{TODAY}}', today).replaceAll('{{PART_OF_DAY}}', dayPart);
 }
 
 // The address the user saved on first launch; "Sir" until one is saved.

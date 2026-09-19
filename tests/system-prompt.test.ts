@@ -60,10 +60,10 @@ describe('system prompt', () => {
   });
 
   it("tells the model today's date, so 'this season' is this year's (19 Sept: it answered with 2025)", () => {
-    const prompt = buildSystemPrompt('Sir', '2026-09-19');
-    expect(prompt).toContain("Today's date is 2026-09-19 (this computer's own date).");
+    const prompt = buildSystemPrompt('Sir', '2026-09-19', 'morning');
+    expect(prompt).toContain("Today's date is 2026-09-19, and it is morning (this computer's own date and clock).");
     expect(prompt).toContain('mean the year of today\'s date: search for that year by name');
-    expect(buildSystemPrompt('Sir', undefined)).toMatch(/Today's date is \d{4}-\d{2}-\d{2} /);
+    expect(buildSystemPrompt('Sir')).toMatch(/Today's date is \d{4}-\d{2}-\d{2}, and it is (morning|afternoon|evening) /);
   });
 });
 

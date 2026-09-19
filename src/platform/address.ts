@@ -3,10 +3,14 @@
 
 export const ADDRESS_MAX = 30;
 
-// Good morning / afternoon / evening by this computer's own clock.
-export function timeOfDayGreeting(now = new Date()): string {
+// Morning / afternoon / evening by this computer's own clock.
+export function partOfDay(now = new Date()): 'morning' | 'afternoon' | 'evening' {
   const hour = now.getHours();
-  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  return hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+}
+
+export function timeOfDayGreeting(now = new Date()): string {
+  return `Good ${partOfDay(now)}`;
 }
 
 // The address as saved: trimmed and short; null when nothing usable was given.

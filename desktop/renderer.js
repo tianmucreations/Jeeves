@@ -169,6 +169,10 @@ function renderBusy() {
   if (follow) els.scroller.scrollTop = els.scroller.scrollHeight;
 }
 setInterval(renderBusy, 1000);
+// The welcome greeting follows the clock (morning, afternoon, evening) while it is open.
+setInterval(() => {
+  if (state && !els.welcome.hidden) renderWelcome(state);
+}, 60_000);
 
 // The typing box grows with the message up to 40% of the window, then scrolls.
 function fitInput() {
