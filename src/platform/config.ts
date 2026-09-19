@@ -132,6 +132,10 @@ export function getAddress(): string | null {
 export function setAddress(address: string): void {
   config.set('address', address);
 }
+
+export function clearAddress(): void {
+  config.delete('address');
+}
 // The trimmed models.dev catalogue for direct connections (prices and abilities).
 export function getDirectCatalogue(): { catalogue: unknown; fetchedAt: number } | null {
   return config.get('directCatalogue') ?? null;

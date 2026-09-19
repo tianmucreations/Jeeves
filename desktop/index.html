@@ -18,10 +18,23 @@
     <div class="welcome-inner">
       <div class="welcome-brand gold">Jeeves</div>
       <p class="welcome-line" id="greeting"></p>
+      <div class="ask-address" id="ask-address" hidden>
+        <div class="address-choices">
+          <button class="just-chat" data-address="Sir">Sir</button>
+          <button class="just-chat" data-address="Ma'am">Ma'am</button>
+        </div>
+        <form class="inline address-other" id="address-form">
+          <input id="address-other" maxlength="30" autocomplete="off" placeholder="or something else - your name, or a title such as Doctor">
+          <button class="btn">Continue</button>
+        </form>
+        <p class="note" id="address-note"></p>
+      </div>
+      <div id="choose-start">
       <button class="just-chat" id="just-chat">Just chat <span>no project needed</span></button>
       <p class="or-folder">or work in a folder</p>
       <div class="projects" id="projects"></div>
       <button class="choose" id="choose">Choose another folder…</button>
+      </div>
       <p class="welcome-note" id="nokeys" hidden>No key is saved yet. Open Jeeves in Terminal once and add one - then come back here.</p>
     </div>
   </main>
@@ -61,6 +74,11 @@
         <div class="services" id="services"></div>
       </section>
       <section id="service-detail"></section>
+      <section>
+        <h3>How I address you</h3>
+        <form class="inline" id="address-setting"><input id="address-value" maxlength="30" autocomplete="off"><button class="btn">Save</button></form>
+        <p class="note" id="address-setting-note"></p>
+      </section>
       <section>
         <h3>Daily spending limit</h3>
         <p class="muted">Jeeves stops and asks before spending more than this in a day.</p>

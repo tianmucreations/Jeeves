@@ -20,6 +20,7 @@
     data = await window.jeeves.settings();
     selected ??= data.current.provider;
     $('limit').value = data.dailyLimit.toFixed(2);
+    $('address-value').value = data.address ?? '';
     renderServices();
     await renderDetail();
   }
@@ -197,6 +198,13 @@
   window.jeeves.onOpenSettings(open);
   window.jeeves.onSettingsChanged(() => {
     if (!panel.hidden) void refresh();
+  });
+
+  $('address-setting').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const result = await window.jeeves.setAddress($('address-value').value);
+    $('address-setting-note').className = result.ok ? 'note good' : 'note';
+    $('address-setting-note').textContent = result.message;
   });
 
   $('limit-form').addEventListener('submit', async (event) => {

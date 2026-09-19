@@ -78,8 +78,21 @@ function renderTranscript(entries) {
   if (follow) els.scroller.scrollTop = els.scroller.scrollHeight;
 }
 
+// Good morning / afternoon / evening by this computer's clock.
+function greetingWord() {
+  const hour = new Date().getHours();
+  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+}
+
 function renderWelcome(s) {
-  els.greeting.textContent = `Good day, ${s.address}. What can I do for you?`;
+  // The very first question: how to address the person - never a guessed "Sir".
+  const asking = !s.address;
+  document.getElementById('ask-address').hidden = !asking;
+  document.getElementById('choose-start').hidden = asking;
+  els.greeting.textContent = asking
+    ? `${greetingWord()}. Before we begin - how shall I address you?`
+    : `${greetingWord()}, ${s.address}. What can I do for you?`;
+  if (asking) return;
   els.projects.textContent = '';
   for (const p of s.recentProjects) {
     const b = document.createElement('button');
@@ -235,3 +248,16 @@ document.getElementById('just-chat').addEventListener('click', () => void window
 
 window.jeeves.onState(render);
 window.jeeves.ready().then(render);
+
+// Choosing how to be addressed: a button, or anything typed in the box.
+async function chooseAddress(value) {
+  const result = await window.jeeves.setAddress(value);
+  if (!result.ok) document.getElementById('address-note').textContent = result.message;
+}
+for (const button of document.querySelectorAll('[data-address]')) {
+  button.addEventListener('click', () => void chooseAddress(button.dataset.address));
+}
+document.getElementById('address-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  void chooseAddress(document.getElementById('address-other').value);
+});

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('jeeves', {
   answer: (letter) => ipcRenderer.send('answer', letter),
   stop: () => ipcRenderer.send('stop'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
+  setAddress: (value) => ipcRenderer.invoke('set-address', value),
   settings: () => ipcRenderer.invoke('settings'),
   models: (provider) => ipcRenderer.invoke('models', provider),
   chooseModel: (provider, id) => ipcRenderer.invoke('choose-model', provider, id),

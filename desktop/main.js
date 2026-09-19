@@ -32,6 +32,7 @@ const { allowanceToday } = await engine('agent/spending.js');
 const { isAuto, workerModel } = await engine('agent/auto.js');
 const { killAllRunningCommands } = await engine('tools/runBash.js');
 const { ensureChatFolder, chatNotice } = await engine('platform/chat-folder.js');
+const { cleanAddress } = await engine('platform/address.js');
 
 let win = null;
 let folder = null;
@@ -88,7 +89,8 @@ function snapshot() {
     folderName: folder ? path.basename(folder) : null,
     // Only folders that still exist, and never the test folders of a checking session.
     recentProjects: s.recentProjects.filter((p) => existsSync(p) && !p.startsWith('/private/tmp/')).map((p) => ({ path: p, name: path.basename(p), nice: niceFolder(p) })),
-    address: config.getAddress() ?? 'Sir',
+    // null until the person has said how to be addressed - the window asks first.
+    address: config.getAddress(),
     keysChecked,
     hasKeys: providers.hasCredentials(),
     status: s.status,
@@ -154,6 +156,17 @@ const TERMINAL_ONLY = new Set(['/help', '/address']);
 const OPENS_SETTINGS = new Set(['/model', '/keys']);
 
 ipcMain.handle('ready', () => snapshot());
+// How to address the person (the terminal's AddressPrompt, same rules).
+ipcMain.handle('set-address', (_event, raw) => {
+  const address = cleanAddress(String(raw ?? ''));
+  if (!address) return { ok: false, message: "Choose Sir or Ma'am, or type what you'd like to be called." };
+  const first = !config.getAddress();
+  config.setAddress(address);
+  session.skipAddressStage();
+  if (!first) session.addNotice(`Very good - I shall address you as ${address}.`);
+  sendState();
+  return { ok: true, message: `Very good - I shall address you as ${address}.` };
+});
 ipcMain.handle('choose-folder', async (_event, chosen) => {
   if (chosen === 'just-chat') {
     const chat = ensureChatFolder();
@@ -261,6 +274,20 @@ async function takeShots(out) {
   while (!keysChecked && Date.now() - started < 20000) await wait(100);
   console.log(`keys read after ${Date.now() - started} ms (found: ${providers.hasCredentials()})`);
   await shot('1-welcome.png');
+  // JEEVES_DESKTOP_ADDRESSTEST=1 (with NODE_ENV=test only): a new person's first question.
+  if (process.env.JEEVES_DESKTOP_ADDRESSTEST && process.env.NODE_ENV === 'test') {
+    config.clearAddress();
+    sendState();
+    await wait(600);
+    await shot('15-ask-address.png');
+    await win.webContents.executeJavaScript("document.querySelector('[data-address=\\'Ma\\\\\\'am\\']')?.click() ?? [...document.querySelectorAll('[data-address]')][1].click()");
+    await wait(800);
+    console.log(`saved address: ${config.getAddress()} | greeting: ${await win.webContents.executeJavaScript("document.getElementById('greeting').textContent")}`);
+    await shot('16-after-address.png');
+    config.clearAddress();
+    app.exit(0);
+    return;
+  }
   // JEEVES_DESKTOP_CHATTEST=1: press "Just chat".
   if (process.env.JEEVES_DESKTOP_CHATTEST) {
     const recentsBefore = JSON.stringify(config.getRecentProjects());

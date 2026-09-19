@@ -37,6 +37,7 @@ export async function registerSettings(engine, onChange) {
     ),
     current: { provider: session.providerId, model: session.model },
     dailyLimit: session.dailyLimit,
+    address: config.getAddress(),
     busy: session.status === 'working' || session.status === 'awaiting-approval',
   }));
 
