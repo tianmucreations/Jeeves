@@ -70,6 +70,9 @@ button { font: inherit; cursor: pointer; }
 }
 .folder::before { content: 'Folder'; color: var(--silver-faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; margin-right: 8px; }
 .folder:empty { display: none; }
+button.folder { background: none; font: inherit; font-size: 13px; cursor: pointer; -webkit-app-region: no-drag; }
+button.folder:hover { border-color: var(--silver-dim); color: var(--silver-bright); }
+#back-to-chat { margin-left: 10px; }
 .light {
   margin-left: auto;
   width: 16px; height: 16px; border-radius: 50%;

@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { session, useSession } from '../state/session.js';
-import { setRecentProjects, getAddress } from '../platform/config.js';
+import { setRecentProjects, getAddress, getDefaultModel } from '../platform/config.js';
 import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
 import { hasCredentials, keysRead } from '../providers/index.js';
 import { isMouseSequence } from '../ink/mouse.js';
@@ -131,13 +131,21 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
       session.setRecentProjects(updated);
       setRecentProjects(updated);
     }
+    const switching = session.switchingFolder;
     session.launchComplete();
     session.addNotice(remember ? `Now working in ${displayPath(folder)}.` : chatNotice(getAddress() ?? 'Sir'));
+    if (switching) {
+      // The conversation carries on in the new folder; the model is told it moved.
+      session.pendingContextNote = `[The person moved Jeeves to ${remember ? `the folder ${folder}` : `the chat folder ${folder}`}. Files mentioned earlier may not be here - look again before relying on them.]`;
+      return;
+    }
     // Only once the saved keys have been read can "no key yet" be true.
     void keysRead().then(() => {
       if (!hasCredentials()) {
         session.startWizard(true);
-      } else {
+      } else if (!getDefaultModel()) {
+        // The model list only when no model has been chosen yet - not every morning
+        // (Claude Code starts straight in the conversation; /model changes it).
         session.openPicker();
       }
     });
@@ -239,7 +247,11 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
     }
     if (key.escape) {
       if (mode === 'list') {
-        startProject(process.cwd());
+        // From /folder: back to the conversation, nothing changed. On first launch:
+        // Just chat - never the folder Jeeves happened to start in, which for most
+        // people is their whole home folder.
+        if (session.switchingFolder) session.launchComplete();
+        else startChat();
         return;
       }
       if (mode === 'create-location') {
@@ -307,7 +319,9 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
 
   const title =
     mode === 'list'
-      ? 'Just chat, or choose a project'
+      ? session.switchingFolder
+        ? 'Change folder - or Just chat'
+        : 'Just chat, or choose a project'
       : mode === 'create-name'
         ? 'Create a new project'
         : mode === 'create-location'
@@ -322,7 +336,9 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
 
   const hint =
     mode === 'list'
-      ? '↑↓ move · Enter choose · Esc current folder'
+      ? session.switchingFolder
+        ? '↑↓ move · Enter choose · Esc back to the conversation'
+        : '↑↓ move · Enter choose · Esc just chat'
       : mode === 'create-name'
         ? 'type a name · Enter continue · Esc cancel'
         : mode === 'create-location'

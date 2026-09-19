@@ -23,5 +23,5 @@ export function ensureChatFolder(): string | null {
 }
 
 export function chatNotice(address: string): string {
-  return `Just chatting, ${address} - anything I save for you goes in Documents/${CHAT_FOLDER_NAME}.`;
+  return `Just chatting, ${address} - anything I save for you goes in Documents/${CHAT_FOLDER_NAME}. Type /folder any time to work in a folder instead.`;
 }

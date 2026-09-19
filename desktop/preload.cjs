@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('jeeves', {
   ready: () => ipcRenderer.invoke('ready'),
   chooseFolder: (folder) => ipcRenderer.invoke('choose-folder', folder ?? null),
+  changeFolder: () => ipcRenderer.send('change-folder'),
+  cancelChangeFolder: () => ipcRenderer.send('cancel-change-folder'),
   send: (text) => ipcRenderer.send('send', text),
   answer: (letter) => ipcRenderer.send('answer', letter),
   stop: () => ipcRenderer.send('stop'),

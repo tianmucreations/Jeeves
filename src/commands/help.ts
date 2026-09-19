@@ -9,6 +9,7 @@ export const COMMANDS: HelpEntry[] = [
   { command: '/help', description: 'show this list' },
   { command: '/model', description: 'pick a different AI model' },
   { command: '/keys', description: 'add or remove keys' },
+  { command: '/folder', description: 'work in a different folder, or just chat' },
   { command: '/address', description: 'change how Jeeves addresses you' },
   { command: '/verbose', description: "show the model's thinking and technical details" },
   { command: '/undo', description: 'put the project folder back to how it was before the last change' },

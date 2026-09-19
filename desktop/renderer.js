@@ -95,6 +95,7 @@ function renderWelcome(s) {
     ? `${greetingWord()}. Before we begin - how shall I address you?`
     : `${greetingWord()}, ${s.address}. What can I do for you?`;
   if (asking) return;
+  document.getElementById('back-to-chat').hidden = !s.changingFolder;
   els.projects.textContent = '';
   for (const p of s.recentProjects) {
     const b = document.createElement('button');
@@ -250,6 +251,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 els.choose.addEventListener('click', () => void window.jeeves.chooseFolder(null));
+els.folder.addEventListener('click', () => window.jeeves.changeFolder());
+document.getElementById('back-to-chat').addEventListener('click', () => window.jeeves.cancelChangeFolder());
 document.getElementById('just-chat').addEventListener('click', () => void window.jeeves.chooseFolder('just-chat'));
 
 window.jeeves.onState(render);

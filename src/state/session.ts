@@ -311,6 +311,21 @@ class SessionStore {
 
   launchComplete(): void {
     this.launchStage = 'ready';
+    this.switchingFolder = false;
+    this.emit();
+  }
+
+  // /folder: the folder list again, from inside a conversation (owner, 19 Sept: from
+  // "Just chat" there was no way into a folder). Between tasks only, like /model.
+  switchingFolder = false;
+
+  openFolderPicker(): void {
+    if (this.status === 'working' || this.approvalPending) {
+      this.addNotice('The folder can be changed between tasks.');
+      return;
+    }
+    this.switchingFolder = true;
+    this.launchStage = 'project';
     this.emit();
   }
 

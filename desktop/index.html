@@ -9,7 +9,7 @@
 <body>
   <header class="titlebar">
     <span class="brand gold">Jeeves</span>
-    <span class="folder" id="folder"></span>
+    <button class="folder" id="folder" title="Change folder"></button>
     <button class="gear" id="open-settings" title="Settings - AI model, keys, daily limit">Settings</button>
     <span class="light" id="light" title=""></span>
   </header>
@@ -34,6 +34,7 @@
       <p class="or-folder">or work in a folder</p>
       <div class="projects" id="projects"></div>
       <button class="choose" id="choose">Choose another folder…</button>
+      <button class="choose" id="back-to-chat" hidden>Back to the conversation</button>
       </div>
       <div class="connect" id="nokeys" hidden>
         <p class="connect-lead">Jeeves needs an AI service to think with - the company that runs the AI models. You connect one account once, and pay it only for what you use.</p>

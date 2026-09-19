@@ -57,6 +57,8 @@ export async function runTurn(input: string): Promise<void> {
       openModelPicker();
     } else if (input === '/keys') {
       session.openKeys();
+    } else if (input === '/folder') {
+      session.openFolderPicker();
     } else if (input === '/verbose') {
       session.addNotice(toggleVerbose());
     } else if (input === '/address') {

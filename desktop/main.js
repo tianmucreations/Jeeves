@@ -36,6 +36,8 @@ const { cleanAddress } = await engine('platform/address.js');
 
 let win = null;
 let folder = null;
+// The folder being left while another is chosen (null when not changing).
+let previousFolder = null;
 // False until the keychain has been read, so the window never says "no key" too early.
 let keysChecked = false;
 
@@ -87,6 +89,8 @@ function snapshot() {
   return {
     folder: folder ? niceFolder(folder) : null,
     folderName: folder ? path.basename(folder) : null,
+    // Choosing another folder mid-conversation (the welcome screen offers a way back).
+    changingFolder: !folder && previousFolder !== null,
     // Only folders that still exist, and never the test folders of a checking session.
     recentProjects: s.recentProjects.filter((p) => existsSync(p) && !p.startsWith('/private/tmp/')).map((p) => ({ path: p, name: path.basename(p), nice: niceFolder(p) })),
     // null until the person has said how to be addressed - the window asks first.
@@ -138,7 +142,13 @@ function openFolder(target, remember = true) {
   } catch {
     return false;
   }
+  // Moving mid-conversation: it carries on, and the model is told (as the terminal's /folder).
+  const leaving = folder ?? previousFolder;
+  if (leaving && leaving !== target) {
+    session.pendingContextNote = `[The person moved Jeeves to ${remember ? `the folder ${target}` : `the chat folder ${target}`}. Files mentioned earlier may not be here - look again before relying on them.]`;
+  }
   folder = target;
+  previousFolder = null;
   if (remember) {
     const updated = [target, ...session.recentProjects.filter((p) => p !== target)].slice(0, 10);
     session.setRecentProjects(updated);
@@ -160,6 +170,23 @@ async function sendAndDrain(text) {
 // /model and /keys open the Settings panel; these two still need the terminal.
 const TERMINAL_ONLY = new Set(['/help', '/address']);
 const OPENS_SETTINGS = new Set(['/model', '/keys']);
+
+// Back to the welcome screen to pick another folder (or Just chat); the
+// conversation stays. Between tasks only, as in the terminal.
+function changeFolder() {
+  if (session.status === 'working' || session.approvalPending) {
+    session.addNotice('The folder can be changed between tasks.');
+    return;
+  }
+  previousFolder = folder;
+  folder = null;
+  sendState();
+}
+ipcMain.on('change-folder', changeFolder);
+ipcMain.on('cancel-change-folder', () => {
+  if (previousFolder && !folder) folder = previousFolder;
+  sendState();
+});
 
 ipcMain.handle('ready', () => snapshot());
 // How to address the person (the terminal's AddressPrompt, same rules).
@@ -193,6 +220,10 @@ ipcMain.handle('choose-folder', async (_event, chosen) => {
 ipcMain.on('send', (_event, raw) => {
   const text = String(raw ?? '').trim();
   if (!text) return;
+  if (text === '/folder') {
+    changeFolder();
+    return;
+  }
   if (OPENS_SETTINGS.has(text)) {
     win?.webContents.send('open-settings');
     return;
@@ -309,6 +340,32 @@ async function takeShots(out) {
     await wait(300);
     console.log(`while waiting: ${await js("document.getElementById('welcome-connect-note').textContent")}`);
     await shot('18-connect-waiting.png');
+    config.clearAddress();
+    app.exit(0);
+    return;
+  }
+  // JEEVES_DESKTOP_FOLDERTEST=1: from Just chat, change to a folder and back.
+  if (process.env.JEEVES_DESKTOP_FOLDERTEST && process.env.NODE_ENV === 'test') {
+    const js = (code) => win.webContents.executeJavaScript(code);
+    config.setAddress("Ma'am");
+    sendState();
+    await wait(600);
+    await js("document.getElementById('just-chat').click()");
+    await wait(800);
+    await js("document.getElementById('folder').click()");
+    await wait(800);
+    console.log(`after clicking the folder label: welcome shown ${await js("!document.getElementById('welcome').hidden")}, back button shown ${await js("!document.getElementById('back-to-chat').hidden")}`);
+    await shot('19-change-folder.png');
+    await js("document.getElementById('back-to-chat').click()");
+    await wait(800);
+    console.log(`after Back: in chat ${await js("!document.getElementById('chat').hidden")}, folder ${await js("document.getElementById('folder').textContent")}`);
+    await js("document.getElementById('folder').click()");
+    await wait(600);
+    const demo = path.join(out, 'Demo Project');
+    mkdirSync(demo, { recursive: true });
+    await win.webContents.executeJavaScript(`window.jeeves.chooseFolder(${JSON.stringify(demo)})`);
+    await wait(800);
+    console.log(`after choosing a folder: folder ${await js("document.getElementById('folder').textContent")}, model told: ${Boolean(session.pendingContextNote)}, last line: ${session.transcript.at(-1)?.text}`);
     config.clearAddress();
     app.exit(0);
     return;
