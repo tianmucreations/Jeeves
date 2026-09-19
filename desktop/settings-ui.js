@@ -88,28 +88,43 @@
     if (selected !== service.id) return;
     loading.remove();
     if (models.note) note.textContent = models.note;
-    if (models.recommended.length) {
-      detail.append(el('p', { className: 'muted', textContent: 'Recommended' }));
-      for (const model of models.recommended) detail.append(modelRow(service.id, model));
-    }
-    if (models.all.length) {
+    // Recommended · All · Free, as the terminal's model menu offers them.
+    const tabs = [];
+    if (models.recommended.length) tabs.push(['Recommended', models.recommended]);
+    if (models.all.length) tabs.push([models.recommended.length ? `All ${models.all.length}` : 'Models', models.all]);
+    if (models.free?.length) tabs.push([`Free ${models.free.length}`, models.free]);
+    if (!tabs.length) {
+      detail.append(el('p', { className: 'muted', textContent: 'No models could be listed just now - check the internet connection and try again.' }));
+    } else {
+      const bar = el('div', { className: 'tabs' });
+      const filter = el('input', { className: 'filter', spellcheck: false });
       const list = el('div');
-      const draw = (query) => {
+      let current = tabs[0];
+      const draw = () => {
+        const [label, pool] = current;
+        filter.hidden = pool.length <= 8;
+        filter.placeholder = `Search ${pool.length} models`;
         list.textContent = '';
-        const q = query.trim().toLowerCase();
-        const shown = models.all.filter((m) => !q || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)).slice(0, 80);
+        const q = filter.value.trim().toLowerCase();
+        const shown = pool.filter((m) => !q || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)).slice(0, 80);
+        if (label.startsWith('Free')) list.append(el('p', { className: 'muted', textContent: 'Free models: no charge, but OpenRouter limits requests per day.' }));
         for (const model of shown) list.append(modelRow(service.id, model));
         if (!shown.length) list.append(el('p', { className: 'muted', textContent: 'No model matches that.' }));
+        for (const b of bar.children) b.classList.toggle('on', b.textContent === label);
       };
-      if (models.all.length > 8) {
-        const filter = el('input', { className: 'filter', placeholder: `Search all ${models.all.length} models`, spellcheck: false });
-        filter.addEventListener('input', () => draw(filter.value));
-        detail.append(el('p', { className: 'muted', textContent: models.recommended.length ? 'All models' : '' }), filter);
+      for (const tab of tabs) {
+        const b = el('button', { className: 'tab', textContent: tab[0] });
+        b.addEventListener('click', () => {
+          current = tab;
+          filter.value = '';
+          draw();
+        });
+        bar.append(b);
       }
-      detail.append(list);
-      draw('');
-    } else if (!models.recommended.length) {
-      detail.append(el('p', { className: 'muted', textContent: "No models could be listed just now - check the internet connection and try again." }));
+      filter.addEventListener('input', draw);
+      if (tabs.length > 1) detail.append(bar);
+      detail.append(filter, list);
+      draw();
     }
 
     if (service.id !== 'ollama') {

@@ -285,6 +285,12 @@ async function takeShots(out) {
     await win.webContents.executeJavaScript("[...document.querySelectorAll('.service')].find((b) => b.textContent.startsWith('Anthropic')).click()");
     await wait(1_000);
     await shot('10-settings-key.png');
+    await win.webContents.executeJavaScript("[...document.querySelectorAll('.service')].find((b) => b.textContent.startsWith('OpenRouter')).click()");
+    await wait(1_500);
+    await win.webContents.executeJavaScript("[...document.querySelectorAll('.tab')].find((b) => b.textContent.startsWith('Free')).click(); document.querySelector('.settings-body').scrollTop = 99999");
+    await wait(500);
+    console.log(`free tab: ${await win.webContents.executeJavaScript("[...document.querySelectorAll('.tab')].map((b) => b.textContent).join(' | ') + ' -> ' + document.querySelectorAll('#service-detail .model-row').length + ' rows'")}`);
+    await shot('14-free.png');
     // Only against the test settings (NODE_ENV=test): really choose a model.
     if (process.env.NODE_ENV === 'test') {
       await win.webContents.executeJavaScript("[...document.querySelectorAll('.service')].find((b) => b.textContent.startsWith('Z.ai')).click()");

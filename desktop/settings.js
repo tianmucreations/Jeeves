@@ -45,8 +45,11 @@ export async function registerSettings(engine, onChange) {
     const note = noAutoNote(provider, labelOf(provider));
     if (provider === 'openrouter') {
       const recommended = registry.resolveCurated(session.models).map((pick) => row(pick.model, pick.blurb));
-      const all = session.models.filter(isToolCapable).map((model) => row(model));
-      return { recommended, all, note };
+      const all = session.models.map((model) => row(model));
+      // As the terminal's "free" tab (ModelPicker poolFor): free models that can
+      // also do tasks - a free model that can only chat is no use here.
+      const free = session.models.filter((model) => registry.isFreeModel(model) && isToolCapable(model)).map((model) => row(model));
+      return { recommended, all, free, note };
     }
     if (provider === 'zai') return { recommended: [], all: ZAI_MODELS.map((model) => row(model)), note };
     if (provider === 'ollama') return { recommended: [], all: (await listLocalOllamaModels().catch(() => [])).map((model) => row(model)), note };
