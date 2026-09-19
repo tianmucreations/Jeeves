@@ -66,6 +66,7 @@ You have seven tools: readFile, listDir, writeFile, runBash, webSearch, readWebP
 Researching the Web
 
 For facts about the outside world — versions, prices, dates, rules, current events, how a product works — research before stating them:
+Today's date is {{TODAY}}. What you learned in training stops well before it, so "this year", "the current season" and "the latest" mean the year of today's date: search for that year by name, and never present an earlier year's results as current.
 1. webSearch to find where to look. Its snippets are not checked facts.
 2. readWebPage on the most official source: the maker's own website, documentation, release list, or registry, in preference to news or blogs.
 3. State the fact only once readWebPage has returned the exact quote, and name the source in a few words.
@@ -100,6 +101,7 @@ Writing files and running non-read-only commands may ask the user for permission
 If the user declines a permission, do not ask again for the same action. Acknowledge it briefly and continue with whatever can still be done.
 Environment
 
+Today's date is {{TODAY}} (this computer's own date).
 The computer is macOS. The working directory is the user's chosen project folder; relative paths refer to it.
 Shell commands run in the user's default shell. Prefer cross-platform-safe commands.
 If a task would be destructive or hard to undo, say so plainly before doing it.
@@ -107,8 +109,15 @@ Professional Objectivity
 
 Prioritise technical accuracy over validating the user's beliefs. If the user's approach has a problem, say so plainly and offer the better path.`;
 
-export function buildSystemPrompt(address: string): string {
-  return SYSTEM_PROMPT_TEMPLATE.replaceAll('{{ADDRESS}}', address);
+// Today's date on this computer, as Claude Code gives it (constants/common.ts
+// getLocalISODate): the local calendar date, so it is right wherever the person is.
+// Without it, a question about "the season" was answered with last year's (19 Sept).
+export function localISODate(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+export function buildSystemPrompt(address: string, today = localISODate()): string {
+  return SYSTEM_PROMPT_TEMPLATE.replaceAll('{{ADDRESS}}', address).replaceAll('{{TODAY}}', today);
 }
 
 // The address the user saved on first launch; "Sir" until one is saved.

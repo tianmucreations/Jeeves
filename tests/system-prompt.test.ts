@@ -58,6 +58,13 @@ describe('system prompt', () => {
     expect(buildSystemPrompt('Madam')).not.toContain('{{ADDRESS}}');
     expect(buildSystemPrompt('Sir')).not.toContain('{{');
   });
+
+  it("tells the model today's date, so 'this season' is this year's (19 Sept: it answered with 2025)", () => {
+    const prompt = buildSystemPrompt('Sir', '2026-09-19');
+    expect(prompt).toContain("Today's date is 2026-09-19 (this computer's own date).");
+    expect(prompt).toContain('mean the year of today\'s date: search for that year by name');
+    expect(buildSystemPrompt('Sir', undefined)).toMatch(/Today's date is \d{4}-\d{2}-\d{2} /);
+  });
 });
 
 describe('input cursor row geometry', () => {
