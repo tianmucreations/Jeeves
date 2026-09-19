@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import stringWidth from 'string-width';
 import { Box, Text, useCursor, useInput, usePaste, useStdout } from 'ink';
 import { runTurn } from '../agent/loop.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
 import { session, useSession } from '../state/session.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
 import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
-import { inputLayout, dropLastChar, splitTypedBurst, cleanPaste } from './input-layout.js';
+import { inputLayout, splitTypedBurst, cleanPaste, scrollToShowCursor, previousWordStart, nextWordEnd } from './input-layout.js';
 
 // The rows the input box needs for the text being typed (the window makes room).
 export const MAX_INPUT_ROWS = 6;
@@ -33,17 +34,56 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // end, where the typing is). A ref for the same reason as the text.
   const draftUpRef = useRef(0);
   const [, setDraftUp] = useState(0);
-  const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current);
-  const showingText = !s.approvalPending && s.transcriptScrollUp === 0 && layout.scrollUp === 0;
+  // Where the cursor is in the message, in characters; null means at the end (as
+  // Claude Code: arrows, Option+arrows for words, Ctrl+A / Ctrl+E, and a click
+  // move it, and typing goes in where it is - owner, 19 Sept).
+  const cursorRef = useRef<number | null>(null);
+  const [, setCursorTick] = useState(0);
+  const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
+  // The real cursor only at the end of the message; inside it, the highlighted
+  // character is the cursor.
+  const showingText = !s.approvalPending && s.transcriptScrollUp === 0 && layout.scrollUp === 0 && cursorRef.current === null;
   const scrollDraft = (up: number) => {
     draftUpRef.current = up;
     setDraftUp(up);
   };
-  const setValue = (text: string) => {
+  const chars = () => Array.from(valueRef.current);
+  const moveCursor = (to: number | null) => {
+    const length = chars().length;
+    const next = to === null || to >= length ? null : Math.max(0, to);
+    cursorRef.current = next;
+    scrollDraft(scrollToShowCursor(valueRef.current, width, MAX_INPUT_ROWS, next === null ? 0 : draftUpRef.current, next));
+    setCursorTick((tick) => tick + 1);
+  };
+  const setValue = (text: string, cursor: number | null = null) => {
     valueRef.current = text;
     session.setInputText(text);
-    // Any change to the message returns the box to its end, where the change shows.
-    if (draftUpRef.current) scrollDraft(0);
+    cursorRef.current = cursor !== null && cursor < Array.from(text).length ? cursor : null;
+    // A change shows where it was made: at the end, or at the cursor inside the text.
+    const up = cursorRef.current === null ? 0 : scrollToShowCursor(text, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
+    if (up !== draftUpRef.current) scrollDraft(up);
+  };
+  // Typed or pasted text goes in at the cursor.
+  const insert = (text: string) => {
+    const all = chars();
+    const at = cursorRef.current ?? all.length;
+    const added = Array.from(text);
+    setValue([...all.slice(0, at), ...added, ...all.slice(at)].join(''), cursorRef.current === null ? null : at + added.length);
+  };
+  // Clicking in the typing box puts the cursor there.
+  session.inputClick = (col: number, row: number) => {
+    const rows = stdout.rows ?? 24;
+    const first = rows - 2 - (layout.rows.length - 1);
+    const target = layout.rows[row - first];
+    if (!valueRef.current || !target || target.hint || target.start === undefined) return;
+    let width = 0;
+    let offset = 0;
+    for (const ch of Array.from(target.text)) {
+      if (width >= col - 3) break;
+      width += stringWidth(ch);
+      offset += 1;
+    }
+    moveCursor(target.start + offset);
   };
 
   // The block cursor sits at the text insertion point: two columns in (the
@@ -106,6 +146,17 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
       return;
     }
+    // Moving the cursor within the message, as in Claude Code.
+    if (valueRef.current && s.transcriptScrollUp === 0) {
+      const here = cursorRef.current ?? chars().length;
+      if (key.leftArrow && !key.meta && !key.ctrl) return moveCursor(Math.max(0, here - 1));
+      if (key.rightArrow && !key.meta && !key.ctrl) return moveCursor(here + 1);
+      // Option+Left / Option+Right arrive from Terminal.app as Esc-b / Esc-f.
+      if ((key.leftArrow && (key.meta || key.ctrl)) || (key.meta && input === 'b')) return moveCursor(previousWordStart(valueRef.current, here));
+      if ((key.rightArrow && (key.meta || key.ctrl)) || (key.meta && input === 'f')) return moveCursor(nextWordEnd(valueRef.current, here));
+      if (key.ctrl && input === 'a') return moveCursor(0);
+      if (key.ctrl && input === 'e') return moveCursor(null);
+    }
     // The alternate screen has no native scrollback, so these keys scroll the
     // transcript region itself (Claude Code's bindings): arrows move 3 rows,
     // Page Up/Down a full page, End jumps back to the newest and re-follows.
@@ -132,7 +183,8 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     // A burst of typing that ends with Enter is typing plus Enter (see splitTypedBurst).
     const burst = key.return ? { typed: '', enter: true, rest: '' } : splitTypedBurst(input);
     if (burst.enter) {
-      const text = (valueRef.current + burst.typed).trim();
+      if (burst.typed) insert(burst.typed);
+      const text = valueRef.current.trim();
       setValue(burst.rest);
       if (!text) return;
       s.followTranscript();
@@ -148,12 +200,16 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     }
     if (key.backspace || key.delete) {
       s.followTranscript();
-      setValue(dropLastChar(valueRef.current));
+      // The character before the cursor goes (one whole character, never half of one).
+      const all = chars();
+      const at = cursorRef.current ?? all.length;
+      if (at === 0) return;
+      setValue([...all.slice(0, at - 1), ...all.slice(at)].join(''), cursorRef.current === null ? null : at - 1);
       return;
     }
     if (!input || key.ctrl || key.meta) return;
     s.followTranscript();
-    setValue(valueRef.current + input);
+    insert(input);
   });
 
   // Pasted text arrives whole (bracketed paste), keeps its line breaks, and never
@@ -161,7 +217,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   usePaste((text) => {
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen || s.approvalPending) return;
     s.followTranscript();
-    setValue(valueRef.current + cleanPaste(text));
+    insert(cleanPaste(text));
   });
 
   if (s.approvalPending) {
@@ -185,12 +241,25 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   }
   return (
     <Box flexDirection="column">
-      {layout.rows.map((row, index) => (
-        <Text key={index} dimColor={row.hint}>
-          {row.text}
-          {row.trailingSpaces ? <Text dimColor>{row.trailingSpaces}</Text> : null}
-        </Text>
-      ))}
+      {layout.rows.map((row, index) => {
+        if (row.cursorAt !== undefined) {
+          // The cursor inside the text: the character under it drawn reversed.
+          const rowChars = Array.from(row.text);
+          return (
+            <Text key={index}>
+              {rowChars.slice(0, row.cursorAt).join('')}
+              <Text inverse>{rowChars[row.cursorAt] ?? ' '}</Text>
+              {rowChars.slice(row.cursorAt + 1).join('')}
+            </Text>
+          );
+        }
+        return (
+          <Text key={index} dimColor={row.hint}>
+            {row.text}
+            {row.trailingSpaces ? <Text dimColor>{row.trailingSpaces}</Text> : null}
+          </Text>
+        );
+      })}
     </Box>
   );
 }

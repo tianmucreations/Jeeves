@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { inputLayout, splitTypedBurst, cleanPaste } from '../src/components/input-layout.js';
+import { inputLayout, splitTypedBurst, cleanPaste, scrollToShowCursor, previousWordStart, nextWordEnd } from '../src/components/input-layout.js';
 import { inputRowsFor, MAX_INPUT_ROWS } from '../src/components/Input.js';
 import { requestApproval, answerApproval, currentApprovalTrustable, hasPendingApproval } from '../src/agent/permissions.js';
 import { isProjectTrusted, trustProject, untrustProject } from '../src/agent/trust.js';
@@ -164,5 +164,34 @@ describe('typing box: a message taller than the box can be read back before send
 
   it('a message that fits has nothing to scroll', () => {
     expect(inputLayout('short', 40, 6, 5)).toMatchObject({ scrollUp: 0, maxScrollUp: 0 });
+  });
+});
+
+describe('typing box: the cursor can move inside the message (19 Sept)', () => {
+  it('draws the cursor inside the text as a highlighted character on the right row', () => {
+    const layout = inputLayout('the quick brown fox jumps over the lazy dog', 16, 6, 0, 4);
+    expect(layout.rows[0]).toMatchObject({ text: 'the quick brown', cursorAt: 4 });
+    expect(layout.rows.slice(1).some((row) => row.cursorAt !== undefined)).toBe(false);
+    const later = inputLayout('the quick brown fox jumps over the lazy dog', 16, 6, 0, 20);
+    expect(later.rows[1]).toMatchObject({ text: 'fox jumps over', cursorAt: 4 });
+  });
+
+  it('at the end there is no highlighted character - the real cursor is used', () => {
+    const layout = inputLayout('hello world', 40, 6, 0, null);
+    expect(layout.rows.every((row) => row.cursorAt === undefined)).toBe(true);
+  });
+
+  it('scrolls a long message to show a cursor far back in it', () => {
+    const long = Array.from({ length: 20 }, (_, i) => `line${i}`).join('\n');
+    const up = scrollToShowCursor(long, 40, 6, 0, 0);
+    expect(inputLayout(long, 40, 6, up, 0).cursorVisible).toBe(true);
+    expect(inputLayout(long, 40, 6, up, 0).rows[0]).toMatchObject({ text: 'line0', cursorAt: 0 });
+  });
+
+  it('jumps a word at a time', () => {
+    expect(previousWordStart('hello big world', 10)).toBe(6);
+    expect(previousWordStart('hello big world', 6)).toBe(0);
+    expect(nextWordEnd('hello big world', 0)).toBe(5);
+    expect(nextWordEnd('hello big world', 5)).toBe(9);
   });
 });

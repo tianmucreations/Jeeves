@@ -47,6 +47,11 @@ export interface InputRow {
   trailingSpaces: string;
   // A dim "more lines above/below" line in place of message text.
   hint?: boolean;
+  // Where this row starts in the message, counted in characters (text rows only).
+  start?: number;
+  // The cursor's place in this row when it is inside the text rather than at the
+  // end: the character drawn highlighted (text.length means just after the text).
+  cursorAt?: number;
 }
 
 export interface InputLayout {
@@ -58,42 +63,98 @@ export interface InputLayout {
   // and the furthest it can go. 0 means the end - where the typing is - shows.
   scrollUp: number;
   maxScrollUp: number;
+  // With a cursor inside the text: whether its row is on screen, and which of all
+  // the message's rows it is on.
+  cursorVisible: boolean;
+  cursorLine: number;
 }
 
-export function inputLayout(value: string, rowWidth: number, maxRows = 6, scrollUp = 0): InputLayout {
-  const maxWidth = Math.max(1, rowWidth - 1);
-  const lines: string[] = [];
+interface Line {
+  text: string;
+  start: number;
+}
+
+// Wraps at word boundaries (a space at the edge ends the row and is not drawn),
+// remembering where each row starts in the message so the cursor and clicks can
+// be placed. Pasted line breaks start new rows.
+function wrapLines(chars: string[], maxWidth: number): Line[] {
+  const lines: Line[] = [];
+  let paragraphStart = 0;
+  const value = chars.join('');
   for (const paragraph of value.split('\n')) {
+    const pchars = Array.from(paragraph);
     let line = '';
-    for (const ch of Array.from(paragraph)) {
+    let lineStart = paragraphStart;
+    pchars.forEach((ch, i) => {
+      const at = paragraphStart + i;
       if (stringWidth(line + ch) <= maxWidth) {
         line += ch;
-        continue;
+        return;
       }
       if (ch === ' ') {
         // A space at the edge ends the row; the next word starts the next row.
-        lines.push(line);
+        lines.push({ text: line, start: lineStart });
         line = '';
-        continue;
+        lineStart = at + 1;
+        return;
       }
-      const lastSpace = line.lastIndexOf(' ');
+      const lineChars = Array.from(line);
+      const lastSpace = lineChars.lastIndexOf(' ');
       if (lastSpace > 0) {
-        lines.push(line.slice(0, lastSpace));
-        line = line.slice(lastSpace + 1) + ch;
+        lines.push({ text: lineChars.slice(0, lastSpace).join(''), start: lineStart });
+        line = lineChars.slice(lastSpace + 1).join('') + ch;
+        lineStart = lineStart + lastSpace + 1;
       } else {
-        lines.push(line);
+        lines.push({ text: line, start: lineStart });
         line = ch;
+        lineStart = at;
       }
-    }
-    lines.push(line);
+    });
+    lines.push({ text: line, start: lineStart });
+    paragraphStart += pchars.length + 1;
   }
+  return lines;
+}
+
+// Which row a character position is on: the last row starting at or before it.
+function lineOf(lines: Line[], position: number): number {
+  let found = 0;
+  lines.forEach((line, index) => {
+    if (line.start <= position) found = index;
+  });
+  return found;
+}
+
+// The input box grows as the message does (as in Claude Code): the text wraps at
+// word boundaries onto new rows, up to maxRows, then the oldest rows scroll away so
+// the end of the message - where the typing is - shows. A message taller than the
+// box can be read back: scrollUp moves the view towards the start (Claude Code's
+// Up/Down move through a message that spans more than one line), and a dim line
+// at the top or bottom says how many lines are out of view. Pasted line breaks
+// start new rows. One column is kept spare so the cursor stays inside the box.
+// This keeps inputView's two rules: every keystroke still changes what is drawn (a
+// wrap adds a row, which resizes the box), and the last row's trailing spaces are
+// returned apart so they can be styled.
+// cursor: the cursor's place in the message in characters, or null for the end.
+// Inside the text it is drawn as a highlighted character, as Claude Code draws it,
+// which also keeps every cursor move a visible change.
+export function inputLayout(value: string, rowWidth: number, maxRows = 6, scrollUp = 0, cursor: number | null = null): InputLayout {
+  const maxWidth = Math.max(1, rowWidth - 1);
+  const chars = Array.from(value);
+  const lines = wrapLines(chars, maxWidth);
+  const inside = cursor !== null && cursor < chars.length;
+  const cursorLine = inside ? lineOf(lines, cursor) : lines.length - 1;
+  const mark = (line: Line, index: number, row: InputRow): InputRow => {
+    if (!inside || index !== cursorLine) return row;
+    return { ...row, cursorAt: Math.min(cursor - line.start, Array.from(line.text).length) };
+  };
   if (lines.length <= maxRows) {
     const rows = lines.map((line, index) => {
-      if (index < lines.length - 1) return { text: line, trailingSpaces: '' };
-      const text = line.replace(/ +$/, '');
-      return { text, trailingSpaces: line.slice(text.length) };
+      if (index < lines.length - 1 || inside) return mark(line, index, { text: line.text, trailingSpaces: '', start: line.start });
+      const text = line.text.replace(/ +$/, '');
+      return { text, trailingSpaces: line.text.slice(text.length), start: line.start };
     });
-    return { rows, cursorX: stringWidth(lines[lines.length - 1] ?? ''), scrollUp: 0, maxScrollUp: 0 };
+    return { rows, cursorX: stringWidth(lines[lines.length - 1]?.text ?? ''), scrollUp: 0, maxScrollUp: 0, cursorVisible: true, cursorLine };
   }
   // Too tall for the box. Scrolled all the way back, the first maxRows-1 lines show
   // above a "below" hint; at the end, a hint above the last maxRows-1 lines.
@@ -106,16 +167,52 @@ export function inputLayout(value: string, rowWidth: number, maxRows = 6, scroll
   // A hint never wraps: in a narrow window it is cut to the row.
   const hint = (text: string): InputRow => ({ text: Array.from(text).slice(0, maxWidth).join(''), trailingSpaces: '', hint: true });
   if (start > 0) rows.push(hint(`↑ ${start} more line${start === 1 ? '' : 's'} above - ↑ ↓ to read`));
-  lines.slice(start, end).forEach((line, index, shown) => {
-    if (up > 0 || index < shown.length - 1) {
-      rows.push({ text: line, trailingSpaces: '' });
+  lines.slice(start, end).forEach((line, offset, shown) => {
+    const index = start + offset;
+    if (up > 0 || inside || offset < shown.length - 1) {
+      rows.push(mark(line, index, { text: line.text, trailingSpaces: '', start: line.start }));
       return;
     }
-    const text = line.replace(/ +$/, '');
-    rows.push({ text, trailingSpaces: line.slice(text.length) });
+    const text = line.text.replace(/ +$/, '');
+    rows.push({ text, trailingSpaces: line.text.slice(text.length), start: line.start });
   });
   if (up > 0) rows.push(hint(`↓ ${up} more line${up === 1 ? '' : 's'} below - ↓ or keep typing to return`));
-  return { rows, cursorX: stringWidth(lines[lines.length - 1] ?? ''), scrollUp: up, maxScrollUp };
+  return {
+    rows,
+    cursorX: stringWidth(lines[lines.length - 1]?.text ?? ''),
+    scrollUp: up,
+    maxScrollUp,
+    cursorVisible: cursorLine >= start && cursorLine < end,
+    cursorLine,
+  };
+}
+
+// The scroll position that brings a cursor inside the text into view, keeping the
+// current one when it already shows.
+export function scrollToShowCursor(value: string, rowWidth: number, maxRows: number, scrollUp: number, cursor: number | null): number {
+  const first = inputLayout(value, rowWidth, maxRows, scrollUp, cursor);
+  if (first.cursorVisible || first.maxScrollUp === 0) return first.scrollUp;
+  for (let up = 0; up <= first.maxScrollUp; up++) {
+    if (inputLayout(value, rowWidth, maxRows, up, cursor).cursorVisible) return up;
+  }
+  return first.scrollUp;
+}
+
+// Word jumps (Option + arrows): to the start of the previous word, or the end of the next.
+export function previousWordStart(value: string, cursor: number): number {
+  const chars = Array.from(value);
+  let i = Math.min(cursor, chars.length);
+  while (i > 0 && /\s/.test(chars[i - 1])) i--;
+  while (i > 0 && !/\s/.test(chars[i - 1])) i--;
+  return i;
+}
+
+export function nextWordEnd(value: string, cursor: number): number {
+  const chars = Array.from(value);
+  let i = cursor;
+  while (i < chars.length && /\s/.test(chars[i])) i++;
+  while (i < chars.length && !/\s/.test(chars[i])) i++;
+  return i;
 }
 
 // A burst of typed characters can arrive together with Enter (when Jeeves is busy

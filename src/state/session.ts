@@ -90,6 +90,8 @@ class SessionStore {
   selection: { anchor: { line: number; ch: number }; focus: { line: number; ch: number } } | null = null;
   // What the conversation area shows, published by the Transcript each time it draws,
   // so a mouse position can be turned into a line and character.
+  // Set by the typing box: puts the cursor at a clicked screen position.
+  inputClick: ((col: number, row: number) => void) | null = null;
   transcriptView: { top: number; left: number; height: number; lines: string[]; scrollTop: number } | null = null;
   // What is being typed in the input box (the window sizes the box to fit it).
   inputText = '';

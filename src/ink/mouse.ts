@@ -70,6 +70,8 @@ export function handleMouseInput(input: string): void {
   if (event.kind === 'press') {
     const point = pointAt(event.col, event.row);
     session.setSelection(point ? { anchor: point, focus: point } : null);
+    // Outside the conversation: a click in the typing box places the cursor.
+    if (!point) session.inputClick?.(event.col, event.row);
     return;
   }
   const current = session.selection;
