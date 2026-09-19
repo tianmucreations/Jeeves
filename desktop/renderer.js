@@ -211,12 +211,12 @@ els.approval.addEventListener('click', (event) => {
 // selecting text, and when the window comes back to the front. Typing anywhere
 // goes into the box.
 function focusInput() {
-  if (!els.chat.hidden && document.getElementById('settings').hidden && !getSelection().toString()) els.input.focus();
+  if (!els.chat.hidden && document.getElementById('settings').hidden && document.getElementById('help').hidden && !getSelection().toString()) els.input.focus();
 }
 window.addEventListener('focus', focusInput);
 document.addEventListener('mouseup', () => setTimeout(focusInput, 0));
 document.addEventListener('keydown', (event) => {
-  if (els.chat.hidden || !document.getElementById('settings').hidden) return;
+  if (els.chat.hidden || !document.getElementById('settings').hidden || !document.getElementById('help').hidden) return;
   const typing = document.activeElement === els.input || document.activeElement?.tagName === 'INPUT';
   if (typing || event.metaKey || event.ctrlKey || event.altKey || event.key.length !== 1) return;
   if (state?.approval && !els.input.value && 'yan'.includes(event.key.toLowerCase())) return;

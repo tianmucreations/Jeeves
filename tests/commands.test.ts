@@ -43,7 +43,9 @@ describe('command dispatch', () => {
     session.addUser('old message');
     session.setHistory([{ role: 'user', content: 'old message' }]);
     await runTurn('/clear');
-    expect(session.transcript).toHaveLength(0);
+    // Only the note that says so is left (audit, 19 Sept: it used to clear in silence).
+    expect(session.transcript.map((entry) => entry.kind)).toEqual(['notice']);
+    expect(session.transcript[0]).toMatchObject({ text: 'Started a fresh conversation - the earlier one is cleared.' });
     expect(session.history).toHaveLength(0);
   });
 

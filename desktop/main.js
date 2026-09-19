@@ -85,6 +85,8 @@ function snapshot() {
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,
     planResetAt: s.planResetAt,
+    connected: providers.hasCredentials(),
+    connectHint: 'open Settings to connect',
   });
   return {
     folder: folder ? niceFolder(folder) : null,
@@ -167,9 +169,8 @@ async function sendAndDrain(text) {
 }
 
 // The terminal's full-screen menus aren't in the window yet.
-// /model and /keys open the Settings panel; these two still need the terminal.
-const TERMINAL_ONLY = new Set(['/help', '/address']);
-const OPENS_SETTINGS = new Set(['/model', '/keys']);
+// /model, /keys and /address open Settings; /help opens the Help panel.
+const OPENS_SETTINGS = new Set(['/model', '/keys', '/address']);
 
 // Back to the welcome screen to pick another folder (or Just chat); the
 // conversation stays. Between tasks only, as in the terminal.
@@ -228,8 +229,8 @@ ipcMain.on('send', (_event, raw) => {
     win?.webContents.send('open-settings');
     return;
   }
-  if (TERMINAL_ONLY.has(text)) {
-    session.addNotice(`${text} isn't in the desktop window yet - open Jeeves in Terminal for that for now.`);
+  if (text === '/help') {
+    win?.webContents.send('open-help');
     return;
   }
   if (text === '/exit') {
@@ -367,6 +368,21 @@ async function takeShots(out) {
     await wait(800);
     console.log(`after choosing a folder: folder ${await js("document.getElementById('folder').textContent")}, model told: ${Boolean(session.pendingContextNote)}, last line: ${session.transcript.at(-1)?.text}`);
     config.clearAddress();
+    app.exit(0);
+    return;
+  }
+  // JEEVES_DESKTOP_HELPTEST=1: /help and /address in the window.
+  if (process.env.JEEVES_DESKTOP_HELPTEST) {
+    const js = (code) => win.webContents.executeJavaScript(code);
+    await js("document.getElementById('just-chat').click()");
+    await wait(800);
+    ipcMain.emit('send', {}, '/help');
+    await wait(600);
+    console.log(`/help opens the Help panel: ${await js("!document.getElementById('help').hidden")}`);
+    await shot('20-help.png');
+    ipcMain.emit('send', {}, '/address');
+    await wait(1200);
+    console.log(`/address opens Settings: ${await js("!document.getElementById('settings').hidden")}, help closed: ${await js("document.getElementById('help').hidden")}`);
     app.exit(0);
     return;
   }

@@ -79,7 +79,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     return stored.includes(rowId) ? 'key stored - direct connection ready' : 'no key';
   }
 
-  function finishWizard(message: string, connected: boolean): void {
+  function finishWizard(message: string, connected: boolean, skipped = false): void {
     if (connected) {
       session.addNotice(message);
       if (session.status === 'disconnected') session.setStatus('idle');
@@ -87,7 +87,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     } else {
       session.addNotice(message);
     }
-    session.endWizard();
+    session.endWizard(skipped);
   }
 
   async function saveKey(provider: string, key: string): Promise<void> {
@@ -216,7 +216,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         setCursor(0);
         setPhase({ kind: 'list' });
       } else if (answer === 'n') {
-        finishWizard('No key for now - you can add one any time with /keys.', false);
+        finishWizard('Not connected yet - type /keys any time to connect an AI service. It takes about a minute.', false, true);
       }
       return;
     }
@@ -275,7 +275,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     // phase: list
     if (key.escape) {
       if (mode === 'wizard') {
-        finishWizard('Setup skipped - you can add a key any time with /keys.', false);
+        finishWizard('Not connected yet - type /keys any time to connect an AI service. It takes about a minute.', false, true);
       } else {
         session.closeKeys();
       }
@@ -377,7 +377,8 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           visibleRows.map((row, index) => (
             <Text key={row.id} inverse={index === cursor}>
               {` ${row.label}`.padEnd(21)}
-              <Text dimColor>{statusFor(row.id)}</Text>
+              {/* First run: what each service is (as the /model list says), not "no key". */}
+              <Text dimColor>{mode === 'wizard' && 'description' in row && !stored.includes(row.id) ? row.description : statusFor(row.id)}</Text>
             </Text>
           ))}
         {phase.kind === 'enter-key' && (

@@ -196,6 +196,7 @@
   }
 
   function open() {
+    $('help').hidden = true;
     panel.hidden = false;
     selected = null;
     modelsCache = new Map();
@@ -216,6 +217,22 @@
     }
   }, true);
   window.jeeves.onOpenSettings(open);
+
+  // Help: the same kind of panel, from the Help button or /help.
+  const help = $('help');
+  const openHelp = () => {
+    close();
+    help.hidden = false;
+  };
+  $('open-help').addEventListener('click', () => (help.hidden ? openHelp() : (help.hidden = true)));
+  $('close-help').addEventListener('click', () => (help.hidden = true));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !help.hidden) {
+      event.stopImmediatePropagation();
+      help.hidden = true;
+    }
+  }, true);
+  window.jeeves.onOpenHelp(openHelp);
   window.jeeves.onSettingsChanged(() => {
     if (!panel.hidden) void refresh();
   });

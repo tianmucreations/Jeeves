@@ -4,6 +4,7 @@ import { useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
 import { isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
+import { hasCredentials } from '../providers/index.js';
 
 export function shortModelName(model: string): string {
   const short = model.split('/').pop();
@@ -26,6 +27,10 @@ export interface FooterInfo {
   creditRemaining: number | null;
   creditIsAccount: boolean;
   planResetAt: string | null;
+  // False before any AI service is connected: the bar says so instead of "$—".
+  connected?: boolean;
+  // What to do about it, in this app's words ("type /keys" or "open Settings").
+  connectHint?: string;
 }
 
 const money = (value: number) => `$${value.toFixed(2)}`;
@@ -34,6 +39,7 @@ const money = (value: number) => `$${value.toFixed(2)}`;
 // and on the right what today has cost and what is left - or, for a flat-rate
 // plan, whether it has allowance. Warnings appear only when they matter.
 export function footerSegments(info: FooterInfo): FooterSegment[] {
+  if (info.connected === false) return [{ text: `not connected - ${info.connectHint ?? 'type /keys to connect'}`, color: 'yellow' }];
   const busy = info.busyNote ?? (info.tidying ? 'tidying up…' : null);
   const direct = isDirectService(info.providerId);
   if (busy && info.providerId !== 'openrouter' && !direct) return [{ text: busy }];
@@ -93,6 +99,8 @@ export function Footer() {
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,
     planResetAt: s.planResetAt,
+    // Whether a service is set up at all - not the brief "disconnected" of an internet drop.
+    connected: hasCredentials(),
   });
   const rightWidth = segments.reduce((sum, segment) => sum + segment.text.length, 0) + 3 * (segments.length - 1);
   // In Auto mode the bar names the model actually working: "auto · deepseek-v4-flash-0731".

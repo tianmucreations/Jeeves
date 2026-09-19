@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import { Header } from './components/Header.js';
 import { Transcript } from './components/Transcript.js';
 import { Input, inputRowsFor } from './components/Input.js';
@@ -16,6 +16,7 @@ import { HelpView } from './components/HelpView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
 import { AddressPrompt } from './components/AddressPrompt.js';
 import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './ink/mouse.js';
+import { pressCtrlCToQuit } from './ink/quit.js';
 
 // The main window: a rounded box border around the top section only, with the
 // info bar on its own row below the box. Top to bottom: plain top border, header
@@ -70,6 +71,12 @@ export function App() {
   // address such as where to get a key can be copied (owner, 19 Sept: "I still
   // can't copy things").
   const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.addressOpen || s.launchStage !== 'ready');
+  // On the setup screens Ctrl+C is only for quitting - still twice, never at once.
+  // (The conversation screen's typing box handles its own.)
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c' && !onConversation) pressCtrlCToQuit();
+  });
+
   useEffect(() => {
     try {
       process.stdout.write(onConversation ? ENABLE_MOUSE_TRACKING : DISABLE_MOUSE_TRACKING);

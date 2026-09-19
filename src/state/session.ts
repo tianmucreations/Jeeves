@@ -299,9 +299,11 @@ class SessionStore {
     this.emit();
   }
 
-  endWizard(): void {
+  // skipped: the person chose "not now" - straight to the conversation, not a second
+  // list of services (audit 19 Sept).
+  endWizard(skipped = false): void {
     this.wizardActive = false;
-    const shouldOpenModelPicker = this.wizardFromLaunch;
+    const shouldOpenModelPicker = this.wizardFromLaunch && !skipped;
     this.wizardFromLaunch = false;
     this.emit();
     if (shouldOpenModelPicker) {

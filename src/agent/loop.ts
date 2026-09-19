@@ -84,6 +84,7 @@ export async function runTurn(input: string): Promise<void> {
       }
     } else if (input === '/clear') {
       clearConversation();
+      session.addNotice('Started a fresh conversation - the earlier one is cleared.');
     } else if (input === '/exit') {
       session.requestExit();
     } else {

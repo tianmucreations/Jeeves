@@ -19,18 +19,28 @@ export function HelpView({ rows }: { rows: number }) {
       <Box flexDirection="column" flexGrow={1} justifyContent="center">
         <Text>Commands</Text>
         {COMMANDS.map((entry) => (
-          <Text key={entry.command}>
-            <Text>{' ' + entry.command.padEnd(9)}</Text>
-            <Text dimColor>{entry.description}</Text>
-          </Text>
+          // Long descriptions wrap under themselves, not under the key.
+          <Box key={entry.command}>
+            <Box width={11} flexShrink={0}>
+              <Text>{' ' + entry.command}</Text>
+            </Box>
+            <Text dimColor wrap="wrap">
+              {entry.description}
+            </Text>
+          </Box>
         ))}
         <Text> </Text>
         <Text>Keys</Text>
         {KEY_BINDINGS.map((entry) => (
-          <Text key={entry.command}>
-            <Text>{' ' + entry.command.padEnd(9)}</Text>
-            <Text dimColor>{entry.description}</Text>
-          </Text>
+          // Long descriptions wrap under themselves, not under the key.
+          <Box key={entry.command}>
+            <Box width={11} flexShrink={0}>
+              <Text>{' ' + entry.command}</Text>
+            </Box>
+            <Text dimColor wrap="wrap">
+              {entry.description}
+            </Text>
+          </Box>
         ))}
         <Text> </Text>
         <Text dimColor>Type anything else in plain English and press Enter - that's all you need.</Text>

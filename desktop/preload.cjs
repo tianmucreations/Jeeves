@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('jeeves', {
   cancelSignIn: () => ipcRenderer.send('openrouter-sign-in-cancel'),
   onSignInUrl: (listener) => ipcRenderer.on('sign-in-url', (_event, url) => listener(url)),
   setLimit: (value) => ipcRenderer.invoke('set-limit', value),
+  onOpenHelp: (listener) => ipcRenderer.on('open-help', () => listener()),
   onOpenSettings: (listener) => ipcRenderer.on('open-settings', () => listener()),
   onSettingsChanged: (listener) => ipcRenderer.on('settings-changed', () => listener()),
   onState: (listener) => ipcRenderer.on('state', (_event, state) => listener(state)),

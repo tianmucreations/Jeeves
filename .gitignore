@@ -17,3 +17,4 @@ bench/results.jsonl
 *.png
 !bench/**/*.png
 desktop/build/
+AUDIT*.txt

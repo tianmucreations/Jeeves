@@ -48,7 +48,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   const make = (message: string, kind: ErrorKind): PlainError => ({ message, kind, detail: raw });
 
   if (/^no .*\bkey\b/.test(text)) {
-    return make("There's no key yet - type /keys to add one.", 'auth');
+    return make('Jeeves isn\'t connected to an AI service yet - type /keys to connect one. It takes about a minute.', 'auth');
   }
   if (
     status === 401 ||

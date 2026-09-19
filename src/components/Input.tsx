@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import stringWidth from 'string-width';
 import { Box, Text, useCursor, useInput, usePaste, useStdout } from 'ink';
-import { runTurn } from '../agent/loop.js';
+import { runTurn, stopTurn } from '../agent/loop.js';
+import { copySelection } from '../ink/selection.js';
+import { pressCtrlCToQuit } from '../ink/quit.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
 import { session, useSession } from '../state/session.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
@@ -121,6 +123,27 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       return;
     }
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
+    // Ctrl+C, as Claude Code: copy a selection, else clear the typing, else stop the
+    // job, else quit only when pressed twice. It used to quit at once, losing the
+    // conversation - and Windows and Linux people press Ctrl+C to copy (audit, 19 Sept).
+    if (key.ctrl && input === 'c') {
+      if (session.selection) {
+        void copySelection();
+        session.setSelection(null);
+      } else if (valueRef.current) {
+        setValue('');
+      } else if (s.status === 'working' || s.approvalPending) {
+        stopTurn();
+      } else {
+        pressCtrlCToQuit();
+      }
+      return;
+    }
+    // Esc stops the job, as in Claude Code and the window's Stop button.
+    if (key.escape && (s.status === 'working' || s.approvalPending)) {
+      stopTurn();
+      return;
+    }
     // Any key clears a selection, as in Claude Code.
     if (session.selection) session.setSelection(null);
     if (s.approvalPending) {
@@ -237,7 +260,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // bytes differ from the same text without them, keeping Ink on its full-frame
   // path (see input-layout.ts).
   if (!valueRef.current) {
-    return <Text dimColor>{s.status === 'working' ? 'type your next message - it will be sent when I finish' : 'ask anything'}</Text>;
+    return <Text dimColor>{s.status === 'working' ? 'type your next message - it will be sent when I finish · Esc stops' : 'ask anything'}</Text>;
   }
   return (
     <Box flexDirection="column">

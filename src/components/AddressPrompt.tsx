@@ -47,7 +47,7 @@ export function AddressPrompt({ rows }: { rows: number }) {
       <Text dimColor>{timeOfDayGreeting()}. Before we begin — how shall I address you? Sir, Ma'am, or something else?</Text>
       <Box flexGrow={1} justifyContent="center" flexDirection="column" minHeight={1}>
         <Text>
-          <Text dimColor>Address: </Text>
+          <Text dimColor>Call me: </Text>
           <Text>{value}</Text>
           <Text inverse> </Text>
         </Text>

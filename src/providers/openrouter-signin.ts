@@ -27,9 +27,16 @@ export function authorizeUrl(callbackUrl: string, challenge: string): string {
   return `${AUTH_URL}?${params.toString()}`;
 }
 
+// The program and arguments that open a web address on each system.
+export function browserCommand(url: string, platform: NodeJS.Platform = process.platform): [string, string[]] {
+  // Windows: rundll32, as Claude Code does (utils/browser.ts) - never cmd's "start",
+  // which splits a web address at its & signs (audit, 19 Sept).
+  return platform === 'darwin' ? ['open', [url]] : platform === 'win32' ? ['rundll32', ['url,OpenURL', url]] : ['xdg-open', [url]];
+}
+
 // Opens the address in the person's own browser, on every operating system.
 export function openInBrowser(url: string): void {
-  const command = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]] : ['xdg-open', [url]];
+  const command = browserCommand(url);
   try {
     const child = spawn(command[0] as string, command[1] as string[], { stdio: 'ignore', detached: true });
     child.on('error', () => {});

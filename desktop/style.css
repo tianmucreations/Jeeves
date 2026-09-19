@@ -265,3 +265,8 @@ body.welcoming .brand { visibility: hidden; }
 .connect .note { white-space: pre-wrap; overflow-wrap: anywhere; }
 .link.key-page { display: block; margin: 0 0 12px; color: var(--gold-light); }
 .link.key-page:hover { color: var(--gold); }
+.help-body dl { margin: 0; }
+.help-body dt { color: var(--silver-bright); margin-top: 12px; }
+.help-body dd { margin: 2px 0 0; color: var(--silver-dim); font-size: 13.5px; }
+#open-help { margin-left: auto; }
+#open-settings { margin-left: 8px; }

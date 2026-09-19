@@ -53,10 +53,12 @@ program
     // The whole app - project picker, key screens, model picker, main window - runs inside a
     // single AlternateScreen, so the terminal is taken over exactly once for the whole
     // process and handed back only when Jeeves quits (Claude Code's mechanism).
+    // Ctrl+C is Jeeves's own (src/ink/quit.ts): twice to quit, never at once.
     const instance = render(
       <AlternateScreen>
         <App />
-      </AlternateScreen>
+      </AlternateScreen>,
+      { exitOnCtrlC: false },
     );
     let quitting = false;
     // /exit asks for a clean shutdown: let Ink finish its frame teardown, hand the
