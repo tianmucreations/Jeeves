@@ -184,6 +184,29 @@ els.input.addEventListener('keydown', (event) => {
 els.approval.addEventListener('click', (event) => {
   const button = event.target.closest('[data-answer]');
   if (button && !button.hidden) window.jeeves.answer(button.dataset.answer);
+  els.input.focus();
+});
+
+// The typing box keeps the cursor, as in Claude's app: after a button, after
+// selecting text, and when the window comes back to the front. Typing anywhere
+// goes into the box.
+function focusInput() {
+  if (!els.chat.hidden && document.getElementById('settings').hidden && !getSelection().toString()) els.input.focus();
+}
+window.addEventListener('focus', focusInput);
+document.addEventListener('mouseup', () => setTimeout(focusInput, 0));
+document.addEventListener('keydown', (event) => {
+  if (els.chat.hidden || !document.getElementById('settings').hidden) return;
+  const typing = document.activeElement === els.input || document.activeElement?.tagName === 'INPUT';
+  if (typing || event.metaKey || event.ctrlKey || event.altKey || event.key.length !== 1) return;
+  if (state?.approval && !els.input.value && 'yan'.includes(event.key.toLowerCase())) return;
+  // The key that moves the cursor is typed too - otherwise the first letter is lost
+  // (measured: typing "hi" left "i").
+  event.preventDefault();
+  els.input.focus();
+  const end = els.input.value.length;
+  els.input.setRangeText(event.key, end, end, 'end');
+  fitInput();
 });
 document.addEventListener('keydown', (event) => {
   if (!state?.approval || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -195,7 +218,10 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-els.stop.addEventListener('click', () => window.jeeves.stop());
+els.stop.addEventListener('click', () => {
+  window.jeeves.stop();
+  els.input.focus();
+});
 // Esc stops the job, as in Claude Code.
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state && !els.stop.hidden) {

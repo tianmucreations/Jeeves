@@ -215,6 +215,7 @@ function createWindow() {
     },
   });
   // JEEVES_DESKTOP_SHOT=<folder>: pictures of the window for checking, taken hidden.
+  if (process.env.JEEVES_DESKTOP_SHOT) win.webContents.on('console-message', (event) => console.log(`[window] ${event.level}: ${event.message} (${event.sourceId?.split('/').pop()}:${event.lineNumber})`));
   if (process.env.JEEVES_DESKTOP_SHOT) win.webContents.once('did-finish-load', () => void takeShots(process.env.JEEVES_DESKTOP_SHOT));
   else win.once('ready-to-show', () => win.show());
   void win.loadFile(path.join(here, 'index.html'));
@@ -272,6 +273,23 @@ async function takeShots(out) {
       console.log(`after choosing: provider ${session.providerId}, model ${session.model}, saved default ${config.getDefaultModel()}`);
       await shot('11-chosen.png');
     }
+    app.exit(0);
+    return;
+  }
+  // JEEVES_DESKTOP_FOCUSTEST=1: the typing box gets the cursor back (changes nothing).
+  if (process.env.JEEVES_DESKTOP_FOCUSTEST) {
+    const js = (code) => win.webContents.executeJavaScript(code);
+    await wait(800);
+    win.focusOnWebView();
+    await js("document.getElementById('open-settings').focus(); document.activeElement.id");
+    console.log(`before typing, the cursor is in: ${await js('document.activeElement.id || document.activeElement.tagName')}`);
+    for (const ch of 'hi') {
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: ch });
+      win.webContents.sendInputEvent({ type: 'char', keyCode: ch });
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: ch });
+      await wait(100);
+    }
+    console.log(`after typing "hi": cursor in ${await js('document.activeElement.id')}, box holds ${JSON.stringify(await js("document.getElementById('input').value"))}`);
     app.exit(0);
     return;
   }
