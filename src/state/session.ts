@@ -84,6 +84,13 @@ class SessionStore {
   // The furthest the transcript can scroll up (contentHeight - viewportHeight),
   // reported by the Transcript from its live measurements.
   transcriptScrollMax = Number.POSITIVE_INFINITY;
+  // Text selected with the mouse in the conversation (Claude Code's in-app selection):
+  // line and character positions within the drawn lines, so it stays on its words
+  // while the view scrolls. null when nothing is selected.
+  selection: { anchor: { line: number; ch: number }; focus: { line: number; ch: number } } | null = null;
+  // What the conversation area shows, published by the Transcript each time it draws,
+  // so a mouse position can be turned into a line and character.
+  transcriptView: { top: number; left: number; height: number; lines: string[]; scrollTop: number } | null = null;
   // What is being typed in the input box (the window sizes the box to fit it).
   inputText = '';
   // Messages sent while Jeeves was busy, in order; each is sent when he finishes.
@@ -367,6 +374,12 @@ class SessionStore {
     const next = Math.min(this.transcriptScrollMax, Math.max(0, this.transcriptScrollUp + delta));
     if (next === this.transcriptScrollUp) return;
     this.transcriptScrollUp = next;
+    this.emit();
+  }
+
+  setSelection(selection: SessionStore['selection']): void {
+    if (selection === null && this.selection === null) return;
+    this.selection = selection;
     this.emit();
   }
 

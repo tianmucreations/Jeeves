@@ -17,10 +17,11 @@ describe('SGR mouse parsing', () => {
     expect(down).toEqual({ kind: 'wheel', button: 1, col: 3, row: 2 });
   });
 
-  it('recognises but ignores presses and releases', () => {
+  it('recognises presses, drags (for selecting) and releases', () => {
     expect(parseMouseSequence('\x1b[<0;5;5M')?.kind).toBe('press');
     expect(parseMouseSequence('\x1b[<0;5;5m')?.kind).toBe('release');
-    expect(parseMouseSequence('\x1b[<32;5;5M')).toBeNull();
+    expect(parseMouseSequence('\x1b[<32;5;5M')?.kind).toBe('drag');
+    expect(parseMouseSequence('\x1b[<35;5;5M')).toBeNull();
   });
 
   it('wheel events scroll the transcript three rows at a time, clamped at the newest', () => {

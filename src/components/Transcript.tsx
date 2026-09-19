@@ -2,6 +2,12 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { session, useSession, type TranscriptEntry } from '../state/session.js';
 import { buildDisplayLines, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
+import { selectedRange } from '../ink/selection.js';
+
+// Where the conversation sits on screen (1-based): below the top border and the
+// header row, one column in past the border and one of padding (app.tsx).
+const VIEW_TOP = 3;
+const VIEW_LEFT = 3;
 
 // Claude Code's ScrollBox pattern (ch13-14-terminal-ui.md): the outer box clips at
 // the viewport with overflow="hidden" and flexGrow={1}, so the transcript fills
@@ -37,20 +43,34 @@ export function Transcript({ width }: { width: number }) {
   useEffect(() => {
     session.setTranscriptScrollMax(maxScroll);
   }, [maxScroll]);
+  // The mouse turns a screen position into a line and character with this.
+  session.transcriptView = { top: VIEW_TOP, left: VIEW_LEFT, height: viewport.height, lines: lines.map((line) => line.text), scrollTop };
 
   return (
     <Box flexDirection="column" overflow="hidden" flexGrow={1} justifyContent="flex-end" ref={outer}>
       <Box flexDirection="column" flexShrink={0} marginBottom={-scrollTop} ref={inner}>
-        {lines.map((line, index) => (
-          <Text
-            key={index}
-            color={line.own ? OWN_MESSAGE_TEXT : line.color}
-            backgroundColor={line.own ? OWN_MESSAGE_BACKGROUND : undefined}
-            dimColor={line.dim}
-          >
-            {line.text}
-          </Text>
-        ))}
+        {lines.map((line, index) => {
+          // Selected text is drawn reversed, as a terminal's own selection is.
+          const range = s.selection ? selectedRange(index, line.text.length) : null;
+          return (
+            <Text
+              key={index}
+              color={line.own ? OWN_MESSAGE_TEXT : line.color}
+              backgroundColor={line.own ? OWN_MESSAGE_BACKGROUND : undefined}
+              dimColor={line.dim}
+            >
+              {range ? (
+                <>
+                  {line.text.slice(0, range[0])}
+                  <Text inverse>{line.text.slice(range[0], range[1])}</Text>
+                  {line.text.slice(range[1])}
+                </>
+              ) : (
+                line.text
+              )}
+            </Text>
+          );
+        })}
       </Box>
     </Box>
   );

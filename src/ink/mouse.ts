@@ -1,11 +1,13 @@
 import { session } from '../state/session.js';
+import { pointAt, copySelection } from './selection.js';
 
 // SGR mouse tracking (modes 1000 + 1002 + 1006), enabled for the whole session by
 // the AlternateScreen takeover and disabled on every exit path. Claude Code's
 // approach: in the alternate screen the terminal has no scrollback, so wheel
 // events are captured and translated into transcript scrolling. The trade-off is
-// native click-drag selection; Shift (or Option in Terminal.app) bypasses mouse
-// capture for copying - the help screen says so.
+// the terminal's own click-drag selection, so selection is done here instead
+// (selection.ts): drag to select, copied on release. Fn in Terminal.app still
+// bypasses capture for the terminal's own selection.
 export const ENABLE_MOUSE_TRACKING = '\x1b[?1000h\x1b[?1002h\x1b[?1006h';
 export const DISABLE_MOUSE_TRACKING = '\x1b[?1006l\x1b[?1002l\x1b[?1000l';
 
@@ -13,7 +15,7 @@ export const DISABLE_MOUSE_TRACKING = '\x1b[?1006l\x1b[?1002l\x1b[?1000l';
 // from ones it cannot resolve, so both forms are accepted here.
 const MOUSE_RE = /^\x1b?\[<(\d+);(\d+);(\d+)([Mm])$/;
 
-export type MouseKind = 'press' | 'release' | 'wheel';
+export type MouseKind = 'press' | 'drag' | 'release' | 'wheel';
 
 export interface ParsedMouseEvent {
   kind: MouseKind;
@@ -46,14 +48,37 @@ export function parseMouseSequence(input: string): ParsedMouseEvent | null {
   if (rawButton <= 6) {
     return { kind: 'press', button: rawButton, col, row };
   }
+  // Mode 1002 reports movement with a button held as the button code plus 32.
+  if (rawButton >= 32 && rawButton <= 34) {
+    return { kind: 'drag', button: rawButton - 32, col, row };
+  }
   return null;
 }
 
 // Wheel up scrolls the transcript up 3 rows, wheel down 3 rows back; the session
-// clamps at the newest (0) and the Transcript clamps at the oldest. Non-wheel
-// events are consumed silently - clicks must never leak into text inputs.
+// clamps at the newest (0) and the Transcript clamps at the oldest. A left-button
+// press in the conversation starts a selection, dragging extends it, and releasing
+// copies it. Nothing here ever reaches the text being typed.
 export function handleMouseInput(input: string): void {
   const event = parseMouseSequence(input);
-  if (event === null || event.kind !== 'wheel') return;
-  session.scrollTranscript(event.button === 0 ? 3 : -3);
+  if (event === null) return;
+  if (event.kind === 'wheel') {
+    session.scrollTranscript(event.button === 0 ? 3 : -3);
+    return;
+  }
+  if (event.button !== 0) return;
+  if (event.kind === 'press') {
+    const point = pointAt(event.col, event.row);
+    session.setSelection(point ? { anchor: point, focus: point } : null);
+    return;
+  }
+  const current = session.selection;
+  if (!current) return;
+  const point = pointAt(event.col, event.row, true);
+  if (point) session.setSelection({ anchor: current.anchor, focus: point });
+  if (event.kind === 'release') {
+    const moved = point && (point.line !== current.anchor.line || point.ch !== current.anchor.ch);
+    if (moved) void copySelection();
+    else session.setSelection(null);
+  }
 }

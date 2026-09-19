@@ -81,6 +81,8 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       return;
     }
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
+    // Any key clears a selection, as in Claude Code.
+    if (session.selection) session.setSelection(null);
     if (s.approvalPending) {
       const answer = input.toLowerCase();
       if (answer === 'y') answerApproval(true);
