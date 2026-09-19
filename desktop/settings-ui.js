@@ -9,6 +9,11 @@
   let data = null;
   let selected = null;
   let modelsCache = new Map();
+  // The note under the Sign in button now on screen; the address arrives here once.
+  let signInNote = null;
+  window.jeeves.onSignInUrl((url) => {
+    if (signInNote?.dataset.waiting) signInNote.textContent = `Your browser has opened at OpenRouter. Log in if it asks (or make a free account), then click Authorize. I'm waiting here - this moves on by itself once you approve.\n\nBrowser didn't open? Go to: ${url}`;
+  });
 
   const el = (tag, props = {}, ...children) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -142,6 +147,8 @@
 
   function renderKeyForm(service) {
     const note = el('p', { className: 'note' });
+    note.style.whiteSpace = 'pre-wrap';
+    note.style.overflowWrap = 'anywhere';
     const input = el('input', { type: 'password', placeholder: `Paste your ${service.label} key`, autocomplete: 'off', spellcheck: false });
     const form = el('form', { className: 'inline' }, input, el('button', { className: 'btn', textContent: 'Save key' }));
     form.addEventListener('submit', async (event) => {
@@ -157,22 +164,28 @@
         await refresh();
       }
     });
-    detail.append(form);
     if (service.id === 'openrouter') {
-      const signIn = el('button', { className: 'btn gold-btn', textContent: 'Sign in with OpenRouter' });
-      signIn.style.marginTop = '12px';
+      // The recommended way first, explained - then pasting, for people who have a key.
+      const signIn = el('button', { className: 'btn gold-btn', textContent: 'Sign in with OpenRouter (recommended)' });
       signIn.addEventListener('click', async () => {
         note.className = 'note';
-        note.textContent = 'Your browser is opening - approve Jeeves on OpenRouter, then come back here.';
+        note.dataset.waiting = '1';
+        note.textContent = 'Opening your browser at OpenRouter…';
         const result = await window.jeeves.signIn();
+        delete note.dataset.waiting;
         note.className = result.ok ? 'note good' : 'note';
         note.textContent = result.message;
         if (result.ok) await refresh();
       });
-      detail.append(el('p', { className: 'muted', textContent: 'Or, with no key to copy:' }), signIn);
+      signInNote = note;
+      detail.append(
+        signIn,
+        el('p', { className: 'muted', textContent: 'Your browser opens. Log in, or make a free account, then click Authorize and come back. No key to copy.' }),
+        el('p', { className: 'muted', textContent: 'Or paste a key you already have (from openrouter.ai/keys):' }),
+      );
     }
-    detail.append(note);
-    input.focus();
+    detail.append(form, note);
+    if (service.id !== 'openrouter') input.focus();
   }
 
   function open() {

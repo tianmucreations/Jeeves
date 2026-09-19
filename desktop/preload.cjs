@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('jeeves', {
   removeKey: (provider) => ipcRenderer.invoke('remove-key', provider),
   signIn: () => ipcRenderer.invoke('openrouter-sign-in'),
   cancelSignIn: () => ipcRenderer.send('openrouter-sign-in-cancel'),
+  onSignInUrl: (listener) => ipcRenderer.on('sign-in-url', (_event, url) => listener(url)),
   setLimit: (value) => ipcRenderer.invoke('set-limit', value),
   onOpenSettings: (listener) => ipcRenderer.on('open-settings', () => listener()),
   onSettingsChanged: (listener) => ipcRenderer.on('settings-changed', () => listener()),

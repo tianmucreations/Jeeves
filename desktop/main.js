@@ -119,10 +119,16 @@ function sendState() {
   }, 40);
 }
 session.subscribe(sendState);
-await registerSettings(engine, () => {
-  sendState();
-  if (win && !win.isDestroyed()) win.webContents.send('settings-changed');
-});
+await registerSettings(
+  engine,
+  () => {
+    sendState();
+    if (win && !win.isDestroyed()) win.webContents.send('settings-changed');
+  },
+  (channel, data) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, data);
+  },
+);
 
 // remember: false for "Just chat" - its folder is not a project, so it never
 // joins the recent list (as in the terminal's ProjectPicker).
@@ -284,6 +290,25 @@ async function takeShots(out) {
     await wait(800);
     console.log(`saved address: ${config.getAddress()} | greeting: ${await win.webContents.executeJavaScript("document.getElementById('greeting').textContent")}`);
     await shot('16-after-address.png');
+    config.clearAddress();
+    app.exit(0);
+    return;
+  }
+  // JEEVES_DESKTOP_CONNECTTEST=1 (with an empty test keychain): a new person with no AI service.
+  if (process.env.JEEVES_DESKTOP_CONNECTTEST && process.env.NODE_ENV === 'test') {
+    config.setAddress("Ma'am");
+    sendState();
+    await wait(800);
+    await shot('17-connect.png');
+    const js = (code) => win.webContents.executeJavaScript(code);
+    await js("document.getElementById('welcome-key').value = 'not-a-key'; document.getElementById('welcome-key-form').requestSubmit()");
+    await wait(500);
+    console.log(`bad key answer: ${await js("document.getElementById('welcome-connect-note').textContent")}`);
+    await js("document.getElementById('welcome-connect-note').dataset.waiting = '1'");
+    win.webContents.send('sign-in-url', 'https://openrouter.ai/auth?example');
+    await wait(300);
+    console.log(`while waiting: ${await js("document.getElementById('welcome-connect-note').textContent")}`);
+    await shot('18-connect-waiting.png');
     config.clearAddress();
     app.exit(0);
     return;

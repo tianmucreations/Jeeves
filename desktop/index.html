@@ -35,7 +35,20 @@
       <div class="projects" id="projects"></div>
       <button class="choose" id="choose">Choose another folder…</button>
       </div>
-      <p class="welcome-note" id="nokeys" hidden>No key is saved yet. Open Jeeves in Terminal once and add one - then come back here.</p>
+      <div class="connect" id="nokeys" hidden>
+        <p class="connect-lead">Jeeves needs an AI service to think with - the company that runs the AI models. You connect one account once, and pay it only for what you use.</p>
+        <p class="connect-lead">OpenRouter is the easiest: one account gives you hundreds of models.</p>
+        <div class="connect-sign-in">
+          <button class="just-chat" id="welcome-sign-in">Sign in with OpenRouter <span>recommended</span></button>
+          <p class="muted">Your browser opens. Log in, or make a free account, then click Authorize and come back. No key to copy.</p>
+        </div>
+        <form class="inline" id="welcome-key-form">
+          <input id="welcome-key" type="password" autocomplete="off" placeholder="or paste an OpenRouter key you already have (sk-or-...)">
+          <button class="btn">Save key</button>
+        </form>
+        <p class="note" id="welcome-connect-note"></p>
+        <p class="muted">Z.ai, Anthropic, OpenAI, Google and others are in Settings, top right.</p>
+      </div>
     </div>
   </main>
 

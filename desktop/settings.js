@@ -3,7 +3,7 @@
 // saveKey), called from the same engine, so both ways of using Jeeves behave alike.
 import { ipcMain } from 'electron';
 
-export async function registerSettings(engine, onChange) {
+export async function registerSettings(engine, onChange, notify = () => {}) {
   const { session } = await engine('state/session.js');
   const providers = await engine('providers/index.js');
   const config = await engine('platform/config.js');
@@ -118,7 +118,8 @@ export async function registerSettings(engine, onChange) {
   ipcMain.handle('openrouter-sign-in', async () => {
     signingIn?.abort();
     signingIn = new AbortController();
-    const result = await signInWithOpenRouter({ signal: signingIn.signal });
+    // The address goes to the window too, in case the browser did not open.
+    const result = await signInWithOpenRouter({ signal: signingIn.signal, onUrl: (url) => notify('sign-in-url', url) });
     signingIn = null;
     if (!result.ok) {
       return { ok: false, message: result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived - try again, or paste a key.' : "OpenRouter didn't complete the sign-in - try again, or paste a key." };

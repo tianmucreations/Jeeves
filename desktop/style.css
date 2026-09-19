@@ -254,3 +254,9 @@ body.welcoming .brand { visibility: hidden; }
 .address-choices { display: flex; gap: 12px; margin-bottom: 18px; }
 .address-choices .just-chat { margin: 0; min-width: 120px; justify-content: center; }
 .address-other { max-width: 520px; }
+/* First run with no AI service: connect one right here, explained. */
+.connect { margin-top: 8px; }
+.connect-lead { color: var(--silver); margin: 0 0 10px; max-width: 34em; }
+.connect-sign-in { margin: 22px 0 20px; }
+.connect-sign-in .just-chat { margin: 0 0 8px; }
+.connect .note { white-space: pre-wrap; overflow-wrap: anywhere; }

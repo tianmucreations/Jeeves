@@ -87,8 +87,10 @@ function greetingWord() {
 function renderWelcome(s) {
   // The very first question: how to address the person - never a guessed "Sir".
   const asking = !s.address;
+  // After the name, a person with no AI service connects one here - never sent to the terminal.
+  const connecting = !asking && s.keysChecked && !s.hasKeys;
   document.getElementById('ask-address').hidden = !asking;
-  document.getElementById('choose-start').hidden = asking;
+  document.getElementById('choose-start').hidden = asking || connecting;
   els.greeting.textContent = asking
     ? `${greetingWord()}. Before we begin - how shall I address you?`
     : `${greetingWord()}, ${s.address}. What can I do for you?`;
@@ -264,4 +266,29 @@ for (const button of document.querySelectorAll('[data-address]')) {
 document.getElementById('address-form').addEventListener('submit', (event) => {
   event.preventDefault();
   void chooseAddress(document.getElementById('address-other').value);
+});
+
+// Connecting OpenRouter from the welcome screen, with the same words as the terminal.
+const connectNote = document.getElementById('welcome-connect-note');
+window.jeeves.onSignInUrl((url) => {
+  if (connectNote.dataset.waiting) connectNote.textContent = `Your browser has opened at OpenRouter. Log in if it asks (or make a free account), then click Authorize. I'm waiting here - this moves on by itself once you approve.\n\nBrowser didn't open? Go to: ${url}`;
+});
+document.getElementById('welcome-sign-in').addEventListener('click', async () => {
+  connectNote.className = 'note';
+  connectNote.dataset.waiting = '1';
+  connectNote.textContent = 'Opening your browser at OpenRouter…';
+  const result = await window.jeeves.signIn();
+  delete connectNote.dataset.waiting;
+  connectNote.className = result.ok ? 'note good' : 'note';
+  connectNote.textContent = result.message;
+});
+document.getElementById('welcome-key-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const input = document.getElementById('welcome-key');
+  connectNote.className = 'note';
+  connectNote.textContent = 'Checking the key…';
+  const result = await window.jeeves.saveKey('openrouter', input.value);
+  input.value = '';
+  connectNote.className = result.ok ? 'note good' : 'note';
+  connectNote.textContent = result.message;
 });
