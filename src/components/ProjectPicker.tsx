@@ -7,7 +7,7 @@ import path from 'node:path';
 import { session, useSession } from '../state/session.js';
 import { setRecentProjects } from '../platform/config.js';
 import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
-import { hasCredentials } from '../providers/index.js';
+import { hasCredentials, keysRead } from '../providers/index.js';
 import { isMouseSequence } from '../ink/mouse.js';
 
 type Item =
@@ -118,11 +118,14 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
     setRecentProjects(updated);
     session.launchComplete();
     session.addNotice(`Now working in ${displayPath(folder)}.`);
-    if (!hasCredentials()) {
-      session.startWizard(true);
-    } else {
-      session.openPicker();
-    }
+    // Only once the saved keys have been read can "no key yet" be true.
+    void keysRead().then(() => {
+      if (!hasCredentials()) {
+        session.startWizard(true);
+      } else {
+        session.openPicker();
+      }
+    });
   }
 
   async function createProject(folder: string): Promise<void> {

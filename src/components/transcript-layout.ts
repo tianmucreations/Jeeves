@@ -60,7 +60,7 @@ export function toolName(tool: string): string {
   return TOOL_NAMES[tool] ?? tool;
 }
 
-function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'; dim?: boolean } {
+export function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'; dim?: boolean } {
   if (d.state === 'awaiting') {
     return { text: `? ${toolName(d.tool)} ${d.summary} — allow? (y/n)`, color: 'yellow' };
   }

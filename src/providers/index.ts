@@ -119,7 +119,23 @@ export function hasCredentials(): boolean {
 // Startup key resolution: the Keychain wins; a .env file is a development fallback
 // that gets migrated into the Keychain on first launch. The first access may pop a
 // macOS permission dialog - that is expected and allowed once.
-export async function initKeys(): Promise<void> {
+// Reading the keychain takes a moment; anything that decides "is there a key?" waits
+// for it first (Claude Code's keychainPrefetch pattern). Choosing a folder within
+// about 0.8 s of opening used to decide before the read finished and asked for a key
+// the person already had (measured 19 Sept).
+let keysLoading: Promise<void> | null = null;
+
+export function initKeys(): Promise<void> {
+  keysLoading ??= readKeys();
+  return keysLoading;
+}
+
+// Resolves once the saved keys have been read (starting the read if needed).
+export function keysRead(): Promise<void> {
+  return initKeys();
+}
+
+async function readKeys(): Promise<void> {
   // Read together, so startup is not held up by one keychain read after another.
   const ids = [...DIRECT_SERVICES.map((service) => service.id), CUSTOM_SERVICE_ID];
   const serviceStored = await Promise.all(ids.map((id) => getKey(id)));
