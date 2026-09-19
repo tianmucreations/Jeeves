@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { session, useSession } from '../state/session.js';
 import {
@@ -20,7 +20,7 @@ import { setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
-import { signInWithOpenRouter } from '../providers/openrouter-signin.js';
+import { OpenRouterConnect } from './OpenRouterConnect.js';
 
 // Every service Jeeves connects to. The optional OpenRouter management key (it unlocks
 // the real account balance) is for /keys only, and the compatible service needs its
@@ -31,6 +31,7 @@ const WIZARD_ROWS = KEY_ROWS.filter((row) => row.id !== 'openrouter-management' 
 type Phase =
   | { kind: 'ask' }
   | { kind: 'list' }
+  | { kind: 'openrouter' }
   | { kind: 'enter-key'; provider: string; label: string }
   | { kind: 'confirm-remove'; provider: string; label: string }
   | { kind: 'saved'; message: string };
@@ -47,8 +48,6 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   const [hidden, setHidden] = useState('');
   const [stored, setStored] = useState<string[]>([]);
   const [note, setNote] = useState('');
-  // The browser sign-in in progress, so Esc can cancel it.
-  const signingIn = useRef<AbortController | null>(null);
 
   const refreshStored = useCallback(() => {
     void storedKeyProviders().then((names) => setStored(names));
@@ -208,6 +207,8 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
 
   useInput((input, key) => {
     if (isMouseSequence(input)) return;
+    // The OpenRouter screen handles its own keys.
+    if (phase.kind === 'openrouter') return;
         if (phase.kind === 'ask') {
       const answer = input.toLowerCase();
       if (answer === 'y') {
@@ -236,27 +237,6 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return;
     }
     if (phase.kind === 'enter-key') {
-      if (signingIn.current) {
-        if (key.escape) signingIn.current.abort();
-        return;
-      }
-      // OpenRouter with nothing pasted: sign in through the browser instead.
-      if (key.return && phase.provider === 'openrouter' && hidden.trim() === '') {
-        const controller = new AbortController();
-        signingIn.current = controller;
-        setNote('Opening your browser - approve Jeeves on OpenRouter, then come back here. (Esc to cancel)');
-        void signInWithOpenRouter({ signal: controller.signal }).then((result) => {
-          signingIn.current = null;
-          if (result.ok) {
-            setNote('');
-            void saveKey('openrouter', result.key);
-            setPhase({ kind: 'list' });
-          } else {
-            setNote(result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived - press Enter to try again, or paste a key.' : "OpenRouter didn't complete the sign-in - press Enter to try again, or paste a key.");
-          }
-        });
-        return;
-      }
       if (key.escape) {
         setPhase({ kind: 'list' });
         setNote('');
@@ -320,9 +300,10 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         }
         return;
       }
-      setPhase({ kind: 'enter-key', provider: row.id, label: row.label });
       setNote('');
       setHidden('');
+      // OpenRouter gets the explained choice: sign in through the browser, or paste a key.
+      setPhase(row.id === 'openrouter' ? { kind: 'openrouter' } : { kind: 'enter-key', provider: row.id, label: row.label });
       return;
     }
     const answer = input.toLowerCase();
@@ -339,7 +320,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
 
   const title =
     phase.kind === 'ask'
-      ? 'Welcome - one quick setup question'
+      ? 'Welcome - one quick setup step'
       : phase.kind === 'enter-key'
         ? `Paste the ${phase.label} key`
         : phase.kind === 'confirm-remove'
@@ -352,7 +333,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
 
   const hint =
     phase.kind === 'ask'
-      ? 'y = yes · n = not now'
+      ? 'y = yes, set it up · n = not now'
       : phase.kind === 'enter-key'
         ? 'paste the key · Enter save · Esc back'
         : phase.kind === 'confirm-remove'
@@ -363,11 +344,34 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
               ? '↑↓ move · Enter choose · Esc back'
               : '↑↓ move · Enter add or replace · d remove · Esc close';
 
+  if (phase.kind === 'openrouter') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <OpenRouterConnect
+          hasKey={stored.includes('openrouter') || getKeySource() !== null}
+          onBack={() => setPhase({ kind: 'list' })}
+          onDone={(message) => {
+            refreshStored();
+            if (mode === 'wizard') finishWizard(message, true);
+            else setPhase({ kind: 'saved', message });
+          }}
+        />
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" height={rows}>
       <Text dimColor>{title}</Text>
       <Box flexDirection="column" flexGrow={1} justifyContent="center">
-        {phase.kind === 'ask' && <Text>{'  Add an API key?'}</Text>}
+        {phase.kind === 'ask' && (
+          <>
+            <Text>Jeeves needs an AI service to think with - the company that runs the AI models.</Text>
+            <Text>You connect one account once, and pay that service only for what you use.</Text>
+            <Text> </Text>
+            <Text>Set one up now? (y/n)</Text>
+          </>
+        )}
         {phase.kind === 'list' &&
           visibleRows.map((row, index) => (
             <Text key={row.id} inverse={index === cursor}>
@@ -380,9 +384,6 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
             <Text>Paste the {phase.label} key (it stays hidden): </Text>
             <Text inverse> </Text>
           </Text>
-        )}
-        {phase.kind === 'enter-key' && phase.provider === 'openrouter' && (
-          <Text dimColor>Or press Enter with nothing pasted to sign in through your browser - no key to copy.</Text>
         )}
         {phase.kind === 'confirm-remove' && (
           <Text>

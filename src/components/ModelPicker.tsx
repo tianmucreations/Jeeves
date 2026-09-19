@@ -30,7 +30,7 @@ import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/
 import { loadDirectModels, checkCustomService } from '../providers/catalogue.js';
 import { autoRowFor, noAutoNote } from '../agent/auto.js';
 import { getCustomService } from '../platform/config.js';
-import { signInWithOpenRouter } from '../providers/openrouter-signin.js';
+import { OpenRouterConnect } from './OpenRouterConnect.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
@@ -470,7 +470,23 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       setAddressValue((v) => v + input);
       return;
     }
-    if (step === 'key') {
+    // OpenRouter's key step is its own explained screen, which handles its own keys.
+    if (step === 'key' && keyFor === 'openrouter') return;
+    if (step === 'key' && keyFor === 'openrouter') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <OpenRouterConnect
+          hasKey={false}
+          onBack={() => setStep('providers')}
+          onDone={() => {
+            if (s.status === 'disconnected') s.setStatus('idle');
+            enterModelStep('openrouter');
+          }}
+        />
+      </Box>
+    );
+  }
+  if (step === 'key') {
       if (checking) {
         if (key.escape && signInAbort.current) signInAbort.current.abort();
         return;
@@ -530,30 +546,6 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           setKeyNote('');
           if (s.status === 'disconnected') s.setStatus('idle');
           enterDirectStep(keyFor);
-        });
-        return;
-      }
-      // OpenRouter with nothing pasted: sign in through the browser instead.
-      if (key.return && keyFor === 'openrouter' && keyValue.trim() === '') {
-        const controller = new AbortController();
-        signInAbort.current = controller;
-        setChecking(true);
-        setKeyNote('Opening your browser - approve Jeeves on OpenRouter, then come back here. (Esc to cancel)');
-        void signInWithOpenRouter({ signal: controller.signal }).then(async (result) => {
-          setChecking(false);
-          signInAbort.current = null;
-          if (!result.ok) {
-            setKeyNote(result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived - press Enter to try again, or paste a key.' : "OpenRouter didn't complete the sign-in - press Enter to try again, or paste a key.");
-            return;
-          }
-          if (!(await storeOpenRouterKey(result.key))) {
-            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
-            return;
-          }
-          setKeyNote('');
-          void refreshCredit();
-          if (s.status === 'disconnected') s.setStatus('idle');
-          enterModelStep('openrouter');
         });
         return;
       }
@@ -760,7 +752,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
             : `${service} — a direct connection with your own key`;
     const where =
       keyFor === 'openrouter'
-        ? 'Get one at openrouter.ai/settings/keys - or press Enter with nothing pasted to sign in through your browser, no key to copy. '
+        ? ''
         : direct
           ? `Get one at ${direct.keyPage}. `
           : keyFor === CUSTOM_SERVICE_ID
