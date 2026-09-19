@@ -1,3 +1,5 @@
+import { WORD_JUMP_KEYS } from '../platform/wording.js';
+
 export interface HelpEntry {
   command: string;
   description: string;
@@ -22,7 +24,7 @@ export const KEY_BINDINGS: HelpEntry[] = [
   { command: 'Ctrl+R', description: "show the model's last thinking" },
   { command: 'y / n', description: 'allow or deny a permission request' },
   { command: '↑ ↓', description: 'scroll the conversation up and down; Page Up / Page Down jump a whole screen; End returns to the newest' },
-  { command: '← →', description: 'move the cursor in what you are typing; Option+← → jump a word; Ctrl+A / Ctrl+E go to the start / end; or click where you want it' },
+  { command: '← →', description: `move the cursor in what you are typing; ${WORD_JUMP_KEYS} jump a word; Ctrl+A / Ctrl+E go to the start / end; or click where you want it` },
   { command: 'wheel', description: 'the trackpad or mouse wheel scrolls the conversation too' },
   { command: 'copying', description: 'drag over any text - it is copied when you let go' },
 ];

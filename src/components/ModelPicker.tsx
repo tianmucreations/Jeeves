@@ -35,6 +35,7 @@ import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
 import { isMouseSequence } from '../ink/mouse.js';
+import { COPY_KEYS, KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
 const TABS = ['favorites', 'recent', 'all', 'tools', 'free'] as const;
 type Tab = (typeof TABS)[number];
@@ -513,7 +514,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           } else if (result === 'rejected') {
             setKeyNote("The service didn't accept that key - paste it again, or Esc");
           } else if (result === 'keychain') {
-            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            setKeyNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
           } else {
             setStep('address');
             setKeyNote("Couldn't find a compatible service at that address - check it, or Esc");
@@ -539,7 +540,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
             return;
           }
           if (result === 'keychain') {
-            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            setKeyNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
             return;
           }
           if (result === 'saved-unchecked') {
@@ -565,7 +566,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         const store = keyFor === 'openrouter' ? storeOpenRouterKey : storeZaiKey;
         void store(trimmed).then((saved) => {
           if (!saved) {
-            setKeyNote('The Mac keychain was not reachable - press Enter and try again.');
+            setKeyNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
             return;
           }
           if (keyFor === 'zai') {
@@ -756,7 +757,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       keyFor === 'openrouter'
         ? ''
         : direct
-          ? `Get one at ${direct.keyPage} (select it with the mouse, Cmd+C to copy). `
+          ? `Get one at ${direct.keyPage} (select it with the mouse, ${COPY_KEYS} to copy). `
           : keyFor === CUSTOM_SERVICE_ID
             ? 'No key needed for a service on this computer - just press Enter. '
             : '';
@@ -769,7 +770,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
             <Text dimColor>{keyValue ? `${keyValue.length} characters ` : ''}</Text>
             <Text inverse> </Text>
           </Text>
-          <Text dimColor>{where}It is stored in your Mac keychain and never shown again.</Text>
+          <Text dimColor>{where}It is stored in {KEY_STORE} and never shown again.</Text>
         </Box>
         {keyNote ? (
           <Text color="yellow">{keyNote}</Text>

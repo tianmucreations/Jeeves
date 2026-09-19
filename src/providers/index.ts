@@ -14,6 +14,7 @@ import { getKey, setKey, deleteKey, listProviders } from '../keys/store.js';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
 let active: Provider | null = null;
 let resolvedKey: string | null = null;
@@ -158,9 +159,9 @@ async function readKeys(): Promise<void> {
     const moved = await setKey('openrouter', envKey);
     if (moved) {
       removeEnvFile();
-      session.addNotice('Your key was moved from a local file into your Mac keychain, and the file was removed.');
+      session.addNotice(`Your key was moved from a local file into ${KEY_STORE}, and the file was removed.`);
     } else {
-      session.addNotice('The Mac keychain was not reachable, so the key is being read from a local file for now. Type /keys to store it securely.');
+      session.addNotice(`${KEY_STORE_SUBJECT} was not reachable, so the key is being read from a local file for now. Type /keys to store it securely.`);
     }
     resolvedKey = envKey;
     keySource = moved ? 'keychain' : 'env';

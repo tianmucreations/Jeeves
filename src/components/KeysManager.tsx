@@ -21,6 +21,7 @@ import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
 import { OpenRouterConnect } from './OpenRouterConnect.js';
+import { COPY_KEYS, KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
 // Every service Jeeves connects to. The optional OpenRouter management key (it unlocks
 // the real account balance) is for /keys only, and the compatible service needs its
@@ -59,9 +60,9 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
 
   function statusFor(rowId: string): string {
     if (rowId === 'openrouter') {
-      if (getKeySource() === 'keychain') return 'key stored in your Mac keychain';
+      if (getKeySource() === 'keychain') return `key stored in ${KEY_STORE}`;
       if (getKeySource() === 'env') return 'key in a local file - add it with /keys to store it safely';
-      return stored.includes('openrouter') ? 'key stored in your Mac keychain' : 'no key';
+      return stored.includes('openrouter') ? `key stored in ${KEY_STORE}` : 'no key';
     }
     if (rowId === 'openrouter-management') {
       return stored.includes('openrouter-management')
@@ -93,11 +94,11 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     if (provider === 'openrouter') {
       const saved = await storeOpenRouterKey(key);
       if (!saved) {
-        setNote('The Mac keychain was not reachable - press Enter and try again.');
+        setNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
         return;
       }
       refreshStored();
-      const message = 'Your key is saved securely in your Mac keychain. You will not be asked for it again.';
+      const message = `Your key is saved securely in ${KEY_STORE}. You will not be asked for it again.`;
       if (mode === 'wizard') {
         finishWizard(message, true);
       } else {
@@ -108,7 +109,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     if (provider === 'zai') {
       const saved = await storeZaiKey(key);
       if (!saved) {
-        setNote('The Mac keychain was not reachable - press Enter and try again.');
+        setNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
         return;
       }
       refreshStored();
@@ -130,7 +131,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         return;
       }
       if (result === 'keychain') {
-        setNote('The Mac keychain was not reachable - press Enter and try again.');
+        setNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
         return;
       }
       refreshStored();
@@ -152,7 +153,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     }
     const saved = await setKey(provider, key);
     if (!saved) {
-      setNote('The Mac keychain was not reachable - press Enter and try again.');
+      setNote(`${KEY_STORE_SUBJECT} was not reachable - press Enter and try again.`);
       return;
     }
     refreshStored();
@@ -329,7 +330,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
             ? 'Saved'
             : mode === 'wizard'
               ? 'Which AI service should do the thinking?'
-              : 'Keys - stored in your Mac keychain';
+              : `Keys - stored in ${KEY_STORE}`;
 
   const hint =
     phase.kind === 'ask'
@@ -388,15 +389,15 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
               <Text inverse> </Text>
             </Text>
             {isDirectService(phase.provider) ? (
-              <Text dimColor>{`Get one at ${directService(phase.provider)!.keyPage} - select the address with the mouse and press Cmd+C to copy it.`}</Text>
+              <Text dimColor>{`Get one at ${directService(phase.provider)!.keyPage} - select the address with the mouse and press ${COPY_KEYS} to copy it.`}</Text>
             ) : phase.provider === 'zai' ? (
-              <Text dimColor>Get one at z.ai/manage-apikey/apikey-list - select the address with the mouse and press Cmd+C to copy it.</Text>
+              <Text dimColor>{`Get one at z.ai/manage-apikey/apikey-list - select the address with the mouse and press ${COPY_KEYS} to copy it.`}</Text>
             ) : null}
           </>
         )}
         {phase.kind === 'confirm-remove' && (
           <Text>
-            Remove the {phase.label} key from your Mac keychain?
+            Remove the {phase.label} key from {KEY_STORE}?
           </Text>
         )}
         {phase.kind === 'saved' && <Text>{phase.message}</Text>}

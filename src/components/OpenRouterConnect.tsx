@@ -5,6 +5,7 @@ import { noCreditNote } from '../providers/openrouter.js';
 import { storeOpenRouterKey, refreshCredit } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
+import { KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
 // Connecting Jeeves to OpenRouter, said plainly (owner, 19 Sept: "virtually no
 // information to even know what I was doing or what could happen"). As Claude Code's
@@ -32,15 +33,15 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
   async function saveKey(key: string, how: 'signed-in' | 'pasted'): Promise<void> {
     if (!(await storeOpenRouterKey(key))) {
       setStep('choose');
-      setNote('The Mac keychain was not reachable - please try again.');
+      setNote(`${KEY_STORE_SUBJECT} was not reachable - please try again.`);
       return;
     }
     void refreshCredit();
     const credit = await noCreditNote(key);
     const saved =
       how === 'signed-in'
-        ? 'Connected - Jeeves is signed in to OpenRouter, and the key is saved securely in your Mac keychain.'
-        : 'Your OpenRouter key is saved securely in your Mac keychain. You will not be asked for it again.';
+        ? `Connected - Jeeves is signed in to OpenRouter, and the key is saved securely in ${KEY_STORE}.`
+        : `Your OpenRouter key is saved securely in ${KEY_STORE}. You will not be asked for it again.`;
     onDone(credit ? `${saved} ${credit}` : saved);
   }
 
