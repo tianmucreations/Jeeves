@@ -46,6 +46,9 @@ export function plainToolFailure(error: unknown): string {
   if (text.includes('eexist')) return 'something with that name already exists';
   if (text.includes('enotempty')) return 'that folder is not empty';
   if (text.includes('no space left')) return 'the disk is full';
+  // Say how long it was allowed ("didn't finish in 2 minutes"), not just "took too long".
+  const limit = /didn't finish in ([0-9]+ (?:minutes?|seconds))/.exec(raw)?.[1];
+  if (limit) return `still running after ${limit}, so it was stopped`;
   if (text.includes('timed out') || text.includes('etimedout') || text.includes('stopped after') || text.includes("didn't finish")) return 'took too long';
   if (text.includes('binary file')) return 'not a text file';
   if (text.includes('web search needs an openrouter key')) return 'needs an OpenRouter key (type /keys)';

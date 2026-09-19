@@ -3,8 +3,18 @@ import { z } from 'zod';
 import { getShell } from '../platform/shell.js';
 import { stripQuotes } from '../agent/permissions.js';
 
+// Claude Code's limits (utils/timeouts.ts): 2 minutes unless the model asks for
+// more, 10 minutes at most. Jeeves had 60 seconds, which cut off every large
+// download or install (owner's screenshot, 19 Sept).
+export const DEFAULT_COMMAND_MS = 120_000;
+export const MAX_COMMAND_MS = 600_000;
+
 export const runBashSchema = z.object({
   command: z.string().describe('The shell command to run'),
+  timeout: z
+    .number()
+    .optional()
+    .describe(`How long the command may run, in milliseconds - up to ${MAX_COMMAND_MS} (10 minutes). Without it: ${DEFAULT_COMMAND_MS} (2 minutes). Ask for more for downloads, installs and builds.`),
 });
 
 // Every running command is registered so the exit paths (Ctrl+C, /exit, kill
@@ -37,9 +47,10 @@ function interactiveCommandIn(command: string): string | null {
   return null;
 }
 
-// A hard ceiling per command: anything still running after this is killed and
-// reported to the model, which continues the conversation.
-const COMMAND_TIMEOUT_MS = 60_000;
+
+export function describeLimit(ms: number): string {
+  return ms % 60_000 === 0 ? `${ms / 60_000} minute${ms === 60_000 ? '' : 's'}` : `${Math.round(ms / 1000)} seconds`;
+}
 
 export async function runRunBash(input: z.output<typeof runBashSchema>): Promise<string> {
   const refusal = interactiveCommandIn(input.command);
@@ -48,13 +59,16 @@ export async function runRunBash(input: z.output<typeof runBashSchema>): Promise
       `${refusal} needs an interactive terminal, which this tool does not provide - it was not run. Use a non-interactive alternative (for example cat or grep) instead.`
     );
   }
+  // A hard ceiling per command: anything still running after this is killed and
+  // reported to the model, which continues the conversation.
+  const limit = Math.min(Math.max(input.timeout ?? DEFAULT_COMMAND_MS, 1_000), MAX_COMMAND_MS);
   const shell = getShell();
   const child = execa(shell.program, [shell.flag, input.command], {
     reject: false,
     // stdin is /dev/null: a command that reads input gets an immediate end-of-file
     // instead of sitting forever waiting for keystrokes that will never come.
     stdin: 'ignore',
-    timeout: COMMAND_TIMEOUT_MS,
+    timeout: limit,
     forceKillAfterDelay: 2_000,
   });
   running.add(child);
@@ -62,7 +76,7 @@ export async function runRunBash(input: z.output<typeof runBashSchema>): Promise
     const result = await child;
     if (result.timedOut === true) {
       throw new Error(
-        `that command didn't finish in ${COMMAND_TIMEOUT_MS / 1000} seconds - it may be waiting for input. It was stopped.`
+        `that command didn't finish in ${describeLimit(limit)} - it may be waiting for input, or need longer (up to 10 minutes can be asked for). It was stopped.`
       );
     }
     const parts = [`$ ${input.command}`, `exit code: ${result.exitCode ?? 'unknown'}`];

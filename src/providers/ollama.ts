@@ -1,6 +1,7 @@
 import { streamText, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
+import { silenceGuard } from './silence.js';
 import { prepareStepFor } from './step-control.js';
 import type { ModelInfo } from '../models/registry.js';
 
@@ -18,6 +19,7 @@ export function createOllamaProvider(): Provider {
     id: 'ollama',
     name: 'Ollama',
     async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall, beforeStep, abortSignal }: StreamOptions): Promise<StreamResult> {
+      const guard = silenceGuard(abortSignal);
       const result = streamText({
         instructions,
         // A stalled request must never wedge the app in the working state forever -
@@ -27,19 +29,22 @@ export function createOllamaProvider(): Provider {
         // started, and 10 minutes for any single step, which also covers a request that
         // never starts answering. (A plain number here limits the entire multi-step
         // job; a 3-minute one killed healthy jobs mid-way in testing.)
-        timeout: { firstChunkMs: 120_000, chunkMs: 90_000, stepMs: 600_000 },
+        // Silence while the model answers is watched by silenceGuard (it pauses while a
+        // command runs or waits for the person); the first piece still has 2 minutes.
+        timeout: { firstChunkMs: 120_000 },
         model: client.chat(modelId),
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
         prepareStep: prepareStepFor(beforeStep, (id) => client.chat(id)),
-        abortSignal,
+        abortSignal: guard.signal,
         // The library prints every failure to the screen by default, over Jeeves's
         // window; the failure still arrives below and is explained in plain English.
         onError: () => {},
       });
       let streamedError: unknown = null;
       for await (const part of result.stream) {
+        guard.onPart(part);
         if (part.type === 'text-delta') {
           onToken(part.text);
         } else if (part.type === 'reasoning-delta') {
@@ -50,6 +55,7 @@ export function createOllamaProvider(): Provider {
           streamedError = part.error;
         }
       }
+      guard.stop();
       // The real stream error (a rejected key, a missing model) must win over the
       // SDK's generic no-output error, which would otherwise mask the cause.
       if (streamedError !== null) {

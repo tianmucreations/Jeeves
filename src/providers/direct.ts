@@ -7,6 +7,7 @@ import { createMistral } from '@ai-sdk/mistral';
 import { createGroq } from '@ai-sdk/groq';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
+import { silenceGuard } from './silence.js';
 import { prepareStepFor, type FinishedStep } from './step-control.js';
 import { directService, serviceNameFor, CUSTOM_SERVICE_ID, type DirectServiceId } from './direct-services.js';
 import { estimateCost, priceOf, type StepUsage } from './catalogue.js';
@@ -80,10 +81,13 @@ function streamWith(
       const prepare = prepareStepFor(beforeStep, modelFor, stepCostOf);
       const system: string | SystemModelMessage | undefined =
         caching && instructions ? { role: 'system', content: instructions, providerOptions: ANTHROPIC_CACHE } : instructions;
+      const guard = silenceGuard(abortSignal);
       const result = streamText({
         instructions: system,
         // The same limits on silence as the other services (see openrouter.ts).
-        timeout: { firstChunkMs: 120_000, chunkMs: 90_000, stepMs: 600_000 },
+        // Silence while the model answers is watched by silenceGuard (it pauses while a
+        // command runs or waits for the person); the first piece still has 2 minutes.
+        timeout: { firstChunkMs: 120_000 },
         model: modelFor(modelId),
         messages: caching ? markForCaching(messages) : messages,
         tools,
@@ -97,13 +101,14 @@ function streamWith(
                 return { ...control, messages: markForCaching(control.messages ?? step.messages) };
               }
             : undefined,
-        abortSignal,
+        abortSignal: guard.signal,
         // The library prints every failure to the screen by default, over Jeeves's
         // window; the failure still arrives below and is explained in plain English.
         onError: () => {},
       });
       let streamedError: unknown = null;
       for await (const part of result.stream) {
+        guard.onPart(part);
         if (part.type === 'text-delta') {
           onToken(part.text);
         } else if (part.type === 'reasoning-delta') {
@@ -114,6 +119,7 @@ function streamWith(
           streamedError = part.error;
         }
       }
+      guard.stop();
       // The real stream error (a rejected key, a missing model) must win over the
       // SDK's generic no-output error, which would otherwise mask the cause.
       if (streamedError !== null) {
