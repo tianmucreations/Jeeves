@@ -127,4 +127,31 @@ describe('warnings for changes /undo cannot reverse', () => {
       expect(commandMayReachOutside(command, here), command).toBe(false);
     }
   });
+
+  it('reads a folder name with spaces as one path, quoted or escaped (19 Sept)', () => {
+    const here = '/Users/sam/Income Streams Research';
+    for (const command of [
+      `mkdir -p "${here}/notes"`,
+      `cd "${here}" && mkdir notes`,
+      `cp '${here}/a.txt' '${here}/b.txt'`,
+      `python3 "${here}/tidy.py" > /dev/null`,
+      'ls /Users/sam/Income\\ Streams\\ Research/notes',
+      'echo "hello world" > notes.txt',
+      'grep -n "a/b" notes.txt',
+    ]) {
+      expect(commandMayReachOutside(command, here), command).toBe(false);
+    }
+    for (const command of [
+      `cp "${here}/a.txt" "/Users/sam/Desktop/a.txt"`,
+      `cp "${here}/a.txt" "/Users/sam/Income Streams/a.txt"`,
+      'cp a.txt "../Other Folder/"',
+      'cat "~/secrets.txt"',
+      `bash -c "rm -rf /Users/sam/Desktop/old"`,
+      `bash -c "${here}/run.sh && rm -rf /Users/sam/Desktop/old"`,
+      'ls /Users/sam/Income\\ Streams/notes',
+      'cat notes.txt > "$HOME/out.txt"',
+    ]) {
+      expect(commandMayReachOutside(command, here), command).toBe(true);
+    }
+  });
 });

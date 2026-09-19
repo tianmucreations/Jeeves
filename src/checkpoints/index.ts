@@ -97,10 +97,35 @@ export function isOutsideProject(target: string, folder = process.cwd()): boolea
 // rights, and installing programs for the whole computer.
 export function commandMayReachOutside(command: string, folder = process.cwd()): boolean {
   if (/(^|[\s;|&])sudo\b|\bbrew\s|\s(-g|--global)\b|\bapt(-get)?\s|\bchoco\s|\bwinget\s/.test(command)) return true;
-  if (/(^|[\s'"=])~(\/|\s|$)|(^|[\s'"=/])\.\.(\/|\\|\s|$)|\$HOME|%USERPROFILE%/.test(command)) return true;
-  for (const match of command.matchAll(/(?:^|[\s'"=])((?:\/|[A-Za-z]:\\)[^\s'"]*)/g)) {
-    const candidate = match[1];
-    if (/^\/dev\/null$/.test(candidate)) continue;
+  if (/\$HOME|%USERPROFILE%/.test(command)) return true;
+  // A quoted path is one path however many spaces it holds - a project folder
+  // called "Income Streams Research" was read only up to "Income", so every command
+  // naming the folder in full counted as outside it and could never be "always
+  // allowed" (19 Sept). Quoted text is judged whole: a path is checked as a path,
+  // anything else (bash -c "...") as a command of its own. A backslash-escaped
+  // space (Income\ Streams) joins a word the same way.
+  const quoted: string[] = [];
+  const rest = command
+    .replace(/"([^"]*)"|'([^']*)'/g, (_match, double: string | undefined, single: string | undefined) => {
+      quoted.push(double ?? single ?? '');
+      return ' ';
+    })
+    .replace(/\\ /g, '\u0000');
+  for (const text of quoted) {
+    if (/^~(\/|$)/.test(text)) return true;
+    if (/^(\/|[A-Za-z]:\\|\.\.(\/|\\|$))/.test(text)) {
+      if (text !== '/dev/null' && isOutsideProject(text, folder)) return true;
+      // A path that goes on into more command (bash -c "/x/run.sh && rm /y") is also
+      // read word by word - a false question is safe, a false "allowed" is not.
+      if (/[;&|<>]|\s[-/~.]/.test(text) && commandMayReachOutside(text, folder)) return true;
+    } else if (text.trim() && commandMayReachOutside(text, folder)) {
+      return true;
+    }
+  }
+  if (/(^|[\s=])~(\/|\s|$)|(^|[\s=/])\.\.(\/|\\|\s|$)/.test(rest)) return true;
+  for (const match of rest.matchAll(/(?:^|[\s=])((?:\/|[A-Za-z]:\\)\S*)/g)) {
+    const candidate = match[1].replace(/\u0000/g, ' ');
+    if (candidate === '/dev/null') continue;
     if (isOutsideProject(candidate, folder)) return true;
   }
   return false;
