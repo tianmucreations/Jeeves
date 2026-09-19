@@ -1,0 +1,14 @@
+{
+  "name": "jeeves-desktop",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Jeeves Desktop - prototype",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^43.7.3"
+  }
+}

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<title>Jeeves</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="titlebar">
+    <span class="brand">Jeeves</span>
+    <span class="folder" id="folder"></span>
+    <span class="light" id="light" title=""></span>
+  </header>
+
+  <main id="welcome" class="welcome" hidden>
+    <div class="welcome-inner">
+      <div class="welcome-brand">Jeeves</div>
+      <p class="welcome-line" id="greeting"></p>
+      <div class="projects" id="projects"></div>
+      <button class="choose" id="choose">Choose another folder…</button>
+      <p class="welcome-note" id="nokeys" hidden>No key is saved yet. Open Jeeves in Terminal once and add one - then come back here.</p>
+    </div>
+  </main>
+
+  <main id="chat" class="chat" hidden>
+    <div class="scroller" id="scroller">
+      <div class="column" id="transcript"></div>
+    </div>
+    <div class="dock">
+      <div class="column">
+        <div class="approval" id="approval" hidden>
+          <div class="approval-text" id="approval-text"></div>
+          <div class="approval-buttons">
+            <button class="btn allow" data-answer="y">Allow <kbd>Y</kbd></button>
+            <button class="btn always" data-answer="a" id="always">Always allow in this project <kbd>A</kbd></button>
+            <button class="btn deny" data-answer="n">Don't allow <kbd>N</kbd></button>
+          </div>
+        </div>
+        <div class="composer" id="composer">
+          <textarea id="input" rows="1" spellcheck="true" placeholder="ask anything"></textarea>
+        </div>
+        <div class="hint" id="hint">Enter to send · Shift + Enter for a new line · /undo puts the last change back</div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="infobar">
+    <span id="model"></span>
+    <span id="segments"></span>
+  </footer>
+<script src="renderer.js"></script>
+</body>
+</html>
