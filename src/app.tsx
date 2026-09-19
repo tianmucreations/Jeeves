@@ -15,6 +15,7 @@ import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
 import { AddressPrompt } from './components/AddressPrompt.js';
+import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './ink/mouse.js';
 
 // The main window: a rounded box border around the top section only, with the
 // info bar on its own row below the box. Top to bottom: plain top border, header
@@ -62,6 +63,20 @@ export function App() {
       }
     });
   }, []);
+
+  // The mouse is Jeeves's only on the conversation screen (wheel scrolling, drag to
+  // copy). On every other screen - keys, models, help, folders, the first question -
+  // it goes back to the terminal, so its own selecting and Cmd+C copy work: a web
+  // address such as where to get a key can be copied (owner, 19 Sept: "I still
+  // can't copy things").
+  const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.addressOpen || s.launchStage !== 'ready');
+  useEffect(() => {
+    try {
+      process.stdout.write(onConversation ? ENABLE_MOUSE_TRACKING : DISABLE_MOUSE_TRACKING);
+    } catch {
+      // A closed stream must never crash the app.
+    }
+  }, [onConversation]);
 
   if (s.wizardActive) {
     return <KeysManager mode="wizard" rows={rows} columns={columns} />;

@@ -270,8 +270,9 @@ document.getElementById('address-form').addEventListener('submit', (event) => {
 
 // Connecting OpenRouter from the welcome screen, with the same words as the terminal.
 const connectNote = document.getElementById('welcome-connect-note');
-window.jeeves.onSignInUrl((url) => {
-  if (connectNote.dataset.waiting) connectNote.textContent = `Your browser has opened at OpenRouter. Log in if it asks (or make a free account), then click Authorize. I'm waiting here - this moves on by itself once you approve.\n\nBrowser didn't open? Go to: ${url}`;
+// While waiting: the engine's own words (the same as the terminal's) and the address.
+window.jeeves.onSignInUrl((waitingText) => {
+  if (connectNote.dataset.waiting) connectNote.textContent = waitingText;
 });
 document.getElementById('welcome-sign-in').addEventListener('click', async () => {
   connectNote.className = 'note';

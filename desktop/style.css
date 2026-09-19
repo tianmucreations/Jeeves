@@ -260,3 +260,5 @@ body.welcoming .brand { visibility: hidden; }
 .connect-sign-in { margin: 22px 0 20px; }
 .connect-sign-in .just-chat { margin: 0 0 8px; }
 .connect .note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.link.key-page { display: block; margin: 0 0 12px; color: var(--gold-light); }
+.link.key-page:hover { color: var(--gold); }

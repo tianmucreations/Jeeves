@@ -11,8 +11,9 @@
   let modelsCache = new Map();
   // The note under the Sign in button now on screen; the address arrives here once.
   let signInNote = null;
-  window.jeeves.onSignInUrl((url) => {
-    if (signInNote?.dataset.waiting) signInNote.textContent = `Your browser has opened at OpenRouter. Log in if it asks (or make a free account), then click Authorize. I'm waiting here - this moves on by itself once you approve.\n\nBrowser didn't open? Go to: ${url}`;
+  // While waiting: the engine's own words (the same as the terminal's) and the address.
+  window.jeeves.onSignInUrl((waitingText) => {
+    if (signInNote?.dataset.waiting) signInNote.textContent = waitingText;
   });
 
   const el = (tag, props = {}, ...children) => {
@@ -183,6 +184,12 @@
         el('p', { className: 'muted', textContent: 'Your browser opens. Log in, or make a free account, then click Authorize and come back. No key to copy.' }),
         el('p', { className: 'muted', textContent: 'Or paste a key you already have (from openrouter.ai/keys):' }),
       );
+    }
+    if (service.keyPage && service.id !== 'openrouter') {
+      // A link to the company's key page - no address to type out.
+      const link = el('button', { className: 'link key-page', textContent: `Get your ${service.label} key at ${service.keyPage.replace(/^https:\/\//, '')}` });
+      link.addEventListener('click', () => window.jeeves.openExternal(service.keyPage));
+      detail.append(link);
     }
     detail.append(form, note);
     if (service.id !== 'openrouter') input.focus();

@@ -380,10 +380,19 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
             </Text>
           ))}
         {phase.kind === 'enter-key' && (
-          <Text>
-            <Text>Paste the {phase.label} key (it stays hidden): </Text>
-            <Text inverse> </Text>
-          </Text>
+          <>
+            <Text>
+              <Text>Paste the {phase.label} key (it stays hidden): </Text>
+              {/* The key stays hidden, so its length shows the paste arrived. */}
+              <Text dimColor>{hidden ? `${Array.from(hidden).length} characters ` : ''}</Text>
+              <Text inverse> </Text>
+            </Text>
+            {isDirectService(phase.provider) ? (
+              <Text dimColor>{`Get one at ${directService(phase.provider)!.keyPage} - select the address with the mouse and press Cmd+C to copy it.`}</Text>
+            ) : phase.provider === 'zai' ? (
+              <Text dimColor>Get one at z.ai/manage-apikey/apikey-list - select the address with the mouse and press Cmd+C to copy it.</Text>
+            ) : null}
+          </>
         )}
         {phase.kind === 'confirm-remove' && (
           <Text>

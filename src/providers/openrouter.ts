@@ -49,6 +49,15 @@ export async function fetchCreditInfo(apiKey: string): Promise<CreditInfo | null
   }
 }
 
+// A brand-new OpenRouter account has no credit: it connects, but only the free
+// models answer. Said plainly right after connecting, or '' when there is credit
+// (or the balance can't be read - never a guess).
+export async function noCreditNote(apiKey: string): Promise<string> {
+  const info = await fetchCreditInfo(apiKey);
+  if (!info || info.remaining > 0) return '';
+  return 'Your OpenRouter account has no credit yet. The free models work now - choose one from the Free list. To use the others, add credit at openrouter.ai/credits.';
+}
+
 // The key's all-time spend in dollars, from GET /api/v1/key (field "usage",
 // confirmed against a live response). Used to work out today's spend in local time.
 export async function fetchKeyUsage(apiKey: string): Promise<number | null> {

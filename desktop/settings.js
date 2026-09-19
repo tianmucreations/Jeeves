@@ -15,7 +15,8 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
   const { ZAI_MODELS } = await engine('providers/zai.js');
   const { listLocalOllamaModels, isOllamaOnline } = await engine('providers/ollama.js');
   const { keyLooksValid } = await engine('commands/keys.js');
-  const { signInWithOpenRouter } = await engine('providers/openrouter-signin.js');
+  const { signInWithOpenRouter, WAITING_STEPS } = await engine('providers/openrouter-signin.js');
+  const { noCreditNote } = await engine('providers/openrouter.js');
 
   const labelOf = (id) => providers.PROVIDER_ROWS.find((row) => row.id === id)?.label ?? id;
   const row = (model, blurb = '') => ({
@@ -33,6 +34,8 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
         ready: service.id === 'ollama' ? await isOllamaOnline().catch(() => false) : providers.hasCredentialsFor(service.id),
         // The address-and-key setup for "Other service" stays in the terminal for now.
         terminalOnly: service.id === CUSTOM_SERVICE_ID && !providers.hasCredentialsFor(service.id),
+        // Where to get a key (checked 19 Sept: Z.ai's page answers, a made-up one is "not found").
+        keyPage: isDirectService(service.id) ? `https://${directService(service.id).keyPage}` : service.id === 'zai' ? 'https://z.ai/manage-apikey/apikey-list' : service.id === 'openrouter' ? 'https://openrouter.ai/keys' : null,
       })),
     ),
     current: { provider: session.providerId, model: session.model },
@@ -91,7 +94,9 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
     if (provider === 'openrouter' || provider === 'zai') {
       const saved = provider === 'openrouter' ? await providers.storeOpenRouterKey(key) : await providers.storeZaiKey(key);
       onChange();
-      return saved ? { ok: true, message: 'Your key is saved securely in your Mac keychain.' } : { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+      if (!saved) return { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+      const credit = provider === 'openrouter' ? await noCreditNote(key) : '';
+      return { ok: true, message: `Your key is saved securely in your Mac keychain.${credit ? ' ' + credit : ''}` };
     }
     if (isDirectService(provider)) {
       const label = directService(provider).label;
@@ -119,14 +124,16 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
     signingIn?.abort();
     signingIn = new AbortController();
     // The address goes to the window too, in case the browser did not open.
-    const result = await signInWithOpenRouter({ signal: signingIn.signal, onUrl: (url) => notify('sign-in-url', url) });
+    const result = await signInWithOpenRouter({ signal: signingIn.signal, onUrl: (url) => notify('sign-in-url', `${WAITING_STEPS.join('\n')}\n\nBrowser didn't open? Go to: ${url}`) });
     signingIn = null;
     if (!result.ok) {
-      return { ok: false, message: result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived - try again, or paste a key.' : "OpenRouter didn't complete the sign-in - try again, or paste a key." };
+      return { ok: false, message: result.reason === 'cancelled' ? '' : result.reason === 'timeout' ? 'No approval arrived after fifteen minutes, so I stopped waiting - try again, or paste a key.' : "OpenRouter didn't complete the sign-in - try again, or paste a key." };
     }
     const saved = await providers.storeOpenRouterKey(result.key);
     onChange();
-    return saved ? { ok: true, message: 'Signed in - your OpenRouter key is saved in your Mac keychain.' } : { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+    if (!saved) return { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+    const credit = await noCreditNote(result.key);
+    return { ok: true, message: `Signed in - your OpenRouter key is saved in your Mac keychain.${credit ? ' ' + credit : ''}` };
   });
   ipcMain.on('openrouter-sign-in-cancel', () => signingIn?.abort());
 

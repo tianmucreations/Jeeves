@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { signInWithOpenRouter } from '../providers/openrouter-signin.js';
+import { signInWithOpenRouter, WAITING_STEPS } from '../providers/openrouter-signin.js';
+import { noCreditNote } from '../providers/openrouter.js';
 import { storeOpenRouterKey, refreshCredit } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence } from '../ink/mouse.js';
@@ -35,11 +36,12 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
       return;
     }
     void refreshCredit();
-    onDone(
+    const credit = await noCreditNote(key);
+    const saved =
       how === 'signed-in'
         ? 'Connected - Jeeves is signed in to OpenRouter, and the key is saved securely in your Mac keychain.'
-        : 'Your OpenRouter key is saved securely in your Mac keychain. You will not be asked for it again.',
-    );
+        : 'Your OpenRouter key is saved securely in your Mac keychain. You will not be asked for it again.';
+    onDone(credit ? `${saved} ${credit}` : saved);
   }
 
   function signIn(): void {
@@ -58,7 +60,7 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
       if (result.reason === 'cancelled') return;
       setNote(
         result.reason === 'timeout'
-          ? 'No approval arrived after five minutes, so I stopped waiting. Choose Sign in to try again.'
+          ? 'No approval arrived after fifteen minutes, so I stopped waiting. Choose Sign in to try again.'
           : "OpenRouter didn't complete the sign-in. Choose Sign in to try again, or paste a key.",
       );
     });
@@ -138,9 +140,9 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
         )}
         {step === 'waiting' && (
           <>
-            <Text>Your browser has opened at OpenRouter.</Text>
-            <Text>Log in if it asks (or make a free account), then click Authorize.</Text>
-            <Text>I'm waiting here - this screen moves on by itself once you approve.</Text>
+            {WAITING_STEPS.map((line) => (
+              <Text key={line}>{line}</Text>
+            ))}
             <Text> </Text>
             {address ? <Text dimColor>{`Browser didn't open? Go to: ${address}`}</Text> : null}
           </>

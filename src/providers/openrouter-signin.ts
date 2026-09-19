@@ -71,7 +71,8 @@ export async function signInWithOpenRouter(options: {
         finish({ ok: false, reason: 'refused' });
       }
     });
-    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), options.timeoutMs ?? 5 * 60_000);
+    // Fifteen minutes: long enough to make a new OpenRouter account and confirm an email.
+    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), options.timeoutMs ?? 15 * 60_000);
     const onAbort = () => finish({ ok: false, reason: 'cancelled' });
     options.signal?.addEventListener('abort', onAbort);
     if (options.signal?.aborted) {
@@ -96,3 +97,13 @@ export async function signInWithOpenRouter(options: {
     });
   });
 }
+
+// Said while the browser is open, in the terminal and the window alike. A person
+// who is not logged in lands on OpenRouter's Sign Up page, which carries a return
+// address to this same approval page (measured 19 Sept with a logged-out visit).
+export const WAITING_STEPS = [
+  'Your browser has opened at OpenRouter.',
+  'Log in if it asks, then click Authorize.',
+  'New to OpenRouter? Make an account on the page that opens - it brings you back to Authorize afterwards. If you end up somewhere else, come back here and choose Sign in again.',
+  "I'm waiting here - this moves on by itself once you approve.",
+];

@@ -478,7 +478,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         <OpenRouterConnect
           hasKey={false}
           onBack={() => setStep('providers')}
-          onDone={() => {
+          onDone={(message) => {
+            // Said in the conversation too - including "no credit yet" for a new account.
+            s.addNotice(message);
             if (s.status === 'disconnected') s.setStatus('idle');
             enterModelStep('openrouter');
           }}
@@ -754,7 +756,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       keyFor === 'openrouter'
         ? ''
         : direct
-          ? `Get one at ${direct.keyPage}. `
+          ? `Get one at ${direct.keyPage} (select it with the mouse, Cmd+C to copy). `
           : keyFor === CUSTOM_SERVICE_ID
             ? 'No key needed for a service on this computer - just press Enter. '
             : '';
