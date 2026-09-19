@@ -45,23 +45,22 @@ export function dropLastChar(value: string): string {
 export interface InputRow {
   text: string;
   trailingSpaces: string;
+  // A dim "more lines above/below" line in place of message text.
+  hint?: boolean;
 }
 
 export interface InputLayout {
-  // The rows to draw, newest last; at most maxRows (older rows scroll away).
+  // The rows to draw; at most maxRows.
   rows: InputRow[];
   // Terminal columns the last row occupies; the cursor sits right after it.
   cursorX: number;
+  // How far the view is scrolled back from the end of the message (clamped),
+  // and the furthest it can go. 0 means the end - where the typing is - shows.
+  scrollUp: number;
+  maxScrollUp: number;
 }
 
-// The input box grows as the message does (as in Claude Code): the text wraps at
-// word boundaries onto new rows, up to maxRows, then the oldest rows scroll away so
-// the end of the message - where the typing is - always shows. Pasted line breaks
-// start new rows. One column is kept spare so the cursor stays inside the box.
-// This keeps inputView's two rules: every keystroke still changes what is drawn (a
-// wrap adds a row, which resizes the box), and the last row's trailing spaces are
-// returned apart so they can be styled.
-export function inputLayout(value: string, rowWidth: number, maxRows = 6): InputLayout {
+export function inputLayout(value: string, rowWidth: number, maxRows = 6, scrollUp = 0): InputLayout {
   const maxWidth = Math.max(1, rowWidth - 1);
   const lines: string[] = [];
   for (const paragraph of value.split('\n')) {
@@ -88,13 +87,35 @@ export function inputLayout(value: string, rowWidth: number, maxRows = 6): Input
     }
     lines.push(line);
   }
-  const shown = lines.slice(-maxRows);
-  const rows = shown.map((line, index) => {
-    if (index < shown.length - 1) return { text: line, trailingSpaces: '' };
+  if (lines.length <= maxRows) {
+    const rows = lines.map((line, index) => {
+      if (index < lines.length - 1) return { text: line, trailingSpaces: '' };
+      const text = line.replace(/ +$/, '');
+      return { text, trailingSpaces: line.slice(text.length) };
+    });
+    return { rows, cursorX: stringWidth(lines[lines.length - 1] ?? ''), scrollUp: 0, maxScrollUp: 0 };
+  }
+  // Too tall for the box. Scrolled all the way back, the first maxRows-1 lines show
+  // above a "below" hint; at the end, a hint above the last maxRows-1 lines.
+  const maxScrollUp = lines.length - (maxRows - 1);
+  const up = Math.max(0, Math.min(scrollUp, maxScrollUp));
+  const end = lines.length - up;
+  const slots = maxRows - (up > 0 ? 1 : 0);
+  const start = end - slots <= 0 ? 0 : end - (slots - 1);
+  const rows: InputRow[] = [];
+  // A hint never wraps: in a narrow window it is cut to the row.
+  const hint = (text: string): InputRow => ({ text: Array.from(text).slice(0, maxWidth).join(''), trailingSpaces: '', hint: true });
+  if (start > 0) rows.push(hint(`↑ ${start} more line${start === 1 ? '' : 's'} above - ↑ ↓ to read`));
+  lines.slice(start, end).forEach((line, index, shown) => {
+    if (up > 0 || index < shown.length - 1) {
+      rows.push({ text: line, trailingSpaces: '' });
+      return;
+    }
     const text = line.replace(/ +$/, '');
-    return { text, trailingSpaces: line.slice(text.length) };
+    rows.push({ text, trailingSpaces: line.slice(text.length) });
   });
-  return { rows, cursorX: stringWidth(shown[shown.length - 1] ?? '') };
+  if (up > 0) rows.push(hint(`↓ ${up} more line${up === 1 ? '' : 's'} below - ↓ or keep typing to return`));
+  return { rows, cursorX: stringWidth(lines[lines.length - 1] ?? ''), scrollUp: up, maxScrollUp };
 }
 
 // A burst of typed characters can arrive together with Enter (when Jeeves is busy

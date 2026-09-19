@@ -126,3 +126,43 @@ describe('messages sent while Jeeves is busy', () => {
     expect(session.takeQueued()).toBeUndefined();
   });
 });
+
+describe('typing box: a message taller than the box can be read back before sending', () => {
+  const long = Array.from({ length: 20 }, (_, i) => `line${i}`).join('\n');
+
+  it('at the end, a dim line says how much is above; the last line shows', () => {
+    const layout = inputLayout(long, 40, 6);
+    expect(layout.rows.length).toBe(6);
+    expect(layout.rows[0]).toMatchObject({ hint: true });
+    expect(layout.rows[0].text).toContain('15 more lines above');
+    expect(layout.rows.slice(1).map((row) => row.text)).toEqual(['line15', 'line16', 'line17', 'line18', 'line19']);
+  });
+
+  it('scrolled all the way back, the first line shows and the box keeps its size', () => {
+    const layout = inputLayout(long, 40, 6, 999);
+    expect(layout.scrollUp).toBe(layout.maxScrollUp);
+    expect(layout.rows.length).toBe(6);
+    expect(layout.rows.slice(0, 5).map((row) => row.text)).toEqual(['line0', 'line1', 'line2', 'line3', 'line4']);
+    expect(layout.rows[5].text).toContain('15 more lines below');
+  });
+
+  it('every line of the message can be seen at some scroll position', () => {
+    const seen = new Set<string>();
+    const { maxScrollUp } = inputLayout(long, 40, 6);
+    for (let up = 0; up <= maxScrollUp; up++) {
+      const layout = inputLayout(long, 40, 6, up);
+      expect(layout.rows.length).toBe(6);
+      layout.rows.filter((row) => !row.hint).forEach((row) => seen.add(row.text));
+    }
+    expect(seen.size).toBe(20);
+  });
+
+  it('a hint never wraps in a narrow window', () => {
+    const layout = inputLayout(long, 12, 6);
+    expect(layout.rows[0].text.length).toBeLessThanOrEqual(11);
+  });
+
+  it('a message that fits has nothing to scroll', () => {
+    expect(inputLayout('short', 40, 6, 5)).toMatchObject({ scrollUp: 0, maxScrollUp: 0 });
+  });
+});

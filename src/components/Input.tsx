@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useCursor, useInput, usePaste, useStdout } from 'ink';
 import { runTurn } from '../agent/loop.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
@@ -29,11 +29,21 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   const s = useSession();
   const { stdout } = useStdout();
   const { setCursorPosition } = useCursor();
-  const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS);
-  const showingText = !s.approvalPending && s.transcriptScrollUp === 0;
+  // How far the box is scrolled back through a message taller than it (0 = the
+  // end, where the typing is). A ref for the same reason as the text.
+  const draftUpRef = useRef(0);
+  const [, setDraftUp] = useState(0);
+  const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current);
+  const showingText = !s.approvalPending && s.transcriptScrollUp === 0 && layout.scrollUp === 0;
+  const scrollDraft = (up: number) => {
+    draftUpRef.current = up;
+    setDraftUp(up);
+  };
   const setValue = (text: string) => {
     valueRef.current = text;
     session.setInputText(text);
+    // Any change to the message returns the box to its end, where the change shows.
+    if (draftUpRef.current) scrollDraft(0);
   };
 
   // The block cursor sits at the text insertion point: two columns in (the
@@ -44,7 +54,8 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // hands the position to Ink in its own useInsertionEffect, which runs before
   // this commit's frame is written - a useLayoutEffect call runs after that and
   // only lands a frame late (measured: the cursor stayed hidden when the window
-  // opened). Hidden while the row shows a hint instead of the text.
+  // opened). Hidden while the row shows a hint instead of the text, and while the
+  // box is scrolled back through a long message (the typing point is out of view).
   // The last row of the box stays on the same terminal row however tall the box
   // grows (it grows upwards), so the cursor's row is unchanged.
   setCursorPosition(
@@ -83,6 +94,14 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     }
     if (key.ctrl && input === 'r') {
       s.toggleShowLastReasoning();
+      return;
+    }
+    // A message taller than the box: the arrows move through the message itself
+    // (as Claude Code's do when the input spans more than one line). Page Up/Down
+    // and the mouse wheel still scroll the conversation.
+    if ((key.upArrow || key.downArrow) && layout.maxScrollUp > 0 && s.transcriptScrollUp === 0) {
+      const next = Math.min(draftUpRef.current, layout.maxScrollUp) + (key.upArrow ? 3 : -3);
+      scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
       return;
     }
     // The alternate screen has no native scrollback, so these keys scroll the
@@ -165,7 +184,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   return (
     <Box flexDirection="column">
       {layout.rows.map((row, index) => (
-        <Text key={index}>
+        <Text key={index} dimColor={row.hint}>
           {row.text}
           {row.trailingSpaces ? <Text dimColor>{row.trailingSpaces}</Text> : null}
         </Text>
