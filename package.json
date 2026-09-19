@@ -71,6 +71,7 @@
     "ink": "^7.1.1",
     "ink-spinner": "^5.0.0",
     "keytar": "^7.9.0",
+    "marked": "^18.0.13",
     "node-notifier": "^10.0.1",
     "react": "^19.3.0",
     "signal-exit": "^3.0.7",

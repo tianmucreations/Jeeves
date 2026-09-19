@@ -3,6 +3,42 @@ import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { session, useSession, type TranscriptEntry } from '../state/session.js';
 import { buildDisplayLines, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
 import { selectedRange } from '../ink/selection.js';
+import type { StyleSpan } from './markdown.js';
+
+// A formatted line cut into pieces wherever the style or the selection changes.
+function styledSegments(text: string, spans: StyleSpan[], selected: [number, number] | null): React.ReactNode[] {
+  const cuts = new Set<number>([0, text.length]);
+  for (const span of spans) {
+    cuts.add(span.from);
+    cuts.add(span.to);
+  }
+  if (selected) {
+    cuts.add(selected[0]);
+    cuts.add(selected[1]);
+  }
+  const points = [...cuts].filter((n) => n >= 0 && n <= text.length).sort((a, b) => a - b);
+  const pieces: React.ReactNode[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [from, to] = [points[i], points[i + 1]];
+    if (from === to) continue;
+    const style = spans.filter((span) => span.from <= from && span.to >= to);
+    pieces.push(
+      <Text
+        key={from}
+        bold={style.some((span) => span.bold)}
+        italic={style.some((span) => span.italic)}
+        color={style.some((span) => span.code) ? CODE_COLOUR : undefined}
+        inverse={selected !== null && from >= selected[0] && to <= selected[1]}
+      >
+        {text.slice(from, to)}
+      </Text>,
+    );
+  }
+  return pieces;
+}
+
+// Inline code in Tianmu gold, as Claude Code gives it its own colour.
+const CODE_COLOUR = '#c9a96a';
 
 // Where the conversation sits on screen (1-based): below the top border and the
 // header row, one column in past the border and one of padding (app.tsx).
@@ -52,6 +88,7 @@ export function Transcript({ width }: { width: number }) {
         {lines.map((line, index) => {
           // Selected text is drawn reversed, as a terminal's own selection is.
           const range = s.selection ? selectedRange(index, line.text.length) : null;
+          if (line.spans) return <Text key={index}>{styledSegments(line.text, line.spans, range)}</Text>;
           return (
             <Text
               key={index}

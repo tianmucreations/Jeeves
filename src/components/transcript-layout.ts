@@ -1,5 +1,6 @@
 import stringWidth from 'string-width';
 import type { TranscriptEntry, ToolLineData } from '../state/session.js';
+import { renderMarkdown, type StyleSpan } from './markdown.js';
 
 export interface DisplayLine {
   text: string;
@@ -7,6 +8,45 @@ export interface DisplayLine {
   dim?: boolean;
   // The person's own words: drawn on a soft grey band across the full width.
   own?: boolean;
+  // Bold, italic or code parts of the line (Jeeves's answers), by character.
+  spans?: StyleSpan[];
+}
+
+// Wraps formatted text at word boundaries, carrying each style range onto the
+// lines it lands on. Every line break in the text starts a new line.
+export function wrapStyled(text: string, spans: StyleSpan[], width: number): { text: string; spans: StyleSpan[] }[] {
+  const out: { text: string; spans: StyleSpan[] }[] = [];
+  let offset = 0;
+  for (const paragraph of text.split('\n')) {
+    // A list line's wrapped lines start under its words, not under the "- ".
+    const hang = /^(\s*(?:[-•]|\d+\.)\s)/.exec(paragraph)?.[1].length ?? 0;
+    const pieces: [number, number][] = [];
+    let start = 0;
+    do {
+      const max = Math.max(1, width - (start > 0 ? hang : 0));
+      if (paragraph.length - start <= max) {
+        pieces.push([start, paragraph.length]);
+        break;
+      }
+      let cut = paragraph.lastIndexOf(' ', start + max);
+      if (cut <= start) cut = start + max;
+      pieces.push([start, cut]);
+      start = paragraph[cut] === ' ' ? cut + 1 : cut;
+    } while (start < paragraph.length);
+    pieces.forEach(([from, to], index) => {
+      const line = paragraph.slice(from, to).replace(/\s+$/, '');
+      const absFrom = offset + from;
+      const absTo = absFrom + line.length;
+      const pad = index > 0 ? hang : 0;
+      const lineSpans = spans
+        .filter((span) => span.to > absFrom && span.from < absTo)
+        .map((span) => ({ ...span, from: Math.max(span.from, absFrom) - absFrom + pad, to: Math.min(span.to, absTo) - absFrom + pad }));
+      // A single space: an empty line would be drawn with no height at all.
+      out.push({ text: ' '.repeat(pad) + line || ' ', spans: lineSpans });
+    });
+    offset += paragraph.length + 1;
+  }
+  return out;
 }
 
 // Claude Code marks the person's messages the same way: a blank line above and a
@@ -102,7 +142,13 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number): Di
         // Always a gap above Jeeves's answer, so it never runs straight on from the
         // actions above it (the owner's request, 18 Sept) or from your message.
         if (lines.length > 0 && lines[lines.length - 1].text.trim() !== '') lines.push({ text: ' ' });
-        pushWrapped(entry.text, '', '');
+        {
+          // Markdown drawn as formatting, never as stray ** and ## marks.
+          const styled = renderMarkdown(entry.text);
+          for (const line of wrapStyled(styled.text, styled.spans, width)) {
+            lines.push({ text: line.text, spans: line.spans.length ? line.spans : undefined });
+          }
+        }
         break;
       case 'reasoning':
         pushWrapped(entry.text, '· ', '  ', undefined, true);
