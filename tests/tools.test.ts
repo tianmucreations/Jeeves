@@ -73,16 +73,21 @@ describe('tool executors', () => {
     expect(await runReadFile({ path: target })).toBe('x');
   });
 
+  // Starting a real shell can take several seconds on a cold Windows machine: GitHub's
+  // Windows check timed out at vitest's 5-second default now and then (18-19 Sept).
+  // Jeeves itself puts no such limit on a command.
+  const SHELL_TIMEOUT = 30_000;
+
   it('runBash runs a command and reports output', async () => {
     const out = await runRunBash({ command: 'echo jeeves-ok' });
     expect(out).toContain('jeeves-ok');
     expect(out).toContain('exit code: 0');
-  });
+  }, SHELL_TIMEOUT);
 
   it('runBash reports a failing exit code without throwing', async () => {
     const out = await runRunBash({ command: 'exit 3' });
     expect(out).toContain('exit code: 3');
-  });
+  }, SHELL_TIMEOUT);
 });
 
 describe('permission gate', () => {

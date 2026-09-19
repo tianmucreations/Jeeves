@@ -3,6 +3,7 @@ import { keyLooksValid, describeKeySource } from '../src/commands/keys.js';
 import { getKey, setKey, deleteKey, listProviders } from '../src/keys/store.js';
 import { session } from '../src/state/session.js';
 import { getDefaultModel, setDefaultModel, getDefaultProvider, setDefaultProvider, getVerbosePreference, setVerbosePreference } from '../src/platform/config.js';
+import { KEY_STORE } from '../src/platform/wording.js';
 
 describe('key validation', () => {
   it('accepts OpenRouter keys and rejects anything else', () => {
@@ -30,7 +31,8 @@ describe('key validation', () => {
   });
 
   it('describes the key source in plain English', () => {
-    expect(describeKeySource('keychain')).toContain('keychain');
+    // The key store's own name on each computer: Mac keychain, Windows Credential Manager...
+    expect(describeKeySource('keychain')).toContain(KEY_STORE);
     expect(describeKeySource('env')).toContain('local file');
     expect(describeKeySource('env')).not.toContain('.env');
     expect(describeKeySource(null)).toBe('no key');

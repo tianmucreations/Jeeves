@@ -211,7 +211,8 @@ describe('research gate: inside the tools', () => {
     } finally {
       process.chdir(cwd);
     }
-  });
+    // Two real shells: slow to start on a cold Windows machine (see tools.test.ts).
+  }, 30_000);
 
   it('noteResearch shows an accepted note to the person', async () => {
     recordPageOpened('https://wordpress.org/about/');
