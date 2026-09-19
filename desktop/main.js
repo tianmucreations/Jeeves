@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 
 import { loadShellEnv } from './shell-env.js';
+import { registerSettings } from './settings.js';
 
 // Before anything else: the terminal's settings, so commands find their programs.
 loadShellEnv();
@@ -115,6 +116,10 @@ function sendState() {
   }, 40);
 }
 session.subscribe(sendState);
+await registerSettings(engine, () => {
+  sendState();
+  if (win && !win.isDestroyed()) win.webContents.send('settings-changed');
+});
 
 function openFolder(target) {
   try {
@@ -139,7 +144,9 @@ async function sendAndDrain(text) {
 }
 
 // The terminal's full-screen menus aren't in the window yet.
-const TERMINAL_ONLY = new Set(['/model', '/keys', '/help', '/address']);
+// /model and /keys open the Settings panel; these two still need the terminal.
+const TERMINAL_ONLY = new Set(['/help', '/address']);
+const OPENS_SETTINGS = new Set(['/model', '/keys']);
 
 ipcMain.handle('ready', () => snapshot());
 ipcMain.handle('choose-folder', async (_event, chosen) => {
@@ -156,6 +163,10 @@ ipcMain.handle('choose-folder', async (_event, chosen) => {
 ipcMain.on('send', (_event, raw) => {
   const text = String(raw ?? '').trim();
   if (!text) return;
+  if (OPENS_SETTINGS.has(text)) {
+    win?.webContents.send('open-settings');
+    return;
+  }
   if (TERMINAL_ONLY.has(text)) {
     session.addNotice(`${text} isn't in the desktop window yet - open Jeeves in Terminal for that for now.`);
     return;
@@ -229,6 +240,29 @@ async function takeShots(out) {
   const demo = path.join(out, 'Demo Project');
   mkdirSync(demo, { recursive: true });
   openFolder(demo);
+  // JEEVES_DESKTOP_SETTINGSTEST=1: open Settings and look around (changes nothing).
+  if (process.env.JEEVES_DESKTOP_SETTINGSTEST) {
+    win.webContents.send('open-settings');
+    await wait(2_500);
+    await shot('8-settings.png');
+    await win.webContents.executeJavaScript("[...document.querySelectorAll('.service')].find((b) => b.textContent.startsWith('OpenRouter')).click()");
+    await wait(2_500);
+    await shot('9-settings-openrouter.png');
+    await win.webContents.executeJavaScript("[...document.querySelectorAll('.service')].find((b) => b.textContent.startsWith('Anthropic')).click()");
+    await wait(1_000);
+    await shot('10-settings-key.png');
+    // Only against the test settings (NODE_ENV=test): really choose a model.
+    if (process.env.NODE_ENV === 'test') {
+      await win.webContents.executeJavaScript("[...document.querySelectorAll('.service')].find((b) => b.textContent.startsWith('Z.ai')).click()");
+      await wait(1_000);
+      await win.webContents.executeJavaScript("[...document.querySelectorAll('.model-row')].find((b) => b.textContent.startsWith('GLM-5.3-Flash')).click()");
+      await wait(1_000);
+      console.log(`after choosing: provider ${session.providerId}, model ${session.model}, saved default ${config.getDefaultModel()}`);
+      await shot('11-chosen.png');
+    }
+    app.exit(0);
+    return;
+  }
   // JEEVES_DESKTOP_STOPTEST=1: start a real job, press Stop while it thinks.
   if (process.env.JEEVES_DESKTOP_STOPTEST) {
     const t = Date.now();

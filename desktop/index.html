@@ -10,6 +10,7 @@
   <header class="titlebar">
     <span class="brand gold">Jeeves</span>
     <span class="folder" id="folder"></span>
+    <button class="gear" id="open-settings" title="Settings - AI model, keys, daily limit">Settings</button>
     <span class="light" id="light" title=""></span>
   </header>
 
@@ -47,10 +48,31 @@
     </div>
   </main>
 
+  <aside class="settings" id="settings" hidden>
+    <div class="settings-head">
+      <span class="settings-title gold">Settings</span>
+      <button class="close" id="close-settings" title="Close (Esc)">×</button>
+    </div>
+    <div class="settings-body">
+      <section>
+        <h3>AI service</h3>
+        <div class="services" id="services"></div>
+      </section>
+      <section id="service-detail"></section>
+      <section>
+        <h3>Daily spending limit</h3>
+        <p class="muted">Jeeves stops and asks before spending more than this in a day.</p>
+        <form class="inline" id="limit-form"><span class="prefix">$</span><input id="limit" inputmode="decimal" autocomplete="off"><button class="btn">Save</button></form>
+        <p class="note" id="limit-note"></p>
+      </section>
+    </div>
+  </aside>
+
   <footer class="infobar">
-    <span id="model"></span>
+    <button id="model" class="model-button" title="Change the AI model"></button>
     <span id="segments"></span>
   </footer>
 <script src="renderer.js"></script>
+<script src="settings-ui.js"></script>
 </body>
 </html>
