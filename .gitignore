@@ -16,3 +16,4 @@ bench/results.jsonl
 *.jpg
 *.png
 !bench/**/*.png
+desktop/build/
