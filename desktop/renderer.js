@@ -6,7 +6,7 @@ const els = {
   folder: $('folder'), light: $('light'), welcome: $('welcome'), chat: $('chat'), greeting: $('greeting'),
   projects: $('projects'), choose: $('choose'), nokeys: $('nokeys'), scroller: $('scroller'),
   transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), always: $('always'),
-  composer: $('composer'), busy: $('busy'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
+  composer: $('composer'), busy: $('busy'), stop: $('stop'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
 };
 
 let state = null;
@@ -131,6 +131,8 @@ function render(s) {
     els.approvalText.textContent = question ? question.text.replace(/^\?\s*/, 'Jeeves would like to: ') : 'Jeeves would like your answer.';
     els.always.hidden = !s.approval.trustable;
   }
+  els.stop.hidden = s.status !== 'working' && s.status !== 'awaiting-approval';
+  els.hint.textContent = els.stop.hidden ? 'Enter to send · Shift + Enter for a new line · /undo puts the last change back' : 'Esc or the square button stops Jeeves';
   els.input.placeholder = s.status === 'working' || asking ? 'type your next message - it will be sent when I finish' : 'ask anything';
   if (firstChat) els.input.focus();
   renderBusy();
@@ -190,6 +192,15 @@ document.addEventListener('keydown', (event) => {
   if (key === 'y' || key === 'n' || (key === 'a' && state.approval.trustable)) {
     event.preventDefault();
     window.jeeves.answer(key);
+  }
+});
+
+els.stop.addEventListener('click', () => window.jeeves.stop());
+// Esc stops the job, as in Claude Code.
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state && !els.stop.hidden) {
+    event.preventDefault();
+    window.jeeves.stop();
   }
 });
 

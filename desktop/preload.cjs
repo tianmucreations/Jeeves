@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('jeeves', {
   chooseFolder: (folder) => ipcRenderer.invoke('choose-folder', folder ?? null),
   send: (text) => ipcRenderer.send('send', text),
   answer: (letter) => ipcRenderer.send('answer', letter),
+  stop: () => ipcRenderer.send('stop'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   onState: (listener) => ipcRenderer.on('state', (_event, state) => listener(state)),
 });

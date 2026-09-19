@@ -11,7 +11,8 @@ import { isToolCapable } from '../models/filter.js';
 import { autoCatalogue } from './auto.js';
 import { isAuto, workingModelId, workerModel, expertModel, topModel, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion, REVIEW_FINISHED_JOBS } from './auto.js';
 import { jobNeedsReview, reviewJob, fixRequest, startReproducing, stopReproducing, UNCHECKED_NOTICE } from './review.js';
-import { requestApproval } from './permissions.js';
+import { requestApproval, hasPendingApproval, answerApproval } from './permissions.js';
+import { killAllRunningCommands } from '../tools/runBash.js';
 import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
@@ -29,6 +30,24 @@ Chat-Only Model
 The model currently selected can only chat. For now you have no tools: you cannot read files, write files, list folders, or run commands, whatever the sections above say. If you are asked to do something that needs them, say plainly that the model in use can only chat, and suggest typing /model to choose one that can do tasks. Never pretend to have done it.`;
 
 const DISCONNECTING: ReadonlySet<ErrorKind> = new Set(['auth', 'network', 'payment']);
+
+// The job now running, so the person can stop it (Claude Code's Esc: the request is
+// cancelled and running commands are closed).
+let currentStop: AbortController | null = null;
+
+// Stops the job now running: the model request, any command it started, any
+// question waiting for an answer, and messages waiting their turn. Returns false
+// when nothing was running.
+export function stopTurn(): boolean {
+  if (!currentStop || currentStop.signal.aborted) return false;
+  currentStop.abort();
+  killAllRunningCommands();
+  while (hasPendingApproval()) answerApproval(false);
+  while (session.takeQueued() !== undefined) {
+    // Messages sent while busy are dropped too - "stop" means stop.
+  }
+  return true;
+}
 
 export async function runTurn(input: string): Promise<void> {
   if (input.startsWith('/') && input.length > 1 && !input.startsWith('/ ')) {
@@ -94,6 +113,7 @@ export async function runTurn(input: string): Promise<void> {
   const autoState = newAutoTurnState();
   session.setActiveModel(auto ? workerModel() : null);
   const stop = new AbortController();
+  currentStop = stop;
   let countedSteps = 0;
   session.beginTurn();
   session.setStatus('working');
@@ -203,10 +223,12 @@ export async function runTurn(input: string): Promise<void> {
     session.setPlanResetAt(null);
     session.setActiveModel(auto ? workerModel() : null);
     session.setThinking(false);
+    if (currentStop === stop) currentStop = null;
     endJob();
     session.setStatus('idle');
   } catch (error) {
     session.setThinking(false);
+    if (currentStop === stop) currentStop = null;
     endJob();
     session.setActiveModel(auto ? workerModel() : null);
     if (stop.signal.aborted) {

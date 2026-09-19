@@ -20,7 +20,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const engine = (file) => import(new URL(`../dist/${file}`, import.meta.url).href);
 
 const { session } = await engine('state/session.js');
-const { runTurn } = await engine('agent/loop.js');
+const { runTurn, stopTurn } = await engine('agent/loop.js');
 const { answerApproval, currentApprovalTrustable } = await engine('agent/permissions.js');
 const providers = await engine('providers/index.js');
 const config = await engine('platform/config.js');
@@ -171,6 +171,9 @@ ipcMain.on('send', (_event, raw) => {
     session.addNotice(`Noted - I'll read this as soon as I've finished: "${text.length > 80 ? text.slice(0, 79) + '…' : text}"`);
   }
 });
+ipcMain.on('stop', () => {
+  stopTurn();
+});
 ipcMain.on('answer', (_event, answer) => {
   if (!session.approvalPending) return;
   if (answer === 'y') answerApproval(true);
@@ -226,6 +229,19 @@ async function takeShots(out) {
   const demo = path.join(out, 'Demo Project');
   mkdirSync(demo, { recursive: true });
   openFolder(demo);
+  // JEEVES_DESKTOP_STOPTEST=1: start a real job, press Stop while it thinks.
+  if (process.env.JEEVES_DESKTOP_STOPTEST) {
+    const t = Date.now();
+    const job = sendAndDrain('Write me a poem about the sunrise of about 200 words');
+    await wait(6_000);
+    await shot('6-working.png');
+    win.webContents.executeJavaScript("document.getElementById('stop').click()");
+    await job;
+    console.log(`stopped after ${Date.now() - t} ms, status ${session.status}, last line: ${session.transcript[session.transcript.length - 1]?.text}`);
+    await shot('7-stopped.png');
+    app.exit(0);
+    return;
+  }
   // JEEVES_DESKTOP_LIVE=1: one real message through the real engine.
   if (process.env.JEEVES_DESKTOP_LIVE) {
     const t = Date.now();

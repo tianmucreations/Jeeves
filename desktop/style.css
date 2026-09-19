@@ -134,6 +134,16 @@ body.welcoming .brand { visibility: hidden; }
   background: var(--panel); border: 1px solid var(--edge); border-radius: 14px;
   padding: 12px 16px; transition: border-color 0.15s;
 }
+.composer { display: flex; align-items: flex-end; gap: 12px; }
+/* Stop: shown while Jeeves is working - a silver square, as in Claude's apps. */
+.stop {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--silver-dim); background: none;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.stop span { width: 10px; height: 10px; border-radius: 2px; background: var(--silver); }
+.stop:hover { border-color: var(--silver-bright); }
+.stop:hover span { background: var(--silver-bright); }
 .composer:focus-within { border-color: #5a5d63; }
 .composer.waiting { opacity: 0.55; }
 #input {
