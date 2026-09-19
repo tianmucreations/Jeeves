@@ -31,6 +31,7 @@ const { footerSegments, shortModelName } = await engine('components/Footer.js');
 const { allowanceToday } = await engine('agent/spending.js');
 const { isAuto, workerModel } = await engine('agent/auto.js');
 const { killAllRunningCommands } = await engine('tools/runBash.js');
+const { ensureChatFolder, chatNotice } = await engine('platform/chat-folder.js');
 
 let win = null;
 let folder = null;
@@ -121,19 +122,23 @@ await registerSettings(engine, () => {
   if (win && !win.isDestroyed()) win.webContents.send('settings-changed');
 });
 
-function openFolder(target) {
+// remember: false for "Just chat" - its folder is not a project, so it never
+// joins the recent list (as in the terminal's ProjectPicker).
+function openFolder(target, remember = true) {
   try {
     process.chdir(target);
   } catch {
     return false;
   }
   folder = target;
-  const updated = [target, ...session.recentProjects.filter((p) => p !== target)].slice(0, 10);
-  session.setRecentProjects(updated);
-  // Test pictures never touch the person's saved folder list.
-  if (!process.env.JEEVES_DESKTOP_SHOT) config.setRecentProjects(updated);
+  if (remember) {
+    const updated = [target, ...session.recentProjects.filter((p) => p !== target)].slice(0, 10);
+    session.setRecentProjects(updated);
+    // Test pictures never touch the person's saved folder list.
+    if (!process.env.JEEVES_DESKTOP_SHOT) config.setRecentProjects(updated);
+  }
   session.launchComplete();
-  session.addNotice(`Now working in ${niceFolder(target)}.`);
+  session.addNotice(remember ? `Now working in ${niceFolder(target)}.` : chatNotice(config.getAddress() ?? 'Sir'));
   return true;
 }
 
@@ -150,6 +155,12 @@ const OPENS_SETTINGS = new Set(['/model', '/keys']);
 
 ipcMain.handle('ready', () => snapshot());
 ipcMain.handle('choose-folder', async (_event, chosen) => {
+  if (chosen === 'just-chat') {
+    const chat = ensureChatFolder();
+    const ok = chat ? openFolder(chat, false) : false;
+    sendState();
+    return ok;
+  }
   let target = chosen;
   if (!target) {
     const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], buttonLabel: 'Work here' });
@@ -250,6 +261,16 @@ async function takeShots(out) {
   while (!keysChecked && Date.now() - started < 20000) await wait(100);
   console.log(`keys read after ${Date.now() - started} ms (found: ${providers.hasCredentials()})`);
   await shot('1-welcome.png');
+  // JEEVES_DESKTOP_CHATTEST=1: press "Just chat".
+  if (process.env.JEEVES_DESKTOP_CHATTEST) {
+    const recentsBefore = JSON.stringify(config.getRecentProjects());
+    await win.webContents.executeJavaScript("document.getElementById('just-chat').click()");
+    await wait(1200);
+    console.log(`working in: ${process.cwd()} | recent list unchanged: ${JSON.stringify(config.getRecentProjects()) === recentsBefore}`);
+    await shot('13-just-chat.png');
+    app.exit(0);
+    return;
+  }
   const demo = path.join(out, 'Demo Project');
   mkdirSync(demo, { recursive: true });
   openFolder(demo);

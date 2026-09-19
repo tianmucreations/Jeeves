@@ -88,6 +88,15 @@ button { font: inherit; cursor: pointer; }
 /* On the welcome screen the large name is enough - the title bar's small one hides. */
 body.welcoming .brand { visibility: hidden; }
 .welcome-line { color: var(--silver); margin: 0 0 28px; font-size: 16px; }
+/* "Just chat" first, for anyone who only wants to ask something. */
+.just-chat {
+  display: flex; align-items: baseline; gap: 12px; margin: 0 0 30px; padding: 12px 24px;
+  border: 1px solid var(--gold-dark); border-radius: 999px; background: linear-gradient(180deg, #1a150b, #0b0906);
+  color: var(--gold-light); font-size: 16px; font-weight: 600;
+}
+.just-chat span { color: var(--silver-dim); font-weight: 400; font-size: 13px; }
+.just-chat:hover { border-color: var(--gold); box-shadow: 0 0 18px rgba(201, 169, 106, 0.18); }
+.or-folder { color: var(--silver-faint); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 8px; }
 .projects { display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
 .project {
   display: flex; flex-direction: column; align-items: flex-start;

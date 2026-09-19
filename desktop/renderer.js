@@ -79,7 +79,7 @@ function renderTranscript(entries) {
 }
 
 function renderWelcome(s) {
-  els.greeting.textContent = `Good day, ${s.address}. Which folder shall we work in?`;
+  els.greeting.textContent = `Good day, ${s.address}. What can I do for you?`;
   els.projects.textContent = '';
   for (const p of s.recentProjects) {
     const b = document.createElement('button');
@@ -231,6 +231,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 els.choose.addEventListener('click', () => void window.jeeves.chooseFolder(null));
+document.getElementById('just-chat').addEventListener('click', () => void window.jeeves.chooseFolder('just-chat'));
 
 window.jeeves.onState(render);
 window.jeeves.ready().then(render);

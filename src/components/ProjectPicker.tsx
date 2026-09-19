@@ -5,13 +5,15 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { session, useSession } from '../state/session.js';
-import { setRecentProjects } from '../platform/config.js';
+import { setRecentProjects, getAddress } from '../platform/config.js';
 import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
 import { hasCredentials, keysRead } from '../providers/index.js';
 import { isMouseSequence } from '../ink/mouse.js';
+import { ensureChatFolder, chatNotice } from '../platform/chat-folder.js';
 
 type Item =
   | { kind: 'header'; label: string }
+  | { kind: 'chat' }
   | { kind: 'recent'; folder: string }
   | { kind: 'browse' }
   | { kind: 'create' }
@@ -72,7 +74,8 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
   const items = useMemo<Item[]>(() => {
     if (mode === 'list') {
       const recents = s.recentProjects.filter((folder) => existsSync(folder));
-      const out: Item[] = [];
+      // First, for anyone who only wants to ask something: no project needed.
+      const out: Item[] = [{ kind: 'chat' }];
       if (recents.length > 0) {
         out.push({ kind: 'header', label: 'Recent projects' });
         for (const folder of recents) out.push({ kind: 'recent', folder });
@@ -107,17 +110,29 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
   const start = Math.max(0, Math.min(items.length - listHeight, resolved - half));
   const visible = items.slice(start, start + listHeight);
 
-  function startProject(folder: string): void {
+  function startChat(): void {
+    const folder = ensureChatFolder();
+    if (!folder) {
+      setNote("The Jeeves Chats folder couldn't be made in Documents - pick a project instead.");
+      return;
+    }
+    startProject(folder, false);
+  }
+
+  function startProject(folder: string, remember = true): void {
     try {
       process.chdir(folder);
     } catch {
       // Staying in the current folder is the safe fallback.
     }
-    const updated = [folder, ...session.recentProjects.filter((p) => p !== folder)].slice(0, 10);
-    session.setRecentProjects(updated);
-    setRecentProjects(updated);
+    // The chat folder is not a project, so it never joins the recent list.
+    if (remember) {
+      const updated = [folder, ...session.recentProjects.filter((p) => p !== folder)].slice(0, 10);
+      session.setRecentProjects(updated);
+      setRecentProjects(updated);
+    }
     session.launchComplete();
-    session.addNotice(`Now working in ${displayPath(folder)}.`);
+    session.addNotice(remember ? `Now working in ${displayPath(folder)}.` : chatNotice(getAddress() ?? 'Sir'));
     // Only once the saved keys have been read can "no key yet" be true.
     void keysRead().then(() => {
       if (!hasCredentials()) {
@@ -254,6 +269,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
     if (mode === 'list' && key.return) {
       const item = items[resolved];
       if (!item) return;
+      if (item.kind === 'chat') startChat();
       if (item.kind === 'recent') startProject(item.folder);
       if (item.kind === 'browse') {
         setPurpose('open');
@@ -291,7 +307,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
 
   const title =
     mode === 'list'
-      ? 'Choose a project'
+      ? 'Just chat, or choose a project'
       : mode === 'create-name'
         ? 'Create a new project'
         : mode === 'create-location'
@@ -355,6 +371,14 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
               <Text key={`r${item.folder}`} inverse={selected} wrap="truncate-middle">
                 {` ${name}`.padEnd(26)}
                 <Text dimColor>{displayPath(item.folder)}</Text>
+              </Text>
+            );
+          }
+          if (item.kind === 'chat') {
+            return (
+              <Text key="chat" inverse={selected}>
+                <Text color="#c9a96a" bold>{' Just chat'}</Text>
+                <Text dimColor>{' - no project needed'}</Text>
               </Text>
             );
           }
