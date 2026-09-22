@@ -9,7 +9,7 @@ import { runBashSchema, runRunBash } from './runBash.js';
 import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage, researchService, borrowedSearchNeedsAsking, borrowedSearchQuestion } from './web/research.js';
 import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
 import { resolveFromCwd } from '../platform/paths.js';
-import { isProjectTrusted } from '../agent/trust.js';
+import { isProjectTrusted, isPathTrusted, isCommandTrusted } from '../agent/trust.js';
 import {
   holdForWrite,
   holdForCommand,
@@ -86,6 +86,10 @@ function defineTool<S extends z.ZodObject>(config: {
   changesFiles?: (input: z.output<S>) => boolean;
   // A plain warning shown before asking, when /undo could not reverse this action.
   warning?: (input: z.output<S>) => string | null;
+  // True when this exact target is already covered by a folder trusted before
+  // (a different project folder the person said "always allow" in directly) - no
+  // warning, no question, same as an ordinary trusted in-project action.
+  alreadyTrustedElsewhere?: (input: z.output<S>) => boolean;
   // Checked before anything is asked or done (as Claude Code's validateInput): a
   // reason the action is held, which goes back to the model, or null.
   hold?: (input: z.output<S>) => Promise<string | null> | string | null;
@@ -106,11 +110,13 @@ function defineTool<S extends z.ZodObject>(config: {
         });
         throw new Error(held);
       }
-      const warning = config.warning?.(input) ?? null;
+      const coveredElsewhere = config.alreadyTrustedElsewhere?.(input) ?? false;
+      const warning = coveredElsewhere ? null : (config.warning?.(input) ?? null);
       // A change inside the project folder (no outside warning) may be "always allowed".
       const trustable = warning === null;
       const needsPermission =
-        (typeof config.permission === 'function' ? config.permission(input) : config.permission) && !(trustable && isProjectTrusted());
+        (typeof config.permission === 'function' ? config.permission(input) : config.permission) &&
+        !(trustable && (coveredElsewhere || isProjectTrusted()));
       if (warning) session.addNotice(warning);
       const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
       if (needsPermission) {
@@ -178,6 +184,7 @@ export const TOOLS: ToolSet = {
       isOutsideProject(input.path)
         ? `Heads up: ${input.path} is outside your project folder, so /undo can't reverse this change.`
         : null,
+    alreadyTrustedElsewhere: (input) => isOutsideProject(input.path) && isPathTrusted(input.path),
   }),
   webSearch: defineTool({
     name: 'webSearch',
@@ -226,6 +233,8 @@ export const TOOLS: ToolSet = {
       !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
         ? "Heads up: this command may change things outside your project folder, which /undo can't reverse."
         : null,
+    alreadyTrustedElsewhere: (input) =>
+      !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command) && isCommandTrusted(input.command),
   }),
 };
 
