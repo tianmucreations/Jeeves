@@ -33,6 +33,28 @@ The model currently selected can only chat. For now you have no tools: you canno
 
 const DISCONNECTING: ReadonlySet<ErrorKind> = new Set(['auth', 'network', 'payment']);
 
+// A weak model sometimes describes what it is about to do next and then stops
+// without doing it, instead of calling a tool or saying plainly that it is
+// finished - seen live on GLM-5.3-Flash (a screenshot titled "No Summary or
+// Explanation", 22 Sept: the reply ended "Now let me read the true file in full
+// so my edit keeps everything else exactly as it was" with nothing further, and
+// the person had to ask whether it was still working). The rulebook now forbids
+// this, but a weak model does not always follow that, so this catches the exact
+// phrasing it forbids and nudges one real continuation, rather than leaving the
+// person to notice and ask themselves.
+// "Let me know" is an ordinary closing courtesy, not a dangling action - excluded
+// so a genuinely finished reply is never flagged.
+const UNFULFILLED_INTENTION = /^(now[, ]+)?(let me(?! know\b)\b|i(?:'|')?ll\b|i will\b|i(?:'|')?m going to\b|i am going to\b|next,? i(?:'|')?ll\b|next,? i will\b|first,? i(?:'|')?ll\b|first,? i will\b)/i;
+
+export function endsMidIntention(text: string): boolean {
+  const sentences = text.trim().split(/(?<=[.!?])\s+/).filter((sentence) => sentence.length > 0);
+  const last = sentences[sentences.length - 1];
+  return last !== undefined && UNFULFILLED_INTENTION.test(last.trim());
+}
+
+const CONTINUE_NUDGE =
+  'You stopped after describing something you were about to do, without doing it and without saying the task is finished. Either do it now, with a tool call in this turn, or say plainly that the task is done.';
+
 // The job now running, so the person can stop it (Claude Code's Esc: the request is
 // cancelled and running commands are closed).
 let currentStop: AbortController | null = null;
@@ -214,6 +236,17 @@ export async function runTurn(input: string): Promise<void> {
         }
         allMessages = [...fixMessages, ...result.messages];
       }
+    }
+    // Caught once, regardless of Auto: a reply that trails off describing an
+    // intention it never carried out gets one real chance to finish, instead of
+    // being shown to the person as if the job had simply stopped.
+    if (!stop.signal.aborted && endsMidIntention(result.text)) {
+      for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
+      countedSteps = 0;
+      const continueMessages = [...allMessages, { role: 'user' as const, content: CONTINUE_NUDGE }];
+      const continued = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: continueMessages }), session.providerId, stop.signal);
+      allMessages = [...continueMessages, ...continued.messages];
+      result = { ...continued, text: result.text && continued.text ? `${result.text}\n\n${continued.text}` : result.text || continued.text };
     }
     if (assistantId === null) assistantId = session.startAssistant();
     session.setAssistantText(assistantId, result.text);
