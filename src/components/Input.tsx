@@ -8,6 +8,7 @@ import { answerApproval, currentApprovalTrustable } from '../agent/permissions.j
 import { session, useSession } from '../state/session.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
 import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
+import { approvalButtons, approvalButtonAt } from '../ink/approval-buttons.js';
 import { inputLayout, splitTypedBurst, cleanPaste, scrollToShowCursor, previousWordStart, nextWordEnd } from './input-layout.js';
 
 // The rows the input box needs for the text being typed (the window makes room).
@@ -45,6 +46,16 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // move it, and typing goes in where it is - owner, 19 Sept).
   const cursorRef = useRef<number | null>(null);
   const [, setCursorTick] = useState(0);
+  // Which button is highlighted for arrow-key + Enter use (Left/Right/Tab move
+  // it, Enter confirms - a mouse click still answers directly, same as
+  // OpenCode's row of buttons). Reset whenever a new question replaces the last
+  // one (the same "find the awaiting tool line" the window's own renderer uses).
+  const awaitingId = [...s.transcript].reverse().find((entry) => entry.kind === 'tool' && entry.data.state === 'awaiting')?.id ?? null;
+  const [approvalSelected, setApprovalSelected] = useState(0);
+  useEffect(() => {
+    setApprovalSelected(0);
+  }, [awaitingId]);
+  const currentApprovalButtons = s.approvalPending ? approvalButtons(currentApprovalTrustable()) : [];
   const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
   // The real cursor only at the end of the message; inside it, the highlighted
   // character is the cursor.
@@ -90,6 +101,18 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       offset += 1;
     }
     moveCursor(target.start + offset);
+  };
+  // Clicking a button answers the question directly (OpenCode's row of buttons:
+  // a click and the keyboard both land on the same answer). The question always
+  // draws on the single bottom input row (app.tsx forces inputRows to 1 while a
+  // question is pending), so the row is fixed, not measured from typed text.
+  session.approvalClick = (col: number, row: number) => {
+    if (!s.approvalPending) return;
+    const rows = windowRows ?? 24;
+    // Same row math as the typing box above, for a single-row box (layout.rows.length 1).
+    if (row !== rows - 2) return;
+    const button = approvalButtonAt(currentApprovalButtons, col - 3);
+    if (button) answerApproval(button.key !== 'n', button.key === 'a');
   };
 
   // The block cursor sits at the text insertion point: two columns in (the
@@ -151,10 +174,28 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     // Any key clears a selection, as in Claude Code.
     if (session.selection) session.setSelection(null);
     if (s.approvalPending) {
+      // Two ways to answer, both landing on the same result (as OpenCode's own
+      // row of buttons): the letter shortcuts, or arrow keys/Tab to move the
+      // highlight and Enter to confirm it.
       const answer = input.toLowerCase();
-      if (answer === 'y') answerApproval(true);
-      else if (answer === 'a' && currentApprovalTrustable()) answerApproval(true, true);
-      else if (answer === 'n') answerApproval(false);
+      if (answer === 'y') return void answerApproval(true);
+      if (answer === 'a' && currentApprovalTrustable()) return void answerApproval(true, true);
+      if (answer === 'n') return void answerApproval(false);
+      if (key.leftArrow || key.tab) {
+        const count = currentApprovalButtons.length;
+        setApprovalSelected((current) => (current - 1 + count) % count);
+        return;
+      }
+      if (key.rightArrow) {
+        const count = currentApprovalButtons.length;
+        setApprovalSelected((current) => (current + 1) % count);
+        return;
+      }
+      if (key.return) {
+        const button = currentApprovalButtons[approvalSelected];
+        if (button) answerApproval(button.key !== 'n', button.key === 'a');
+        return;
+      }
       return;
     }
     if (key.ctrl && input === 'm') {
@@ -248,8 +289,19 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   });
 
   if (s.approvalPending) {
+    // A row of buttons, not a bare y/n/a prompt: click one, or move to it with
+    // the arrow keys and press Enter (the letter shortcuts still work too).
     return (
-      <Text color="yellow">{currentApprovalTrustable() ? 'y = allow · a = always allow in this project · n = deny' : 'y = allow · n = deny'}</Text>
+      <Text>
+        {currentApprovalButtons.map((button, index) => (
+          <React.Fragment key={button.key}>
+            {index > 0 ? '   ' : ''}
+            <Text color="yellow" inverse={index === approvalSelected} bold={index === approvalSelected}>
+              {button.label}
+            </Text>
+          </React.Fragment>
+        ))}
+      </Text>
     );
   }
 
