@@ -3,6 +3,7 @@
 // nothing a model or a web page writes can run in the window.
 const $ = (id) => document.getElementById(id);
 const els = {
+  testBanner: $('test-banner'),
   folder: $('folder'), light: $('light'), welcome: $('welcome'), chat: $('chat'), greeting: $('greeting'),
   projects: $('projects'), choose: $('choose'), nokeys: $('nokeys'), scroller: $('scroller'),
   transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), always: $('always'),
@@ -123,6 +124,7 @@ function renderInfo(s) {
 function render(s) {
   const firstChat = state && !state.folder && s.folder;
   state = s;
+  els.testBanner.hidden = !s.testMode;
   els.light.className = `light ${s.status}`;
   els.light.title = LIGHT_TITLES[s.status] ?? '';
   els.folder.textContent = s.folderName ?? '';

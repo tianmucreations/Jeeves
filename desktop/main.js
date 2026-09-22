@@ -89,6 +89,10 @@ function snapshot() {
     connectHint: 'open Settings to connect',
   });
   return {
+    // A visible warning, not a silent one: a test session used to be invisible
+    // from the window itself, which is exactly what let a real one be mistaken
+    // for it (the model-forgetting report, 22 Sept - see PROGRESS.md).
+    testMode: process.env.NODE_ENV === 'test',
     folder: folder ? niceFolder(folder) : null,
     folderName: folder ? path.basename(folder) : null,
     // Choosing another folder mid-conversation (the welcome screen offers a way back).

@@ -38,6 +38,10 @@ cat > "$app/Contents/Resources/app/package.json" <<JSON
 JSON
 cat > "$app/Contents/Resources/app/main.js" <<JS
 // Starts Jeeves Desktop from its project folder (a preview build for this Mac).
+// This is the real app - never the practice one, whatever the session's own
+// environment happens to hold (NODE_ENV=test is only ever meant for a
+// deliberate "npm run dev"/"npm start" in a terminal, never a double-click).
+delete process.env.NODE_ENV;
 await import(new URL('file://' + encodeURI('$here/main.js')).href);
 JS
 

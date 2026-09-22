@@ -41,6 +41,18 @@ body {
   overflow: hidden;
 }
 [hidden] { display: none !important; }
+/* Shown only when NODE_ENV=test - so a practice settings file is never mistaken
+   for the real one (see PROGRESS.md, 22 Sept). */
+.test-banner {
+  flex-shrink: 0;
+  background: var(--amber);
+  color: #000;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  padding: 4px 0;
+}
 button { font: inherit; cursor: pointer; }
 ::selection { background: #3a3d44; color: var(--silver-bright); }
 
