@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import stringWidth from 'string-width';
-import { Box, Text, useCursor, useInput, usePaste, useStdout } from 'ink';
+import { Box, Text, useCursor, useInput, usePaste, useWindowSize } from 'ink';
 import { runTurn, stopTurn } from '../agent/loop.js';
 import { copySelection } from '../ink/selection.js';
 import { pressCtrlCToQuit } from '../ink/quit.js';
@@ -30,7 +30,11 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // a stale value.
   const valueRef = useRef(session.inputText);
   const s = useSession();
-  const { stdout } = useStdout();
+  // useWindowSize so the input row and cursor track the terminal's real, live
+  // size - useStdout's rows would otherwise stay frozen at the size Jeeves
+  // started with (see AlternateScreen.tsx), which is what let the cursor drift
+  // onto the border after a resize.
+  const { rows: windowRows } = useWindowSize();
   const { setCursorPosition } = useCursor();
   // How far the box is scrolled back through a message taller than it (0 = the
   // end, where the typing is). A ref for the same reason as the text.
@@ -74,7 +78,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   };
   // Clicking in the typing box puts the cursor there.
   session.inputClick = (col: number, row: number) => {
-    const rows = stdout.rows ?? 24;
+    const rows = windowRows ?? 24;
     const first = rows - 2 - (layout.rows.length - 1);
     const target = layout.rows[row - first];
     if (!valueRef.current || !target || target.hint || target.start === undefined) return;
@@ -101,7 +105,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // The last row of the box stays on the same terminal row however tall the box
   // grows (it grows upwards), so the cursor's row is unchanged.
   setCursorPosition(
-    showingText ? { x: 2 + layout.cursorX, y: inputFrameRow(stdout.rows ?? 24) } : undefined
+    showingText ? { x: 2 + layout.cursorX, y: inputFrameRow(windowRows ?? 24) } : undefined
   );
 
   // The terminal's real cursor becomes a steady block for the whole session; it is

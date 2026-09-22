@@ -26,7 +26,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useInsertionEffect } from 'react';
-import { Box, useStdout } from 'ink';
+import { Box, useWindowSize } from 'ink';
 import { createRequire } from 'node:module';
 import { DEFAULT_CURSOR } from './cursor.js';
 import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './mouse.js';
@@ -104,7 +104,14 @@ function registerCleanup(): void {
 }
 
 export function AlternateScreen({ children }: { children: React.ReactNode }) {
-  const { stdout } = useStdout();
+  // useWindowSize (not useStdout) because it subscribes to the terminal's own
+  // 'resize' event and holds the size in React state - the only way this
+  // component re-renders when the window is dragged bigger or smaller. useStdout
+  // alone returns a snapshot that is never revisited, which is why the window
+  // used to freeze at whatever size it happened to be on the last unrelated
+  // re-render (Claude Code's own fork watches stdout.on('resize', ...) the same
+  // way, for the same reason).
+  const { rows: windowRows } = useWindowSize();
 
   // Entered once, before the first frame, in Claude Code's order: take over
   // the window first, then clear the fresh alternate screen, erase the
@@ -126,7 +133,7 @@ export function AlternateScreen({ children }: { children: React.ReactNode }) {
     return () => leaveAltScreen();
   }, []);
 
-  const rows = Math.max(stdout.rows ?? 24, 8);
+  const rows = Math.max(windowRows ?? 24, 8);
 
   // The ceiling: without a height constraint on this box, flexGrow below has no
   // limit - the viewport would size to the content, scrolling would pin at 0, and

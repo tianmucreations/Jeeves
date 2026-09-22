@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useInput, useWindowSize } from 'ink';
 import { Header } from './components/Header.js';
 import { Transcript } from './components/Transcript.js';
 import { Input, inputRowsFor } from './components/Input.js';
@@ -27,9 +27,13 @@ import { pressCtrlCToQuit } from './ink/quit.js';
 // info bar 1 = exactly the terminal's rows.
 export function App() {
   const s = useSession();
-  const { stdout } = useStdout();
-  const rows = Math.max(stdout.rows ?? 24, 8);
-  const columns = Math.max(stdout.columns ?? 80, 40);
+  // useWindowSize, not useStdout: it subscribes to the terminal's 'resize' event
+  // and re-renders this component with the live size, so the window actually
+  // grows and shrinks with the real terminal instead of freezing at whatever
+  // size it happened to be when Jeeves started.
+  const { columns: windowColumns, rows: windowRows } = useWindowSize();
+  const rows = Math.max(windowRows ?? 24, 8);
+  const columns = Math.max(windowColumns ?? 80, 40);
   const inner = columns - 2;
   // The input box grows with the message (up to MAX_INPUT_ROWS); the transcript gives
   // up the rows. A hint or question in the input row is always one row.

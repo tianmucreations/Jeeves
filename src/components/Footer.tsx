@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, Text, useWindowSize } from 'ink';
 import { useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
@@ -88,8 +88,10 @@ export function fitModelName(name: string, available: number): string {
 
 export function Footer() {
   const s = useSession();
-  const { stdout } = useStdout();
-  const columns = Math.max(stdout.columns ?? 80, 40);
+  // useWindowSize so the footer re-wraps live when the window is resized,
+  // instead of keeping the column count it started with.
+  const { columns: windowColumns } = useWindowSize();
+  const columns = Math.max(windowColumns ?? 80, 40);
   const segments = footerSegments({
     providerId: s.providerId,
     allowance: allowanceToday(),

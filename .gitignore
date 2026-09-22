@@ -18,4 +18,5 @@ bench/results.jsonl
 !bench/**/*.png
 desktop/build/
 AUDIT*.txt
+REVIEW*.txt
 JEEVES BACKUP*.zip
