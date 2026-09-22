@@ -9,6 +9,7 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
   const config = await engine('platform/config.js');
   const registry = await engine('models/registry.js');
   const { isToolCapable } = await engine('models/filter.js');
+  const { isModelUnreliable } = await engine('agent/model-health.js');
   const { isDirectService, directService, CUSTOM_SERVICE_ID } = await engine('providers/direct-services.js');
   const { loadDirectModels } = await engine('providers/catalogue.js');
   const { autoRowFor, noAutoNote } = await engine('agent/auto.js');
@@ -52,7 +53,7 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
       const all = session.models.map((model) => row(model));
       // As the terminal's "free" tab (ModelPicker poolFor): free models that can
       // also do tasks - a free model that can only chat is no use here.
-      const free = session.models.filter((model) => registry.isFreeModel(model) && isToolCapable(model)).map((model) => row(model));
+      const free = session.models.filter((model) => registry.isFreeModel(model) && isToolCapable(model) && !isModelUnreliable(model.id)).map((model) => row(model));
       return { recommended, all, free, note };
     }
     if (provider === 'zai') return { recommended: [], all: ZAI_MODELS.map((model) => row(model)), note };

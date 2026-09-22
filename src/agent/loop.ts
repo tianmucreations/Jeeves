@@ -12,6 +12,8 @@ import { autoCatalogue } from './auto.js';
 import { isAuto, workingModelId, workerModel, expertModel, topModel, AUTO_NOTE, shouldTakeOver, createAskExpertTool, newAutoTurnState, topModelPriceRatio, topModelQuestion, REVIEW_FINISHED_JOBS } from './auto.js';
 import { jobNeedsReview, reviewJob, fixRequest, startReproducing, stopReproducing, UNCHECKED_NOTICE } from './review.js';
 import { requestApproval, hasPendingApproval, answerApproval } from './permissions.js';
+import { withRateLimitRetry } from './retry.js';
+import { recordModelFailure, recordModelSuccess } from './model-health.js';
 import { killAllRunningCommands } from '../tools/runBash.js';
 import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
@@ -189,7 +191,7 @@ export async function runTurn(input: string): Promise<void> {
       },
     };
     let uncheckedNotice = false;
-    let result = await provider.stream(streamOptions);
+    let result = await withRateLimitRetry(() => provider.stream(streamOptions), session.providerId, stop.signal);
     let allMessages = [...messages, ...result.messages];
     // Auto's double-check, once, when this job changed a program or wrote a document
     // (where the cheap worker's mistakes were measured - see review.ts).
@@ -206,7 +208,7 @@ export async function runTurn(input: string): Promise<void> {
         // Changing files waits until the worker has reproduced a problem.
         startReproducing();
         try {
-          result = await provider.stream({ ...streamOptions, messages: fixMessages });
+          result = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: fixMessages }), session.providerId, stop.signal);
         } finally {
           stopReproducing();
         }
@@ -217,6 +219,7 @@ export async function runTurn(input: string): Promise<void> {
     session.setAssistantText(assistantId, result.text);
     session.finishAssistant(assistantId);
     if (uncheckedNotice) session.addNotice(UNCHECKED_NOTICE);
+    recordModelSuccess(modelId);
     session.setHistory(allMessages);
     session.setLastReasoning(result.reasoning);
     session.addUsage(result.usage.input, result.usage.output, result.cost, result.usage.cached ?? 0);
@@ -241,6 +244,12 @@ export async function runTurn(input: string): Promise<void> {
       return;
     }
     const plain = plainError(error, session.providerId);
+    // A bad key or empty credit is an account problem, not this model's fault, and a
+    // too-long conversation is the person's, not the model's - only count failures
+    // that actually point at the model itself being unreliable right now.
+    if (plain.kind === 'rate-limit' || plain.kind === 'model' || plain.kind === 'network' || plain.kind === 'other') {
+      recordModelFailure(modelId);
+    }
     if (assistantId !== null) session.finishAssistant(assistantId);
     session.addError(plain.message);
     if (plain.resetAt !== undefined) session.setPlanResetAt(plain.resetAt);

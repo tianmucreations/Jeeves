@@ -4,6 +4,7 @@ import Spinner from 'ink-spinner';
 import Fuse from 'fuse.js';
 import { session, useSession } from '../state/session.js';
 import { isToolCapable } from '../models/filter.js';
+import { isModelUnreliable } from '../agent/model-health.js';
 import {
   type ModelInfo,
   compactContext,
@@ -122,7 +123,9 @@ function poolFor(tab: Tab, models: ModelInfo[], favorites: string[], recents: st
   if (tab === 'recent') return recents.map((id) => byId.get(id)).filter((m): m is ModelInfo => m !== undefined);
   if (tab === 'tools') return models.filter(isToolCapable);
   // Free models that can do tasks - a free model that can only chat is no use here.
-  if (tab === 'free') return models.filter((model) => isFreeModel(model) && isToolCapable(model));
+  // A free model that has just failed twice in a row is left out too, rather than
+  // being offered again straight away as if nothing happened.
+  if (tab === 'free') return models.filter((model) => isFreeModel(model) && isToolCapable(model) && !isModelUnreliable(model.id));
   return models;
 }
 
@@ -213,7 +216,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         flat.push({ kind: 'model', model: pick.model, blurb: pick.blurb });
       }
       flat.push({ kind: 'header', label: '──────────' }, { kind: 'show-all' });
-      const freeCount = catalog.filter((model) => isFreeModel(model) && isToolCapable(model)).length;
+      const freeCount = catalog.filter((model) => isFreeModel(model) && isToolCapable(model) && !isModelUnreliable(model.id)).length;
       if (freeCount > 0) flat.push({ kind: 'show-free', count: freeCount });
       return flat;
     }
