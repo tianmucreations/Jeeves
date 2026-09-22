@@ -39,6 +39,7 @@ class SessionStore {
   keysOpen = false;
   wizardActive = false;
   helpOpen = false;
+  settingsOpen = false;
   exitRequested = false;
   launchStage: 'address' | 'project' | 'ready' = 'address';
   addressOpen = false;
@@ -370,6 +371,16 @@ class SessionStore {
 
   closeHelp(): void {
     this.helpOpen = false;
+    this.emit();
+  }
+
+  openSettings(): void {
+    this.settingsOpen = true;
+    this.emit();
+  }
+
+  closeSettings(): void {
+    this.settingsOpen = false;
     this.emit();
   }
 

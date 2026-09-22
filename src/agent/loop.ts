@@ -75,7 +75,9 @@ export function stopTurn(): boolean {
 
 export async function runTurn(input: string): Promise<void> {
   if (input.startsWith('/') && input.length > 1 && !input.startsWith('/ ')) {
-    if (input === '/help') {
+    if (input === '/settings') {
+      session.openSettings();
+    } else if (input === '/help') {
       session.openHelp();
     } else if (input === '/model') {
       openModelPicker();

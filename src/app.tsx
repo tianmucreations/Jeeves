@@ -13,6 +13,7 @@ import { loadModels } from './models/registry.js';
 import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
+import { SettingsView } from './components/SettingsView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
 import { AddressPrompt } from './components/AddressPrompt.js';
 import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './ink/mouse.js';
@@ -74,7 +75,7 @@ export function App() {
   // it goes back to the terminal, so its own selecting and Cmd+C copy work: a web
   // address such as where to get a key can be copied (owner, 19 Sept: "I still
   // can't copy things").
-  const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.addressOpen || s.launchStage !== 'ready');
+  const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.settingsOpen || s.addressOpen || s.launchStage !== 'ready');
   // On the setup screens Ctrl+C is only for quitting - still twice, never at once.
   // (The conversation screen's typing box handles its own.)
   useInput((input, key) => {
@@ -100,6 +101,9 @@ export function App() {
   }
   if (s.helpOpen) {
     return <HelpView rows={rows} />;
+  }
+  if (s.settingsOpen) {
+    return <SettingsView rows={rows} />;
   }
   if (s.addressOpen || s.launchStage === 'address') {
     return <AddressPrompt rows={rows} />;

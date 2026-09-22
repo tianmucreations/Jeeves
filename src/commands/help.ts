@@ -6,6 +6,7 @@ export interface HelpEntry {
 }
 
 export const COMMANDS: HelpEntry[] = [
+  { command: '/settings', description: 'everything in one place - folders, AI service, keys, and more' },
   { command: '/help', description: 'show this list' },
   { command: '/model', description: 'choose the AI service and model' },
   { command: '/keys', description: 'connect an AI service, or remove one' },
