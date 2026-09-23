@@ -130,9 +130,14 @@ export function Footer() {
   return (
     <Box justifyContent="space-between">
       <Text>
+        {/* Half blocks as the button's ends: the yellow starts at the middle of the
+            first column, exactly where the box's left border line is drawn (a full
+            cell poked out half a column to its left - owner, 23 Sept). */}
+        <Text color="yellow">▐</Text>
         <Text color="yellow" inverse>
-          {SETTINGS_BUTTON}
+          {SETTINGS_BUTTON.slice(1, -1)}
         </Text>
+        <Text color="yellow">▌</Text>
         {'  ' + model}
       </Text>
       <Text>

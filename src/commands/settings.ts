@@ -65,7 +65,7 @@ export function settingsRows(ctx: SettingsContext): SettingsRow[] {
     item(service.label, state ? `${state} - ${service.description}` : service.description, { type: 'service', provider: service.id }, service.id === ctx.providerId);
   }
 
-  section(`MODELS - ${ctx.providerLabel}`);
+  section(`MODELS - ${ctx.providerLabel} (in use - pick a service above for others)`);
   // Only models that can do tasks, and not one that has just failed twice running:
   // Jeeves only offers what is proven to work.
   const usable = (model: ModelInfo) => isToolCapable(model) && !isModelUnreliable(model.id);
