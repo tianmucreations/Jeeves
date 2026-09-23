@@ -55,14 +55,19 @@ export function parseMouseSequence(input: string): ParsedMouseEvent | null {
   return null;
 }
 
-// Wheel up scrolls the transcript up 3 rows, wheel down 3 rows back; the session
-// clamps at the newest (0) and the Transcript clamps at the oldest. A left-button
+// Wheel up scrolls the transcript up 3 rows, wheel down 3 rows back (or, over a
+// long message in the typing box, that message); the session clamps at the newest
+// (0) and the Transcript clamps at the oldest. The info bar's Settings button
+// opens Settings. A left-button
 // press in the conversation starts a selection, dragging extends it, and releasing
 // copies it. Nothing here ever reaches the text being typed.
 export function handleMouseInput(input: string): void {
   const event = parseMouseSequence(input);
   if (event === null) return;
   if (event.kind === 'wheel') {
+    // Over a message taller than the typing box, the wheel reads back through it
+    // (owner, 23 Sept: only the keys did it); everywhere else it scrolls the conversation.
+    if (session.inputWheel?.(event.row, event.button === 0)) return;
     session.scrollTranscript(event.button === 0 ? 3 : -3);
     return;
   }
@@ -73,6 +78,7 @@ export function handleMouseInput(input: string): void {
     // Outside the conversation: a click answers a pending question if one is on
     // screen, otherwise it places the cursor in the typing box.
     if (!point) {
+      if (session.footerClick?.(event.col, event.row)) return;
       if (session.approvalPending) session.approvalClick?.(event.col, event.row);
       else session.inputClick?.(event.col, event.row);
     }

@@ -14,7 +14,8 @@ import {
   isFreeModel,
   cleanModelName,
 } from '../models/registry.js';
-import { setFavorites, setRecents, setDefaultModel, setDefaultProvider, setDailyLimit, hasSavedDailyLimit, getDefaultModel } from '../platform/config.js';
+import { setFavorites, setDailyLimit, hasSavedDailyLimit, getDefaultModel } from '../platform/config.js';
+import { applyModelChoice } from '../models/choose.js';
 import {
   hasCredentials,
   hasCredentialsFor,
@@ -196,6 +197,30 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     };
   }, []);
 
+  // Sent here from Settings: straight into one service's models, or the daily limit.
+  useEffect(() => {
+    const start = session.pickerStart;
+    session.pickerStart = null;
+    if (!start) return;
+    if (start.step === 'limit') {
+      setLimitReturn('close');
+      setLimitValue('');
+      setLimitNote('');
+      setStep('limit');
+      return;
+    }
+    const index = PROVIDER_ROWS.findIndex((row) => row.id === start.provider);
+    if (index < 0) return;
+    setProviderCursor(index);
+    // Ollama is only known to be running a moment later, so it stays highlighted to choose.
+    if (start.provider === 'ollama') return;
+    chooseProvider(index);
+    if (start.full && start.provider === 'openrouter' && hasCredentialsFor('openrouter')) {
+      setStep('full');
+      setCursor(1);
+    }
+  }, []);
+
   const catalog =
     providerChoice === 'ollama'
       ? (ollamaModels ?? [])
@@ -312,16 +337,16 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     void loading.then(setDirectModels).catch(() => setDirectModels([]));
   }
 
-  function chooseProvider(): void {
+  function chooseProvider(index = providerCursor): void {
     // The row under the services: the daily spending limit.
-    if (providerCursor === PROVIDER_ROWS.length) {
+    if (index === PROVIDER_ROWS.length) {
       setLimitReturn('providers');
       setLimitValue('');
       setLimitNote('');
       setStep('limit');
       return;
     }
-    const row = PROVIDER_ROWS[providerCursor];
+    const row = PROVIDER_ROWS[index];
     if (!row) return;
     if (row.id === 'openrouter') {
       if (!hasCredentialsFor('openrouter')) return askForKey('openrouter');
@@ -370,14 +395,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function applyModel(model: ModelInfo): void {
-    const provider: ProviderChoice = providerChoice;
-    s.setProvider(provider);
-    s.setModel(model.id);
-    setDefaultProvider(provider);
-    setDefaultModel(model.id);
-    const updatedRecents = [model.id, ...s.recents.filter((id) => id !== model.id)].slice(0, 10);
-    s.setRecents(updatedRecents);
-    setRecents(updatedRecents);
+    applyModelChoice(providerChoice, model.id);
   }
 
   function toggleFavorite(): void {

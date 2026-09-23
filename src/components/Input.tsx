@@ -102,6 +102,17 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     }
     moveCursor(target.start + offset);
   };
+  // The wheel over the typing box reads back through a message taller than it,
+  // one row per turn of the wheel, like the arrows (which move 3 rows).
+  session.inputWheel = (row: number, up: boolean) => {
+    if (s.approvalPending || s.transcriptScrollUp > 0 || layout.maxScrollUp === 0) return false;
+    const rows = windowRows ?? 24;
+    const first = rows - 2 - (layout.rows.length - 1);
+    if (row < first || row > rows - 2) return false;
+    const next = Math.min(draftUpRef.current, layout.maxScrollUp) + (up ? 1 : -1);
+    scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
+    return true;
+  };
   // Clicking a button answers the question directly (OpenCode's row of buttons:
   // a click and the keyboard both land on the same answer). The question always
   // draws on the single bottom input row (app.tsx forces inputRows to 1 while a

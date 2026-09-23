@@ -133,7 +133,11 @@ export function AlternateScreen({ children }: { children: React.ReactNode }) {
     return () => leaveAltScreen();
   }, []);
 
-  const rows = Math.max(windowRows ?? 24, 8);
+  // Exactly the window's height, however small: a floor here (it was 8) drew more
+  // rows than a squashed window has, so the frame spilled over and the box's sides
+  // were cut off (owner, 23 Sept). App shows a one-line "make it bigger" note below
+  // its own minimum instead.
+  const rows = Math.max(windowRows ?? 24, 1);
 
   // The ceiling: without a height constraint on this box, flexGrow below has no
   // limit - the viewport would size to the content, scrolling would pin at 0, and

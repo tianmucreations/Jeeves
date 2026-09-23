@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useInsertionEffect, useRef } from 'react';
 import { Box, Text, useInput, useWindowSize } from 'ink';
 import { Header } from './components/Header.js';
 import { Transcript } from './components/Transcript.js';
@@ -26,6 +26,13 @@ import { pressCtrlCToQuit } from './ink/quit.js';
 // outside the box at the very bottom (model left, metrics right). Budget:
 // border 1 + header 1 + transcript rows-6 + separator 1 + input 1 + border 1 +
 // info bar 1 = exactly the terminal's rows.
+// The smallest window the full layout fits in: border, header, one conversation
+// row, separator, typing row, border, info bar - and room to breathe.
+export const MIN_ROWS = 8;
+export const MIN_COLUMNS = 40;
+// Erase the whole visible screen; the cursor stays put.
+const CLEAR_SCREEN = '\x1b[2J';
+
 export function App() {
   const s = useSession();
   // useWindowSize, not useStdout: it subscribes to the terminal's 'resize' event
@@ -76,19 +83,73 @@ export function App() {
   // address such as where to get a key can be copied (owner, 19 Sept: "I still
   // can't copy things").
   const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.settingsOpen || s.addressOpen || s.launchStage !== 'ready');
+  // Settings has nothing to copy, so it keeps the mouse too: the wheel or trackpad
+  // scrolls its list and a click chooses (owner, 23 Sept).
+  const wantsMouse = onConversation || (s.settingsOpen && !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen));
   // On the setup screens Ctrl+C is only for quitting - still twice, never at once.
   // (The conversation screen's typing box handles its own.)
   useInput((input, key) => {
     if (key.ctrl && input === 'c' && !onConversation) pressCtrlCToQuit();
   });
 
-  useEffect(() => {
+  // Which screen is showing. Every switch wipes the terminal just before the new
+  // screen's first frame: Ink erases the old frame from one row too high in a
+  // fullscreen frame whose cursor was shown (the same off-by-one inputFrameRow
+  // corrects), so the bottom row was never erased and the old info bar's end
+  // stayed on screen beside a shorter line (seen in a real pty, 23 Sept).
+  // useInsertionEffect, as AlternateScreen: it is the only effect that runs
+  // before Ink writes the frame. Clearing does not move the cursor, so Ink's own
+  // relative moves still land where it expects.
+  const tooSmall = (windowRows ?? 24) < MIN_ROWS || (windowColumns ?? 80) < MIN_COLUMNS;
+  const screen = tooSmall
+    ? 'small'
+    : s.wizardActive
+      ? 'wizard'
+      : s.keysOpen
+        ? 'keys'
+        : s.pickerOpen
+          ? 'picker'
+          : s.helpOpen
+            ? 'help'
+            : s.settingsOpen
+              ? 'settings'
+              : s.addressOpen || s.launchStage === 'address'
+                ? 'address'
+                : s.launchStage === 'project'
+                  ? 'project'
+                  : 'conversation';
+  const firstScreen = useRef(true);
+  useInsertionEffect(() => {
+    if (firstScreen.current) {
+      firstScreen.current = false;
+      return;
+    }
     try {
-      process.stdout.write(onConversation ? ENABLE_MOUSE_TRACKING : DISABLE_MOUSE_TRACKING);
+      process.stdout.write(CLEAR_SCREEN);
     } catch {
       // A closed stream must never crash the app.
     }
-  }, [onConversation]);
+  }, [screen]);
+
+  useEffect(() => {
+    try {
+      process.stdout.write(wantsMouse ? ENABLE_MOUSE_TRACKING : DISABLE_MOUSE_TRACKING);
+    } catch {
+      // A closed stream must never crash the app.
+    }
+  }, [wantsMouse]);
+
+  // Squeezed smaller than the box can be drawn in, a whole-looking box is
+  // impossible - Ink would cut its sides off (owner, 23 Sept: "an inch from top to
+  // bottom"). One plain line asks for room instead; everything comes back as it
+  // was, typing included, once the window is big enough again.
+  if (tooSmall) {
+    return (
+      <Text dimColor wrap="truncate-end">
+        Make the window a little bigger to see Jeeves
+      </Text>
+    );
+  }
 
   if (s.wizardActive) {
     return <KeysManager mode="wizard" rows={rows} columns={columns} />;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, useWindowSize } from 'ink';
-import { useSession } from '../state/session.js';
+import { session, useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
 import { isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
@@ -86,12 +86,30 @@ export function fitModelName(name: string, available: number): string {
   return name.length <= available ? name : name.slice(0, available - 1) + '…';
 }
 
+// A real button at the start of the info bar, under the typing box (owner, 23
+// Sept: "an actual button, like the Approve button"). Drawn the way the approval
+// buttons are, so it reads as something to click.
+export const SETTINGS_BUTTON = ' Settings ';
+
+// Whether a click at this column lands on the button (columns count from 1).
+export function onSettingsButton(col: number): boolean {
+  return col >= 1 && col <= SETTINGS_BUTTON.length;
+}
+
 export function Footer() {
   const s = useSession();
   // useWindowSize so the footer re-wraps live when the window is resized,
   // instead of keeping the column count it started with.
-  const { columns: windowColumns } = useWindowSize();
+  const { columns: windowColumns, rows: windowRows } = useWindowSize();
   const columns = Math.max(windowColumns ?? 80, 40);
+  // The info bar is the window's last row.
+  session.footerClick = (col: number, row: number) => {
+    if (row !== (windowRows ?? 24) || !onSettingsButton(col)) return false;
+    // A question waiting on the buttons above is answered first, never hidden.
+    if (session.approvalPending) return true;
+    session.openSettings();
+    return true;
+  };
   const segments = footerSegments({
     providerId: s.providerId,
     allowance: allowanceToday(),
@@ -107,11 +125,16 @@ export function Footer() {
   const rightWidth = segments.reduce((sum, segment) => sum + segment.text.length, 0) + 3 * (segments.length - 1);
   // In Auto mode the bar names the model actually working: "auto · deepseek-v4-flash-0731".
   const name = isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model);
-  const model = fitModelName(name, columns - rightWidth - 2);
+  const model = fitModelName(name, columns - rightWidth - 2 - SETTINGS_BUTTON.length - 2);
 
   return (
     <Box justifyContent="space-between">
-      <Text>{model}</Text>
+      <Text>
+        <Text color="yellow" inverse>
+          {SETTINGS_BUTTON}
+        </Text>
+        {'  ' + model}
+      </Text>
       <Text>
         {segments.map((segment, index) => (
           <React.Fragment key={segment.text}>

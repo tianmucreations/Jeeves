@@ -94,6 +94,16 @@ class SessionStore {
   // Set by the typing box: puts the cursor at a clicked screen position.
   inputClick: ((col: number, row: number) => void) | null = null;
   approvalClick: ((col: number, row: number) => void) | null = null;
+  // Set by the info bar: opens Settings when its button is clicked; true if the click landed on it.
+  footerClick: ((col: number, row: number) => boolean) | null = null;
+  // Set by the typing box: scrolls a message taller than the box when the wheel
+  // turns over it (the conversation scrolls everywhere else); true if it did.
+  inputWheel: ((row: number, up: boolean) => boolean) | null = null;
+  // Where the model list opens when Settings sends the person there: straight into
+  // one service's models (all of them with full), or the daily limit. Read once.
+  pickerStart: { provider?: string; full?: boolean; step?: 'limit' } | null = null;
+  // Where the folder list opens when Settings sends the person there. Read once.
+  folderPickerStart: 'list' | 'browse' | 'create' = 'list';
   transcriptView: { top: number; left: number; height: number; lines: string[]; scrollTop: number } | null = null;
   // What is being typed in the input box (the window sizes the box to fit it).
   inputText = '';

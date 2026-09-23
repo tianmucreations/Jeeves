@@ -5,11 +5,12 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { session, useSession } from '../state/session.js';
-import { setRecentProjects, getAddress, getDefaultModel } from '../platform/config.js';
+import { getDefaultModel } from '../platform/config.js';
+import { enterFolder } from '../commands/folder.js';
 import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
 import { hasCredentials, keysRead } from '../providers/index.js';
 import { isMouseSequence } from '../ink/mouse.js';
-import { ensureChatFolder, chatNotice } from '../platform/chat-folder.js';
+import { ensureChatFolder } from '../platform/chat-folder.js';
 
 type Item =
   | { kind: 'header'; label: string }
@@ -53,7 +54,12 @@ function fuzzyFolders(pool: FolderEntry[], query: string): FolderEntry[] {
 
 export function ProjectPicker({ rows, columns }: { rows: number; columns: number }) {
   const s = useSession();
-  const [mode, setMode] = useState<Mode>('list');
+  // Settings can open this straight at Browse or Create; read once, then reset.
+  const [mode, setMode] = useState<Mode>(() => {
+    const start = session.folderPickerStart;
+    session.folderPickerStart = 'list';
+    return start === 'browse' ? 'browse' : start === 'create' ? 'create-name' : 'list';
+  });
   const [purpose, setPurpose] = useState<'open' | 'create'>('open');
   const [stack, setStack] = useState<string[]>([]);
   const [filter, setFilter] = useState('');
@@ -120,25 +126,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
   }
 
   function startProject(folder: string, remember = true): void {
-    try {
-      process.chdir(folder);
-    } catch {
-      // Staying in the current folder is the safe fallback.
-    }
-    // The chat folder is not a project, so it never joins the recent list.
-    if (remember) {
-      const updated = [folder, ...session.recentProjects.filter((p) => p !== folder)].slice(0, 10);
-      session.setRecentProjects(updated);
-      setRecentProjects(updated);
-    }
-    const switching = session.switchingFolder;
-    session.launchComplete();
-    session.addNotice(remember ? `Now working in ${displayPath(folder)}.` : chatNotice(getAddress() ?? 'Sir'));
-    if (switching) {
-      // The conversation carries on in the new folder; the model is told it moved.
-      session.pendingContextNote = `[The person moved Jeeves to ${remember ? `the folder ${folder}` : `the chat folder ${folder}`}. Files mentioned earlier may not be here - look again before relying on them.]`;
-      return;
-    }
+    if (enterFolder(folder, remember)) return;
     // Only once the saved keys have been read can "no key yet" be true.
     void keysRead().then(() => {
       if (!hasCredentials()) {

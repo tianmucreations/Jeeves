@@ -166,7 +166,7 @@ export function inputLayout(value: string, rowWidth: number, maxRows = 6, scroll
   const rows: InputRow[] = [];
   // A hint never wraps: in a narrow window it is cut to the row.
   const hint = (text: string): InputRow => ({ text: Array.from(text).slice(0, maxWidth).join(''), trailingSpaces: '', hint: true });
-  if (start > 0) rows.push(hint(`↑ ${start} more line${start === 1 ? '' : 's'} above - ↑ ↓ to read`));
+  if (start > 0) rows.push(hint(`↑ ${start} more line${start === 1 ? '' : 's'} above - scroll or ↑ ↓ to read`));
   lines.slice(start, end).forEach((line, offset, shown) => {
     const index = start + offset;
     if (up > 0 || inside || offset < shown.length - 1) {
