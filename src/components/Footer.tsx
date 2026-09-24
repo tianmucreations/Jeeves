@@ -54,18 +54,22 @@ export function footerSegments(info: FooterInfo): FooterSegment[] {
   if (info.connected === false) return [{ text: `not connected - ${info.connectHint ?? 'type /keys to connect'}`, color: 'yellow' }];
   const busy = info.busyNote ?? (info.tidying ? 'tidying up…' : null);
   const direct = isDirectService(info.providerId);
-  if (busy && info.providerId !== 'openrouter' && !direct) return [{ text: busy }];
+  // On the plan the percentages are never covered up: a busy note or "thinking…"
+  // used to replace them entirely (owner: "no session percentages showing at
+  // all" - this was the hiding place, found by a real boot 24 Sept).
+  if (busy && info.providerId !== 'zai' && info.providerId !== 'openrouter' && !direct) return [{ text: busy }];
   if (info.providerId === 'zai') {
     // The plan is flat-rate, so dollars would be wrong; its own windows are the
-    // truth: the 5-hour session and the week (owner, 24 Sept). The same windows
-    // hold however many times Jeeves is opened in between.
+    // truth: the 5-hour session and the week. The owner's exact format, confirmed
+    // word for word 24 Sept (title case, colon, the dot in between) - and nothing
+    // else on the bar while the plan is in use: no reset times, no extra words.
+    // The used-up line below stays, as he asked.
     if (info.planResetAt === null && info.zaiQuota) {
       const q = info.zaiQuota;
-      const segments: FooterSegment[] = [{ text: `session ${Math.round(q.fiveHourPct)}%`, color: quotaColor(q.fiveHourPct) }];
-      // The reset time appears only when the session is running low.
-      if (q.fiveHourPct >= 80 && q.fiveHourResetAt) segments.push({ text: `resets ${q.fiveHourResetAt}`, color: q.fiveHourPct >= 100 ? 'red' : 'yellow' });
-      segments.push({ text: `week ${Math.round(q.weeklyPct)}%`, color: quotaColor(q.weeklyPct) });
-      return segments;
+      return [
+        { text: `Session: ${Math.round(q.fiveHourPct)}%`, color: quotaColor(q.fiveHourPct) },
+        { text: `Week: ${Math.round(q.weeklyPct)}%`, color: quotaColor(q.weeklyPct) },
+      ];
     }
     if (info.planResetAt === null) return [{ text: 'flat-rate plan' }];
     const when = info.planResetAt ? ` · resets @ ${info.planResetAt}` : '';

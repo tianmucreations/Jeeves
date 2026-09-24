@@ -40,12 +40,14 @@ describe('info bar', () => {
     expect(texts({ ...base, providerId: 'zai', planResetAt: '' })).toEqual(['plan used up']);
   });
 
-  it('on the plan shows the 5-hour session and the week as percentages - never dollars', () => {
+  it('on the plan shows exactly the owner format: Session: X% · Week: Y% - nothing else', () => {
     const quota = { fiveHourPct: 42.4, weeklyPct: 13, fiveHourResetAt: '13:03', weeklyResetAt: '09:00' };
-    expect(texts({ ...base, providerId: 'zai', zaiQuota: quota })).toEqual(['session 42%', 'week 13%']);
-    // Running low: the session turns amber and says when it resets (owner: no surprises).
+    expect(texts({ ...base, providerId: 'zai', zaiQuota: quota })).toEqual(['Session: 42%', 'Week: 13%']);
+    // Running low turns amber, but adds no reset time to the bar (owner: nothing else on it).
     const low = footerSegments({ ...base, providerId: 'zai', zaiQuota: { ...quota, fiveHourPct: 85 } });
-    expect(low).toEqual([{ text: 'session 85%', color: 'yellow' }, { text: 'resets 13:03', color: 'yellow' }, { text: 'week 13%' }]);
+    expect(low).toEqual([{ text: 'Session: 85%', color: 'yellow' }, { text: 'Week: 13%' }]);
+    // A busy note or thinking never covers the plan's percentages (the hiding bug).
+    expect(texts({ ...base, providerId: 'zai', zaiQuota: quota, tidying: true })).toEqual(['Session: 42%', 'Week: 13%']);
     // Used up: red.
     expect(footerSegments({ ...base, providerId: 'zai', zaiQuota: { ...quota, fiveHourPct: 100 } })[0].color).toBe('red');
     // Before the first reading: the plain plan line as before.
@@ -58,7 +60,8 @@ describe('info bar', () => {
     expect(footerSegments({ ...base, todaySpend: 2.4 })[0]).toEqual({ text: 'today $2.40 of $3.00', color: 'yellow' });
     expect(footerSegments({ ...base, todaySpend: 3.1 })[0]).toEqual({ text: 'today $3.10 of $3.00', color: 'red' });
     expect(texts({ ...base, tidying: true })[0]).toBe('tidying up…');
-    expect(texts({ ...base, providerId: 'zai', tidying: true })).toEqual(['tidying up…']);
+    // On the plan, tidying does NOT cover the bar - the plan's own line stays.
+    expect(texts({ ...base, providerId: 'zai', tidying: true })).toEqual(['flat-rate plan']);
   });
 
   it('shows local models as free', () => {

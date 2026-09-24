@@ -50,7 +50,7 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
   it('runs in order: folders, services, models, keys, you, and the commands last', () => {
     const titles = headers(settingsRows(base));
     expect(titles[0]).toBe('FOLDERS');
-    expect(titles[1]).toBe('AI PLAN');
+    expect(titles[1]).toBe('PROVIDER');
     expect(titles[2]).toMatch(/^MODELS/);
     expect(titles[titles.length - 1]).toMatch(/^COMMANDS/);
   });

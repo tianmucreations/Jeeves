@@ -60,7 +60,7 @@ export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   item('Browse for a folder →', '', { type: 'browse' });
   item('Create a new project →', '', { type: 'create' });
 
-  section('AI PLAN');
+  section('PROVIDER');
   for (const service of ctx.services) {
     const state = service.id === ctx.providerId ? 'in use' : ctx.connected(service.id) ? 'connected' : '';
     item(service.label, state ? `${state} - ${service.description}` : service.description, { type: 'service', provider: service.id }, service.id === ctx.providerId);
