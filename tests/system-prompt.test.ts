@@ -71,12 +71,12 @@ describe('system prompt', () => {
 
 describe('input cursor row geometry', () => {
   it('computes the y that lands the cursor on the input row', () => {
-    // Bordered layout: top border 1, transcript rows-5, separator 1, input 1,
-    // separator 1, bottom border 1. The input text sits on frame row rows-3;
-    // Ink's fullscreen frames draw the cursor one row above the y passed, so
-    // inputFrameRow returns rows-2.
-    expect(inputFrameRow(24)).toBe(22);
-    expect(inputFrameRow(40)).toBe(38);
+    // Layout A: border 1, transcript rows-7, separator 1, input 1, separator 1,
+    // info bar 1, border 1. The input text sits on frame row rows-4; Ink's
+    // fullscreen frames draw the cursor one row above the y passed, so
+    // inputFrameRow returns rows-3.
+    expect(inputFrameRow(24)).toBe(21);
+    expect(inputFrameRow(40)).toBe(37);
   });
 });
 

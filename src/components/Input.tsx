@@ -90,7 +90,9 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // Clicking in the typing box puts the cursor there.
   session.inputClick = (col: number, row: number) => {
     const rows = windowRows ?? 24;
-    const first = rows - 2 - (layout.rows.length - 1);
+    // The typing box's last row is third from the bottom (layout A: border,
+    // info bar and separator sit below it).
+    const first = rows - 3 - (layout.rows.length - 1);
     const target = layout.rows[row - first];
     if (!valueRef.current || !target || target.hint || target.start === undefined) return;
     let width = 0;
@@ -107,8 +109,8 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   session.inputWheel = (row: number, up: boolean) => {
     if (s.approvalPending || s.transcriptScrollUp > 0 || layout.maxScrollUp === 0) return false;
     const rows = windowRows ?? 24;
-    const first = rows - 2 - (layout.rows.length - 1);
-    if (row < first || row > rows - 2) return false;
+    const first = rows - 3 - (layout.rows.length - 1);
+    if (row < first || row > rows - 3) return false;
     const next = Math.min(draftUpRef.current, layout.maxScrollUp) + (up ? 1 : -1);
     scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
     return true;
@@ -121,16 +123,16 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     if (!s.approvalPending) return;
     const rows = windowRows ?? 24;
     // Same row math as the typing box above, for a single-row box (layout.rows.length 1).
-    if (row !== rows - 2) return;
+    if (row !== rows - 3) return;
     const button = approvalButtonAt(currentApprovalButtons, col - 3);
     if (button) answerApproval(button.key !== 'n', button.key === 'a');
   };
 
   // The block cursor sits at the text insertion point: two columns in (the
   // border's │ and its padding space) plus the visible text's width, measured
-  // with stringWidth so wide characters count. y is the input row, third from
-  // the bottom (info bar, bottom border, input); inputFrameRow carries the +1
-  // Ink's fullscreen frames need. Set during render, as Ink documents: useCursor
+  // with stringWidth so wide characters count. y is the input row, fourth from
+  // the bottom (border, info bar, separator, input); inputFrameRow carries the
+  // +1 Ink's fullscreen frames need. Set during render, as Ink documents: useCursor
   // hands the position to Ink in its own useInsertionEffect, which runs before
   // this commit's frame is written - a useLayoutEffect call runs after that and
   // only lands a frame late (measured: the cursor stayed hidden when the window
