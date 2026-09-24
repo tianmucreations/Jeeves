@@ -227,11 +227,11 @@ describe('direct connections: the rest of Jeeves', () => {
     expect(createCustomProvider('https://api.together.xyz/v1', 'k').name).toBe('together.xyz');
   });
 
-  const base: FooterInfo = { providerId: 'anthropic', allowance: 3, tidying: false, todaySpend: 0.12, creditRemaining: null, creditIsAccount: false, planResetAt: null, weekSpend: 0.3, weekAllowance: 21 };
+  const base: FooterInfo = { providerId: 'anthropic', allowance: 3, tidying: false, todaySpend: 0.12, creditRemaining: null, creditIsAccount: false, planResetAt: null };
 
-  it('shows an estimated spend and its share of the limit, and no balance it cannot know', () => {
-    expect(footerSegments(base).map((s) => s.text)).toEqual(['today ~$0.12 (4%)', 'week $0.30 (1%)']);
-    expect(footerSegments({ ...base, busyNote: 'backing up…' }).map((s) => s.text)).toEqual(['backing up…', 'today ~$0.12 (4%)', 'week $0.30 (1%)']);
+  it('shows an estimated spend for a direct connection, and no balance it cannot know', () => {
+    expect(footerSegments(base).map((s) => s.text)).toEqual(['today ~$0.12 of $3.00']);
+    expect(footerSegments({ ...base, busyNote: 'backing up…' }).map((s) => s.text)).toEqual(['backing up…', 'today ~$0.12 of $3.00']);
     expect(footerSegments({ ...base, todaySpend: 3 })[0].color).toBe('red');
   });
 

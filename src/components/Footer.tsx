@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text, useWindowSize } from 'ink';
 import { session, useSession } from '../state/session.js';
-import { allowanceToday, allowanceThisWeek, spentThisWeek } from '../agent/spending.js';
+import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
 import { isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
 import { hasCredentials } from '../providers/index.js';
@@ -27,10 +27,9 @@ export interface FooterInfo {
   creditRemaining: number | null;
   creditIsAccount: boolean;
   planResetAt: string | null;
-  // This week's spend and allowance (weekly limit plus extra agreed this week).
-  // When left out - an old caller - the week segment is not shown.
-  weekSpend?: number;
-  weekAllowance?: number;
+  // This week's spend and allowance are no longer shown: the owner was clear the
+  // pay-per-token display was correct and must stay exactly as it was (24 Sept);
+  // percentages belong to the plan's own windows (session, week).
   // The Z.ai plan's own windows (5-hour session, week), when the plan is in use.
   zaiQuota?: { fiveHourPct: number; weeklyPct: number; fiveHourResetAt: string | null; weeklyResetAt: string | null } | null;
   // False before any AI service is connected: the bar says so instead of "$—".
@@ -80,29 +79,16 @@ export function footerSegments(info: FooterInfo): FooterSegment[] {
     return [{ text: 'cost not tracked' }];
   }
   const spent = info.todaySpend ?? 0;
-  // Compared in whole cents, so $2.40 of $3.00 is exactly 80%. The percentage is
-  // shown beside the money (owner, 24 Sept: the person should "know exactly where
-  // they are" instead of being surprised when the limit stops a job).
+  // Compared in whole cents, so $2.40 of $3.00 is exactly 80%.
   const cents = Math.round(spent * 100);
   const limitCents = Math.round(info.allowance * 100);
-  const todayPct = limitCents > 0 ? Math.round((cents / limitCents) * 100) : 0;
   const segments: FooterSegment[] = [
     {
       // "~": worked out from the company's price list, not reported by it.
-      text: `today ${direct ? '~' : ''}${info.todaySpend === null ? '$—' : money(spent)} (${todayPct}%)`,
+      text: `today ${direct ? '~' : ''}${info.todaySpend === null ? '$—' : money(spent)} of ${money(info.allowance)}`,
       color: cents >= limitCents ? 'red' : cents * 10 >= limitCents * 8 ? 'yellow' : undefined,
     },
   ];
-  // The week's budget position, against the weekly limit (7× the daily one unless chosen).
-  if (info.weekSpend !== undefined && info.weekAllowance) {
-    const weekCents = Math.round(info.weekSpend * 100);
-    const weekLimitCents = Math.round(info.weekAllowance * 100);
-    const weekPct = weekLimitCents > 0 ? Math.round((weekCents / weekLimitCents) * 100) : 0;
-    segments.push({
-      text: `week ${money(info.weekSpend)} (${weekPct}%)`,
-      color: weekCents >= weekLimitCents ? 'red' : weekCents * 10 >= weekLimitCents * 8 ? 'yellow' : undefined,
-    });
-  }
   if (busy) segments.unshift({ text: busy });
   // The companies don't tell a key what credit is left.
   if (direct) return segments;
@@ -124,15 +110,19 @@ export function fitModelName(name: string, available: number): string {
 }
 
 // A real button at the start of the info bar, under the typing box (owner, 23
-// Sept: "an actual button, like the Approve button"). Drawn the way the approval
-// buttons are: one plain inverse block with square ends, starting at the
-// window's left edge, inline with the border corner above it (owner, 24 Sept:
-// half-block ends read as notched corners; one column in was not wanted either).
+// Sept: "an actual button, like the Approve button"). Its left edge must sit
+// EXACTLY on the box's vertical border line, which is drawn through the middle
+// of the first column - so the button's first cell is a half block: yellow from
+// the column's middle outwards, and the border line carries on above it. A full
+// cell starts half a character to the LEFT of the line (owner, 24 Sept: "past
+// the left edge"); one column in was not wanted either. The rest of the button
+// is one plain inverse block with a square right end, like the approval buttons.
 export const SETTINGS_BUTTON = ' Settings ';
 
 // Whether a click at this column lands on the button (columns count from 1).
+// The half-block cap is column 1; the body fills the columns after it.
 export function onSettingsButton(col: number): boolean {
-  return col >= 1 && col <= SETTINGS_BUTTON.length;
+  return col >= 1 && col <= SETTINGS_BUTTON.length + 1;
 }
 
 export function Footer() {
@@ -158,8 +148,6 @@ export function Footer() {
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,
     planResetAt: s.planResetAt,
-    weekSpend: spentThisWeek(),
-    weekAllowance: allowanceThisWeek(),
     zaiQuota: s.zaiQuota,
     // Whether a service is set up at all - not the brief "disconnected" of an internet drop.
     connected: hasCredentials(),
@@ -172,6 +160,7 @@ export function Footer() {
   return (
     <Box justifyContent="space-between">
       <Text>
+        <Text color="yellow">▐</Text>
         <Text color="yellow" inverse>
           {SETTINGS_BUTTON}
         </Text>

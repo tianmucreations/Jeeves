@@ -263,8 +263,11 @@ export async function refreshCredit(): Promise<void> {
   if (session.providerId === 'zai') {
     // The plan's own windows (the 5-hour session and the week), read straight
     // from Z.ai - read-only and free, and the reason a flat-rate plan can show
-    // real percentages in the bar (owner, 24 Sept).
-    const key = serviceKey('zai');
+    // real percentages in the bar (owner, 24 Sept). The plan key lives in its
+    // own slot at startup (readKeys keeps it out of the general service keys),
+    // so the keychain is the second look - missing it here was why the bar
+    // showed no percentages at all (found 24 Sept).
+    const key = serviceKey('zai') ?? (await getKey('zai'));
     if (key) session.setZaiQuota(await fetchZaiQuota(key));
     return;
   }
