@@ -37,6 +37,8 @@ describe('runBash hangs never lock the app', () => {
   it('judges the command, not the heredoc text, for interactive programs', async () => {
     // Ordinary English words in heredoc text must never read as programs
     // (part of the Spain fix, 24 Sept: prose in a heredoc is normal).
+    // Heredocs are bash syntax; Windows runs PowerShell, where they do not exist.
+    if (process.platform === 'win32') return;
     const result = await runRunBash({ command: "wc -w <<'EOF'\nmore details on top of less\nEOF" });
     expect(result).toContain('exit code: 0');
     expect(result).not.toContain('interactive');
