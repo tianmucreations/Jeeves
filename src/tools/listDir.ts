@@ -3,6 +3,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import { z } from 'zod';
 import { resolveFromCwd } from '../platform/paths.js';
+import { PlainError } from './plain.js';
 
 export const listDirSchema = z.object({
   path: z.string().describe('Directory to list'),
@@ -36,7 +37,7 @@ function ignorePatterns(dir: string): string[] {
 export async function runListDir(input: z.output<typeof listDirSchema>): Promise<string> {
   const dir = resolveFromCwd(input.path);
   if (!existsSync(dir)) {
-    throw new Error('That folder does not exist.');
+    throw new PlainError('That folder does not exist.');
   }
   const entries = await fg(input.recursive ? ['**/*'] : ['*'], {
     cwd: dir,

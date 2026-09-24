@@ -20,6 +20,8 @@ import {
   commandEditsFiles,
 } from '../agent/research-gate.js';
 import { holdUntilReproduced } from '../agent/review.js';
+import { describeCommand, describeDone } from './describe.js';
+import { PlainError } from './plain.js';
 
 // Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
 const MAX_RESULT_CHARS = 150_000;
@@ -36,6 +38,8 @@ function describeError(error: unknown): string {
 // Plain-English one-line failure text for the transcript; the model still receives
 // the full technical message so it can react.
 export function plainToolFailure(error: unknown): string {
+  // Errors the tool already worded for the person are shown exactly as thrown.
+  if (error instanceof PlainError) return error.message;
   const raw = describeError(error);
   const text = raw.toLowerCase();
   // Codes and meanings per the Node.js docs' "Common system errors" list.
@@ -93,6 +97,9 @@ function defineTool<S extends z.ZodObject>(config: {
   // For shell commands: the command text, carried onto the question so "always
   // allow this kind of command" can remember its family for the project.
   approvalCommand?: (input: z.output<S>) => string;
+  // The heads-up is folded into the tool's own question line instead of shown
+  // as a separate notice above it (one line, not two alarming ones).
+  warningInline?: boolean;
   // Checked before anything is asked or done (as Claude Code's validateInput): a
   // reason the action is held, which goes back to the model, or null.
   hold?: (input: z.output<S>) => Promise<string | null> | string | null;
@@ -120,7 +127,7 @@ function defineTool<S extends z.ZodObject>(config: {
       const needsPermission =
         (typeof config.permission === 'function' ? config.permission(input) : config.permission) &&
         !(trustable && (coveredElsewhere || isProjectTrusted()));
-      if (warning) session.addNotice(warning);
+      if (warning && !config.warningInline) session.addNotice(warning);
       const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
       if (needsPermission) {
         const approved = await requestApproval({ trustable, command: config.approvalCommand?.(input) });
@@ -221,8 +228,18 @@ export const TOOLS: ToolSet = {
     // per-repo command rules); everything else still prompts.
     permission: (input) => !isReadOnlyBashCommand(input.command) && !isCommandFamilyTrusted(input.command),
     approvalCommand: (input) => input.command,
-    summarize: (input) => clip(input.command, 60),
-    label: (input) => `Ran ${clip(input.command, 60)}`,
+    warningInline: true,
+    summarize: (input) => {
+      const described = describeCommand(input.command);
+      // The outside-folder heads-up rides on the question itself: one plain line,
+      // not a separate warning above it (owner, 24 Sept: the old pair looked
+      // "shocking and confusing").
+      if (!isReadOnlyBashCommand(input.command) && !isCommandTrusted(input.command) && commandMayReachOutside(input.command)) {
+        return `${described} (outside this project)`;
+      }
+      return described;
+    },
+    label: (input) => describeDone(input.command),
     run: async (input) => {
       const output = await runRunBash(input);
       // Looking around (a search that finds nothing exits 1) is not a problem to research.

@@ -94,28 +94,34 @@ function wrapWithPrefix(s: string, width: number, prefix: string, indent: string
 }
 
 // The tools' everyday names on screen; the internal names are for the model only.
-const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: 'Run', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
+// runBash's summaries are full plain phrases of their own ("Create folder X"),
+// so they carry no tool name - the phrase IS the question.
+const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: '', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
 
 export function toolName(tool: string): string {
   return TOOL_NAMES[tool] ?? tool;
 }
 
+function phrase(tool: string, summary: string): string {
+  return [toolName(tool), summary].filter((part) => part.length > 0).join(' ');
+}
+
 export function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'; dim?: boolean } {
   if (d.state === 'awaiting') {
-    return { text: `? ${toolName(d.tool)} ${d.summary} — allow? (y/n)`, color: 'yellow' };
+    return { text: `? ${phrase(d.tool, d.summary)} — allow?`, color: 'yellow' };
   }
   if (d.state === 'running') {
-    return { text: `… ${toolName(d.tool)} ${d.summary}`, dim: true };
+    return { text: `… ${phrase(d.tool, d.summary)}`, dim: true };
   }
   if (d.state === 'declined') {
-    return { text: `✗ ${toolName(d.tool)} ${clipLine(d.summary, 50)} - you said no`, color: 'red' };
+    return { text: `✗ ${phrase(d.tool, clipLine(d.summary, 50))} - you said no`, color: 'red' };
   }
   // Held until research is done: not a failure and not a refusal, so neither red nor alarming.
   if (d.state === 'held') {
-    return { text: `· ${toolName(d.tool)} ${clipLine(d.summary, 50)} - ${d.label}`, dim: true };
+    return { text: `· ${phrase(d.tool, clipLine(d.summary, 50))} - ${d.label}`, dim: true };
   }
   if (d.state === 'failed') {
-    return { text: `✗ ${toolName(d.tool)} failed: ${clipLine(d.label, 60)}`, color: 'red' };
+    return { text: `✗ ${phrase(d.tool, d.summary)} failed: ${clipLine(d.label, 60)}`, color: 'red' };
   }
   return { text: `✓ ${d.label}` };
 }
