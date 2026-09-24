@@ -34,6 +34,14 @@ describe('runBash hangs never lock the app', () => {
     await expect(runRunBash({ command: 'cat "my less notes.txt" || true' })).resolves.toBeTruthy();
   });
 
+  it('judges the command, not the heredoc text, for interactive programs', async () => {
+    // Ordinary English words in heredoc text must never read as programs
+    // (part of the Spain fix, 24 Sept: prose in a heredoc is normal).
+    const result = await runRunBash({ command: "wc -w <<'EOF'\nmore details on top of less\nEOF" });
+    expect(result).toContain('exit code: 0');
+    expect(result).not.toContain('interactive');
+  });
+
   it('kills a running command when the app exits', async () => {
     const slow = runRunBash({ command: 'sleep 30' });
     killAllRunningCommands();

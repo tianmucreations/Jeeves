@@ -150,6 +150,37 @@ describe('read-only bash allowlist', () => {
     expect(isReadOnlyBashCommand('yes | tail -1')).toBe(true);
   });
 
+  it('allows a heredoc feeding plain text to a read-only command - never asks (the Spain bug, 24 Sept)', () => {
+    for (const command of [
+      "wc -w <<'EOF'\nSpain occupies most of the Iberian Peninsula.\nEOF",
+      'wc -w <<EOF\nhello world\nEOF',
+      "cat <<'EOF'\nsome text to hold\nEOF",
+      "wc -l <<'END'\ntwo\nlines\nEND",
+      "sort <<'EOF'\nb\na\nEOF",
+      "head -3 <<'EOF'\nx\ny\nz\nEOF",
+      "wc -w <<-'EOF'\nindented body\n\tEOF",
+      "grep -c a <<'EOF'\nbanana\nbandana\nEOF",
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(true);
+    }
+  });
+
+  it('still prompts when a heredoc is malformed or the command is not read-only', () => {
+    for (const command of [
+      'bash <<EOF\nrm -rf /\nEOF',
+      "sh <<'EOF'\nanything\nEOF",
+      "wc -w <<'EOF'\nnever terminated",
+      "cat <<'EOF'\nbody\nEOF\nrm x",
+      'wc -w <<A <<B\nx\nA\nB',
+      "wc -w <<'EOF' | tail -1\nx\nEOF",
+      'cat <<EOF\nbacktick `pwd` in an unquoted body\nEOF',
+      'cat <<EOF\n$(rm -rf x) in an unquoted body\nEOF',
+      'yes <<EOF\nforever\nEOF',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(false);
+    }
+  });
+
   it('rejects empty and whitespace-only commands', () => {
     expect(isReadOnlyBashCommand('')).toBe(false);
     expect(isReadOnlyBashCommand('   ')).toBe(false);

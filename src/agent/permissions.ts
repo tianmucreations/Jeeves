@@ -143,6 +143,72 @@ function splitOutsideQuotes(text: string, separator: string): string[] {
   return parts;
 }
 
+// A heredoc (command <<TAG, some text lines, then TAG alone on a line) feeds
+// those lines to the command as plain data. The data is never interpreted as a
+// command - with a quoted tag it is not expanded at all, and an unquoted tag
+// expands only parameters, never commands (substitutions are banned on the
+// whole command string before this runs). One well-formed heredoc is therefore
+// as harmless as the command it feeds, and the text is removed before the usual
+// checks so its newlines and everyday words cannot disguise the command or trip
+// the interactive-program refusal.
+// Returns the command without the heredoc, null when there is no heredoc, or
+// 'malformed' when one is present but cannot be proven clean (then: prompt).
+function extractHeredoc(command: string): string | null | 'malformed' {
+  const firstLineEnd = command.indexOf('\n');
+  const firstLine = firstLineEnd === -1 ? command : command.slice(0, firstLineEnd);
+  let operatorAt = -1;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < firstLine.length; i++) {
+    const ch = firstLine[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '<' && firstLine[i + 1] === '<') {
+      operatorAt = i;
+      break;
+    }
+  }
+  if (operatorAt === -1) return null;
+  let at = operatorAt + 2;
+  const dash = firstLine[at] === '-';
+  if (dash) at++;
+  while (firstLine[at] === ' ') at++;
+  let tag = '';
+  if (firstLine[at] === '"' || firstLine[at] === "'") {
+    const end = firstLine.indexOf(firstLine[at], at + 1);
+    if (end === -1) return 'malformed';
+    tag = firstLine.slice(at + 1, end);
+    at = end + 1;
+  } else {
+    while (at < firstLine.length && !/[\s;&|<>()]/.test(firstLine[at])) {
+      tag += firstLine[at];
+      at++;
+    }
+  }
+  if (tag.length === 0) return 'malformed';
+  // Anything on the command line after the tag (a pipe, a second heredoc) cannot
+  // be proven to treat the text as data - so it keeps prompting.
+  if (firstLine.slice(at).trim() !== '') return 'malformed';
+  const body = firstLineEnd === -1 ? [] : command.slice(firstLineEnd + 1).split('\n');
+  const closeAt = body.findIndex((line) => (dash ? line.replace(/^\t+/, '') : line) === tag);
+  if (closeAt === -1) return 'malformed';
+  if (body.slice(closeAt + 1).some((line) => line.trim() !== '')) return 'malformed';
+  return firstLine.slice(0, operatorAt).trim();
+}
+
+// The command with any well-formed heredoc removed (the original otherwise).
+// Shared with the interactive-program refusal, which must judge the command,
+// never the heredoc's prose.
+export function stripHeredoc(command: string): string {
+  const extracted = extractHeredoc(command.trim());
+  return typeof extracted === 'string' ? extracted : command.trim();
+}
+
 // True when the command is composed entirely of read-only stages: pipes, && and
 // || chains of allowlisted commands, with redirection to /dev/null only. Anything
 // else - writes, deletes, installs, network, substitutions, semicolons - is false.
@@ -150,10 +216,15 @@ export function isReadOnlyBashCommand(command: string): boolean {
   const trimmed = command.trim();
   if (trimmed.length === 0) return false;
   // Substitution constructs can turn any read into a write - and "$(...)" inside
-  // double quotes still executes - so any of these disqualifies outright.
+  // double quotes still executes - so any of these disqualifies outright. Checked
+  // on the whole text INCLUDING heredoc lines: an unquoted heredoc body is
+  // expanded by the shell, so a backtick or $( in it would execute.
   if (trimmed.includes('`') || trimmed.includes('$(')) return false;
-  if (/[;\n]/.test(stripQuotes(trimmed))) return false;
-  for (const chain of splitOutsideQuotes(trimmed, '&&')) {
+  const heredoc = extractHeredoc(trimmed);
+  if (heredoc === 'malformed') return false;
+  const effective = typeof heredoc === 'string' ? heredoc : trimmed;
+  if (/[;\n]/.test(stripQuotes(effective))) return false;
+  for (const chain of splitOutsideQuotes(effective, '&&')) {
     for (const alternative of splitOutsideQuotes(chain, '||')) {
       const stages = splitOutsideQuotes(alternative, '|');
       for (let i = 0; i < stages.length; i++) {

@@ -1,7 +1,7 @@
 import { execa, type ResultPromise } from 'execa';
 import { z } from 'zod';
 import { getShell } from '../platform/shell.js';
-import { stripQuotes } from '../agent/permissions.js';
+import { stripHeredoc, stripQuotes } from '../agent/permissions.js';
 
 // Claude Code's limits (utils/timeouts.ts): 2 minutes unless the model asks for
 // more, 10 minutes at most. Jeeves had 60 seconds, which cut off every large
@@ -53,7 +53,10 @@ export function describeLimit(ms: number): string {
 }
 
 export async function runRunBash(input: z.output<typeof runBashSchema>): Promise<string> {
-  const refusal = interactiveCommandIn(input.command);
+  // Heredoc text is data being fed to the command, not the command itself - the
+  // refusal must judge the command, so ordinary words in the text ("more", "top")
+  // cannot be mistaken for programs.
+  const refusal = interactiveCommandIn(stripHeredoc(input.command));
   if (refusal !== null) {
     throw new Error(
       `${refusal} needs an interactive terminal, which this tool does not provide - it was not run. Use a non-interactive alternative (for example cat or grep) instead.`
