@@ -4,15 +4,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commandFamily, commandFamilies } from '../src/agent/command-family.js';
 import { trustCommandFamily, isCommandFamilyTrusted, untrustCommandFamilies } from '../src/agent/trust.js';
-import { requestApproval, answerApproval, currentApprovalFamily, hasPendingApproval } from '../src/agent/permissions.js';
+import { requestApproval, answerApproval, hasPendingApproval } from '../src/agent/permissions.js';
 import { session } from '../src/state/session.js';
 
-// "Always allow this kind of command" - the owner has reported approval fatigue
-// for weeks ("You have to be strapped to the screen as all he does is ask for
-// permission"). Claude Code saves a per-repo `Bash(prefix *)` rule when the
-// person answers "don't ask again"; OpenCode saves the command pattern per
-// project (computed with its arity table). This is Jeeves's version: the kind
-// of the command, remembered per folder, permanently, from the person's answer.
+// "Always Allow" quietly remembers the kind of any command it answers (Claude
+// Code saves a per-repo `Bash(prefix *)` rule; OpenCode saves the pattern per
+// project) - the questions dry up faster, and NOTHING about it is on screen:
+// the buttons are exactly Allow / Always Allow / Decline (owner, 24 Sept).
 describe('the kind of a command', () => {
   it('is the few words that name what the command is', () => {
     expect(commandFamily('wc -w notes.txt')).toBe('wc');
@@ -62,28 +60,14 @@ describe('a command kind allowed once never asks again in that folder', () => {
     expect(isCommandFamilyTrusted('wc -l x', otherFolder)).toBe(false);
   });
 
-  it('answering the question with "always allow this kind" remembers it and answers waiting questions of the same kind', async () => {
+  it('"Always Allow" answers the question, trusts the folder, and quietly remembers the command kind', async () => {
     const first = requestApproval({ trustable: true, command: 'wc -w notes.txt' });
     const waiting = requestApproval({ trustable: true, command: 'wc -c other.txt' });
-    const different = requestApproval({ trustable: true, command: 'touch newfile' });
-    expect(currentApprovalFamily()).toBe('wc');
-    answerApproval(true, 'command');
+    answerApproval(true, 'project');
     expect(await first).toBe(true);
     expect(await waiting).toBe(true);
-    expect(hasPendingApproval()).toBe(true);
-    answerApproval(false);
-    expect(await different).toBe(false);
+    expect(hasPendingApproval()).toBe(false);
     expect(isCommandFamilyTrusted('wc -l later.txt')).toBe(true);
-  });
-
-  it('a multi-stage command remembers every kind it needs', async () => {
-    const command = 'cat notes.txt && wc -w notes.txt';
-    const pending = requestApproval({ trustable: true, command });
-    expect(currentApprovalFamily()).toBe('these commands');
-    answerApproval(true, 'command');
-    expect(await pending).toBe(true);
-    expect(isCommandFamilyTrusted('cat other.txt')).toBe(true);
-    expect(isCommandFamilyTrusted('wc -l other.txt')).toBe(true);
   });
 
   it('untrustCommandFamilies clears the kinds for a folder (/ask)', () => {

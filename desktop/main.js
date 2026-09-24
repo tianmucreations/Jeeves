@@ -22,7 +22,7 @@ const engine = (file) => import(new URL(`../dist/${file}`, import.meta.url).href
 
 const { session } = await engine('state/session.js');
 const { runTurn, stopTurn } = await engine('agent/loop.js');
-const { answerApproval, currentApprovalTrustable, currentApprovalFamily } = await engine('agent/permissions.js');
+const { answerApproval, currentApprovalTrustable } = await engine('agent/permissions.js');
 const providers = await engine('providers/index.js');
 const config = await engine('platform/config.js');
 const { loadModels } = await engine('models/registry.js');
@@ -105,7 +105,7 @@ function snapshot() {
     keysChecked,
     hasKeys: providers.hasCredentials(),
     status: s.status,
-    approval: s.approvalPending ? { trustable: currentApprovalTrustable(), commandLabel: currentApprovalFamily() } : null,
+    approval: s.approvalPending ? { trustable: currentApprovalTrustable() } : null,
     queued: s.queued.length,
     thinkingSince: s.thinkingSince,
     workingSince: s.status === 'idle' || s.status === 'disconnected' ? null : workingSince,
@@ -255,7 +255,6 @@ ipcMain.on('stop', () => {
 ipcMain.on('answer', (_event, answer) => {
   if (!session.approvalPending) return;
   if (answer === 'y') answerApproval(true);
-  else if (answer === 'c' && currentApprovalFamily()) answerApproval(true, 'command');
   else if (answer === 'a' && currentApprovalTrustable()) answerApproval(true, 'project');
   else if (answer === 'n') answerApproval(false);
 });

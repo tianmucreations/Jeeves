@@ -1,19 +1,17 @@
 import { session } from '../state/session.js';
-import { trustProject, trustCommandFamily, isCommandFamilyTrusted } from './trust.js';
+import { trustProject, trustCommandFamily } from './trust.js';
 import { getAddress } from '../platform/config.js';
-import { extractHeredoc, splitOutsideQuotes, commandFamilies } from './command-family.js';
+import { extractHeredoc, splitOutsideQuotes } from './command-family.js';
 
 interface PendingApproval {
   resolve: (approved: boolean) => void;
-  // Whether "always allow in this project" may answer it: a change inside the
-  // project folder. Spending questions and anything outside the folder never are.
+  // Whether "Always Allow" may answer it: a change inside the project folder.
+  // Spending questions and anything outside the folder never are.
   trustable: boolean;
-  // For shell commands: the command itself, so "always allow this kind of
-  // command" can remember its family for the project (Claude Code's saved
-  // `Bash(prefix *)` rules, OpenCode's saved permission patterns).
+  // For shell commands: the command itself, so "Always Allow" can quietly
+  // remember its kind for the project (Claude Code's saved `Bash(prefix *)`
+  // rules, OpenCode's saved permission patterns) - nothing about this is shown.
   command?: string;
-  // The few words naming the kind, for the button label (`wc`, `npm run`).
-  familyLabel?: string | null;
 }
 
 // Pure-output commands that never require permission (the rule: harmless
@@ -203,12 +201,10 @@ export function hasPendingApproval(): boolean {
 
 export function requestApproval(options: { trustable?: boolean; command?: string } = {}): Promise<boolean> {
   return new Promise((resolve) => {
-    const families = options.command ? commandFamilies(options.command) : [];
     queue.push({
       resolve,
       trustable: options.trustable === true,
       command: options.command,
-      familyLabel: options.command ? (families.length === 1 ? families[0] : families.length > 1 ? 'these commands' : null) : null,
     });
     if (queue.length === 1) {
       session.setActiveApproval();
@@ -216,41 +212,25 @@ export function requestApproval(options: { trustable?: boolean; command?: string
   });
 }
 
-// Whether the question now on screen may be answered with "always allow".
+// Whether the question now on screen may be answered with "Always Allow".
 export function currentApprovalTrustable(): boolean {
   return queue[0]?.trustable === true;
 }
 
-// The kind of the command now awaiting an answer (`wc`, `npm run`), for the
-// "always allow this kind" button; null when the question is not a command.
-export function currentApprovalFamily(): string | null {
-  return queue[0]?.familyLabel ?? null;
-}
-
-// scope "project": "always allow in this project" - approves this change, every
-// other change inside the project already waiting, and all future ones in this
-// folder (still backed up, so /undo works).
-// scope "command": "always allow this kind of command" - remembers the command's
-// family for this project, so no command of the same kind asks again here (as
-// Claude Code saves a per-repo `Bash(prefix *)` rule and OpenCode saves the
-// pattern per project). Other questions already waiting whose command is now
-// covered by that memory are answered too.
-export function answerApproval(approved: boolean, scope: 'once' | 'project' | 'command' = 'once'): void {
+// "Always Allow": approves this change, every other change inside the project
+// already waiting, and all future ones in this folder (still backed up, so /undo
+// works). A shell command's kind is quietly remembered too, so the questions
+// dry up faster - nothing about that is shown; the buttons stay exactly
+// Allow / Always Allow / Decline (owner, 24 Sept).
+export function answerApproval(approved: boolean, scope: 'once' | 'project' = 'once'): void {
   const current = queue.shift();
   if (!current) return;
   if (approved && scope === 'project' && current.trustable) {
     trustProject();
+    if (current.command) trustCommandFamily(current.command);
     session.addNotice(`From now on I won't ask before changing things in this project folder, ${getAddress() ?? 'Sir'} - every change is still backed up, so /undo puts it back. I'll still ask about anything outside it. Type /ask to have me ask every time again.`);
     for (let i = queue.length - 1; i >= 0; i--) {
       if (queue[i].trustable) queue.splice(i, 1)[0].resolve(true);
-    }
-  }
-  if (approved && scope === 'command' && current.command) {
-    trustCommandFamily(current.command);
-    session.addNotice(`Got it - I won't ask about ${current.familyLabel ?? 'that kind of'} command${current.familyLabel && current.familyLabel !== 'these commands' ? 's' : ''} in this folder again, ${getAddress() ?? 'Sir'}. Type /ask to have me ask every time.`);
-    for (let i = queue.length - 1; i >= 0; i--) {
-      const waiting = queue[i];
-      if (waiting.command && isCommandFamilyTrusted(waiting.command)) queue.splice(i, 1)[0].resolve(true);
     }
   }
   current.resolve(approved);
