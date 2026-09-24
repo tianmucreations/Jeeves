@@ -62,6 +62,10 @@ class SessionStore {
   // When a flat-rate plan (Z.ai) has used up its allowance: the reset time it gave
   // (HH:MM, or '' if none was given); null while the plan has allowance.
   planResetAt: string | null = null;
+  // The plan's own usage figures, read from Z.ai after turns: the 5-hour window
+  // and the week, as percentages (owner, 24 Sept: "session and weekly" is what a
+  // plan user needs - the same windows apply however many times Jeeves is opened).
+  zaiQuota: { fiveHourPct: number; weeklyPct: number; fiveHourResetAt: string | null; weeklyResetAt: string | null } | null = null;
   // In Auto mode, the model actually working right now (worker or expert).
   activeModel: string | null = null;
   // True while quiet housekeeping (a summary) is running - shown in the info bar.
@@ -515,6 +519,11 @@ class SessionStore {
   setPlanResetAt(value: string | null): void {
     if (this.planResetAt === value) return;
     this.planResetAt = value;
+    this.emit();
+  }
+
+  setZaiQuota(quota: { fiveHourPct: number; weeklyPct: number; fiveHourResetAt: string | null; weeklyResetAt: string | null } | null): void {
+    this.zaiQuota = quota;
     this.emit();
   }
 

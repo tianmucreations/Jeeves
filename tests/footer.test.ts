@@ -46,6 +46,20 @@ describe('info bar', () => {
     expect(texts({ ...base, providerId: 'zai', planResetAt: '' })).toEqual(['plan used up']);
   });
 
+  it('on the plan shows the 5-hour session and the week as percentages - never dollars', () => {
+    const quota = { fiveHourPct: 42.4, weeklyPct: 13, fiveHourResetAt: '13:03', weeklyResetAt: '09:00' };
+    expect(texts({ ...base, providerId: 'zai', zaiQuota: quota })).toEqual(['session 42%', 'week 13%']);
+    // Running low: the session turns amber and says when it resets (owner: no surprises).
+    const low = footerSegments({ ...base, providerId: 'zai', zaiQuota: { ...quota, fiveHourPct: 85 } });
+    expect(low).toEqual([{ text: 'session 85%', color: 'yellow' }, { text: 'resets 13:03', color: 'yellow' }, { text: 'week 13%' }]);
+    // Used up: red.
+    expect(footerSegments({ ...base, providerId: 'zai', zaiQuota: { ...quota, fiveHourPct: 100 } })[0].color).toBe('red');
+    // Before the first reading: the plain plan line as before.
+    expect(texts({ ...base, providerId: 'zai', zaiQuota: null })).toEqual(['flat-rate plan']);
+    // A plan that just used up (the stream's own word) still wins over the reading.
+    expect(texts({ ...base, providerId: 'zai', zaiQuota: quota, planResetAt: '13:03' })).toEqual(['plan used up · resets @ 13:03']);
+  });
+
   it("warns as today's spend nears the daily limit, in words and in colour", () => {
     expect(footerSegments({ ...base, todaySpend: 2.4 })).toEqual([{ text: 'today $2.40 (80%)', color: 'yellow' }, { text: 'week $0.42 (2%)' }, { text: '$12.50 left' }]);
     expect(footerSegments({ ...base, todaySpend: 3.1 })[0]).toEqual({ text: 'today $3.10 (103%)', color: 'red' });

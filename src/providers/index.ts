@@ -4,6 +4,7 @@ import { getSpendReading, setSpendReading, correctSpendLogDay } from '../platfor
 import { nextSpendReading, spentToday } from '../state/today-spend.js';
 import { createOllamaProvider } from './ollama.js';
 import { createZaiProvider } from './zai.js';
+import { fetchZaiQuota } from './zai-quota.js';
 import { createDirectProvider, createCustomProvider } from './direct.js';
 import { DIRECT_SERVICES, CUSTOM_SERVICE_ID, directService, isDirectService, serviceNameFor, type DirectServiceId } from './direct-services.js';
 import { checkKey, checkCustomService, forgetLiveList, loadCatalogue } from './catalogue.js';
@@ -259,6 +260,14 @@ export function getActiveProvider(): Provider {
 // the inference key only sees its own spending cap, which is labelled as such.
 // Local Ollama has no credit balance, and failures are silent.
 export async function refreshCredit(): Promise<void> {
+  if (session.providerId === 'zai') {
+    // The plan's own windows (the 5-hour session and the week), read straight
+    // from Z.ai - read-only and free, and the reason a flat-rate plan can show
+    // real percentages in the bar (owner, 24 Sept).
+    const key = serviceKey('zai');
+    if (key) session.setZaiQuota(await fetchZaiQuota(key));
+    return;
+  }
   if (session.providerId !== 'openrouter') {
     // Direct connections: today's spending as worked out from price lists.
     session.setTodaySpend(Math.max(session.todaySpend ?? 0, estimatedToday()));

@@ -31,6 +31,8 @@ export interface FooterInfo {
   // When left out - an old caller - the week segment is not shown.
   weekSpend?: number;
   weekAllowance?: number;
+  // The Z.ai plan's own windows (5-hour session, week), when the plan is in use.
+  zaiQuota?: { fiveHourPct: number; weeklyPct: number; fiveHourResetAt: string | null; weeklyResetAt: string | null } | null;
   // False before any AI service is connected: the bar says so instead of "$—".
   connected?: boolean;
   // What to do about it, in this app's words ("type /keys" or "open Settings").
@@ -38,6 +40,13 @@ export interface FooterInfo {
 }
 
 const money = (value: number) => `$${value.toFixed(2)}`;
+
+// Amber as a window nears its end, red when it is used up.
+function quotaColor(pct: number): 'yellow' | 'red' | undefined {
+  if (pct >= 100) return 'red';
+  if (pct >= 80) return 'yellow';
+  return undefined;
+}
 
 // The info bar says only what is worth a glance: which model is working (left),
 // and on the right what today has cost and what is left - or, for a flat-rate
@@ -48,6 +57,17 @@ export function footerSegments(info: FooterInfo): FooterSegment[] {
   const direct = isDirectService(info.providerId);
   if (busy && info.providerId !== 'openrouter' && !direct) return [{ text: busy }];
   if (info.providerId === 'zai') {
+    // The plan is flat-rate, so dollars would be wrong; its own windows are the
+    // truth: the 5-hour session and the week (owner, 24 Sept). The same windows
+    // hold however many times Jeeves is opened in between.
+    if (info.planResetAt === null && info.zaiQuota) {
+      const q = info.zaiQuota;
+      const segments: FooterSegment[] = [{ text: `session ${Math.round(q.fiveHourPct)}%`, color: quotaColor(q.fiveHourPct) }];
+      // The reset time appears only when the session is running low.
+      if (q.fiveHourPct >= 80 && q.fiveHourResetAt) segments.push({ text: `resets ${q.fiveHourResetAt}`, color: q.fiveHourPct >= 100 ? 'red' : 'yellow' });
+      segments.push({ text: `week ${Math.round(q.weeklyPct)}%`, color: quotaColor(q.weeklyPct) });
+      return segments;
+    }
     if (info.planResetAt === null) return [{ text: 'flat-rate plan' }];
     const when = info.planResetAt ? ` · resets @ ${info.planResetAt}` : '';
     return [{ text: `plan used up${when}`, color: 'red' }];
@@ -105,19 +125,14 @@ export function fitModelName(name: string, available: number): string {
 
 // A real button at the start of the info bar, under the typing box (owner, 23
 // Sept: "an actual button, like the Approve button"). Drawn the way the approval
-// buttons are: one plain inverse block with square ends.
+// buttons are: one plain inverse block with square ends, starting at the
+// window's left edge, inline with the border corner above it (owner, 24 Sept:
+// half-block ends read as notched corners; one column in was not wanted either).
 export const SETTINGS_BUTTON = ' Settings ';
-
-// The whole info bar is padded one column in from the window's edges, so the
-// button starts at column 2 - directly below the content inside the box (the
-// header, the conversation, the typed text), and fully to the right of where the
-// border line runs. Half-block end caps (aligning to the border's exact centre)
-// read as notched corners on a real screen and still looked off (owner, 24 Sept).
-export const SETTINGS_BUTTON_START = 2;
 
 // Whether a click at this column lands on the button (columns count from 1).
 export function onSettingsButton(col: number): boolean {
-  return col >= SETTINGS_BUTTON_START && col < SETTINGS_BUTTON_START + SETTINGS_BUTTON.length;
+  return col >= 1 && col <= SETTINGS_BUTTON.length;
 }
 
 export function Footer() {
@@ -145,6 +160,7 @@ export function Footer() {
     planResetAt: s.planResetAt,
     weekSpend: spentThisWeek(),
     weekAllowance: allowanceThisWeek(),
+    zaiQuota: s.zaiQuota,
     // Whether a service is set up at all - not the brief "disconnected" of an internet drop.
     connected: hasCredentials(),
   });
@@ -154,7 +170,7 @@ export function Footer() {
   const model = fitModelName(name, columns - rightWidth - 2 - SETTINGS_BUTTON.length - 2);
 
   return (
-    <Box justifyContent="space-between" paddingLeft={1} paddingRight={1}>
+    <Box justifyContent="space-between">
       <Text>
         <Text color="yellow" inverse>
           {SETTINGS_BUTTON}

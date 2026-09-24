@@ -119,11 +119,10 @@ describe('opening the Settings screen', () => {
     session.closeSettings();
   });
 
-  it('the Settings button in the info bar is a real click target, one column in from the edge', () => {
-    expect(onSettingsButton(1)).toBe(false);
-    expect(onSettingsButton(2)).toBe(true);
-    expect(onSettingsButton(11)).toBe(true);
-    expect(onSettingsButton(12)).toBe(false);
+  it('the Settings button in the info bar is a real click target, flush with the edge', () => {
+    expect(onSettingsButton(1)).toBe(true);
+    expect(onSettingsButton(10)).toBe(true);
+    expect(onSettingsButton(11)).toBe(false);
     session.closeSettings();
     const opened: [number, number][] = [];
     session.footerClick = (col, row) => {
