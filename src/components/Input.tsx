@@ -57,9 +57,16 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   }, [awaitingId]);
   const currentApprovalButtons = s.approvalPending ? approvalButtons(currentApprovalTrustable()) : [];
   const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
-  // The real cursor only at the end of the message; inside it, the highlighted
-  // character is the cursor.
-  const showingText = !s.approvalPending && s.transcriptScrollUp === 0 && layout.scrollUp === 0 && cursorRef.current === null;
+  // The real cursor only at the end of a non-empty message; inside it, the
+  // highlighted character is the cursor. While the box is empty its row shows
+  // the dim "ask anything" hint, and the cursor is hidden so it never sits on
+  // those words (owner, 24 Sept).
+  const showingText =
+    valueRef.current !== '' &&
+    !s.approvalPending &&
+    s.transcriptScrollUp === 0 &&
+    layout.scrollUp === 0 &&
+    cursorRef.current === null;
   const scrollDraft = (up: number) => {
     draftUpRef.current = up;
     setDraftUp(up);
