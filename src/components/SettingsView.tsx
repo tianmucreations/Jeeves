@@ -160,7 +160,7 @@ export function SettingsView({ rows }: { rows: number }) {
 
   return (
     <Box flexDirection="column" height={rows}>
-      <Text dimColor>SETTINGS</Text>
+      <Text dimColor bold>SETTINGS</Text>
       <Box flexDirection="column" height={height}>
         {list.slice(shownTop, shownTop + height).map((row, offset) => {
           const index = shownTop + offset;

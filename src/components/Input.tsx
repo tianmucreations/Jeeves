@@ -57,16 +57,9 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   }, [awaitingId]);
   const currentApprovalButtons = s.approvalPending ? approvalButtons(currentApprovalTrustable()) : [];
   const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
-  // The real cursor only at the end of a non-empty message; inside it, the
-  // highlighted character is the cursor. While the box is empty its row shows
-  // the dim "ask anything" hint, and the cursor is hidden so it never sits on
-  // those words (owner, 24 Sept).
-  const showingText =
-    valueRef.current !== '' &&
-    !s.approvalPending &&
-    s.transcriptScrollUp === 0 &&
-    layout.scrollUp === 0 &&
-    cursorRef.current === null;
+  // The real cursor only at the end of the message; inside it, the highlighted
+  // character is the cursor.
+  const showingText = !s.approvalPending && s.transcriptScrollUp === 0 && layout.scrollUp === 0 && cursorRef.current === null;
   const scrollDraft = (up: number) => {
     draftUpRef.current = up;
     setDraftUp(up);
@@ -332,11 +325,11 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     return <Text dimColor>reading history — press End to return</Text>;
   }
 
-  // Trailing spaces are dimmed: invisible on screen, but it makes the frame's
-  // bytes differ from the same text without them, keeping Ink on its full-frame
-  // path (see input-layout.ts).
+  // An empty box shows nothing but the cursor at the typing point - no hint
+  // words for it to sit on (owner, 24 Sept). A single space keeps the row at
+  // one line tall (an empty Ink line has no height).
   if (!valueRef.current) {
-    return <Text dimColor>{s.status === 'working' ? 'type your next message - it will be sent when I finish · Esc stops' : 'ask anything'}</Text>;
+    return <Text>{' '}</Text>;
   }
   return (
     <Box flexDirection="column">

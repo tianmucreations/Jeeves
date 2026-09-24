@@ -151,7 +151,7 @@ function render(s) {
   }
   els.stop.hidden = s.status !== 'working' && s.status !== 'awaiting-approval';
   els.hint.textContent = els.stop.hidden ? 'Enter to send · Shift + Enter for a new line · /undo puts the last change back' : 'Esc or the square button stops Jeeves';
-  els.input.placeholder = s.status === 'working' || asking ? 'type your next message - it will be sent when I finish' : 'ask anything';
+  els.input.placeholder = '';
   if (firstChat) els.input.focus();
   renderBusy();
 }
