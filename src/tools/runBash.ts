@@ -1,7 +1,9 @@
 import { execa, type ResultPromise } from 'execa';
 import { z } from 'zod';
 import { getShell } from '../platform/shell.js';
-import { stripHeredoc, stripQuotes } from '../agent/permissions.js';
+import { stripHeredoc } from '../agent/command-family.js';
+import { stripQuotes } from '../agent/permissions.js';
+
 
 // Claude Code's limits (utils/timeouts.ts): 2 minutes unless the model asks for
 // more, 10 minutes at most. Jeeves had 60 seconds, which cut off every large

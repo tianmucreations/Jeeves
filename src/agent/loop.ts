@@ -21,7 +21,7 @@ import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
 import { startTurnCheckpoints, undoLastChange } from '../checkpoints/index.js';
 import { noteSkipRequest } from './research-gate.js';
-import { untrustProject } from './trust.js';
+import { untrustProject, untrustCommandFamilies } from './trust.js';
 
 // Added to the rulebook when the chosen model cannot use tools, so a task request
 // gets a plain answer instead of a pretend attempt.
@@ -90,6 +90,7 @@ export async function runTurn(input: string): Promise<void> {
     } else if (input === '/address') {
       openAddressPrompt();
     } else if (input === '/ask') {
+      untrustCommandFamilies();
       session.addNotice(
         untrustProject()
           ? "I'll ask before every change in this project folder again."

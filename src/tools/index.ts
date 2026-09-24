@@ -9,7 +9,7 @@ import { runBashSchema, runRunBash } from './runBash.js';
 import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage, researchService, borrowedSearchNeedsAsking, borrowedSearchQuestion } from './web/research.js';
 import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
 import { resolveFromCwd } from '../platform/paths.js';
-import { isProjectTrusted, isPathTrusted, isCommandTrusted } from '../agent/trust.js';
+import { isProjectTrusted, isPathTrusted, isCommandTrusted, isCommandFamilyTrusted } from '../agent/trust.js';
 import {
   holdForWrite,
   holdForCommand,
@@ -90,6 +90,9 @@ function defineTool<S extends z.ZodObject>(config: {
   // (a different project folder the person said "always allow" in directly) - no
   // warning, no question, same as an ordinary trusted in-project action.
   alreadyTrustedElsewhere?: (input: z.output<S>) => boolean;
+  // For shell commands: the command text, carried onto the question so "always
+  // allow this kind of command" can remember its family for the project.
+  approvalCommand?: (input: z.output<S>) => string;
   // Checked before anything is asked or done (as Claude Code's validateInput): a
   // reason the action is held, which goes back to the model, or null.
   hold?: (input: z.output<S>) => Promise<string | null> | string | null;
@@ -120,7 +123,7 @@ function defineTool<S extends z.ZodObject>(config: {
       if (warning) session.addNotice(warning);
       const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
       if (needsPermission) {
-        const approved = await requestApproval({ trustable });
+        const approved = await requestApproval({ trustable, command: config.approvalCommand?.(input) });
         if (!approved) {
           session.updateToolLine(lineId, { state: 'declined' });
           throw new Error(`Permission denied by the user - ${config.name} ${summary} was not executed.`);
@@ -213,8 +216,11 @@ export const TOOLS: ToolSet = {
     description: 'Run a shell command and return its output.',
     schema: runBashSchema,
     // Read-only commands never ask (the allowlist lives in permissions.ts);
-    // everything else - writes, deletes, installs, network - still prompts.
-    permission: (input) => !isReadOnlyBashCommand(input.command),
+    // command kinds the person has already allowed in this folder don't ask
+    // either ("always allow this kind of command", as Claude Code remembers
+    // per-repo command rules); everything else still prompts.
+    permission: (input) => !isReadOnlyBashCommand(input.command) && !isCommandFamilyTrusted(input.command),
+    approvalCommand: (input) => input.command,
     summarize: (input) => clip(input.command, 60),
     label: (input) => `Ran ${clip(input.command, 60)}`,
     run: async (input) => {

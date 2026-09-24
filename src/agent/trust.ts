@@ -1,7 +1,8 @@
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
-import { getTrustedProjects, setTrustedProjects } from '../platform/config.js';
+import { getTrustedProjects, setTrustedProjects, getAllowedCommands, setAllowedCommands } from '../platform/config.js';
 import { isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
+import { commandFamilies } from './command-family.js';
 
 // "Always allow in this project" (after Claude Code's "Yes, allow all edits in this
 // folder during this session" - here remembered per project folder, as asked for).
@@ -48,6 +49,36 @@ export function untrustProject(folder = process.cwd()): boolean {
   const before = getTrustedProjects();
   setTrustedProjects(before.filter((entry) => entry !== key));
   return before.includes(key);
+}
+
+// "Always allow this kind of command" - the person's answer to one command is
+// remembered as a command KIND (`wc`, `npm run`) for this project folder, the
+// way Claude Code saves per-repo `Bash(prefix *)` rules and OpenCode saves
+// permission patterns per project. Until this existed, any command not on the
+// built-in read-only list asked every single time, in every session - the
+// approval fatigue the owner reported for weeks.
+export function trustCommandFamily(command: string, folder = process.cwd()): void {
+  const key = canonical(folder);
+  const all = getAllowedCommands();
+  const list = new Set(all[key] ?? []);
+  for (const family of commandFamilies(command)) list.add(family);
+  all[key] = [...list];
+  setAllowedCommands(all);
+}
+
+// True when every kind in the command has been allowed in this folder before.
+export function isCommandFamilyTrusted(command: string, folder = process.cwd()): boolean {
+  const list = new Set(getAllowedCommands()[canonical(folder)] ?? []);
+  if (list.size === 0) return false;
+  const families = commandFamilies(command);
+  return families.length > 0 && families.every((family) => list.has(family));
+}
+
+// /ask removes the remembered command kinds along with the folder trust.
+export function untrustCommandFamilies(folder = process.cwd()): void {
+  const all = getAllowedCommands();
+  delete all[canonical(folder)];
+  setAllowedCommands(all);
 }
 
 // A task that spans more than one of the owner's own project folders used to ask

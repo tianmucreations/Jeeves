@@ -4,7 +4,7 @@ import { Box, Text, useCursor, useInput, usePaste, useWindowSize } from 'ink';
 import { runTurn, stopTurn } from '../agent/loop.js';
 import { copySelection } from '../ink/selection.js';
 import { pressCtrlCToQuit } from '../ink/quit.js';
-import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
+import { answerApproval, currentApprovalTrustable, currentApprovalFamily } from '../agent/permissions.js';
 import { session, useSession } from '../state/session.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
 import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
@@ -55,7 +55,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   useEffect(() => {
     setApprovalSelected(0);
   }, [awaitingId]);
-  const currentApprovalButtons = s.approvalPending ? approvalButtons(currentApprovalTrustable()) : [];
+  const currentApprovalButtons = s.approvalPending ? approvalButtons(currentApprovalTrustable(), currentApprovalFamily()) : [];
   const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
   // The real cursor only at the end of the message; inside it, the highlighted
   // character is the cursor.
@@ -115,6 +115,11 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
     return true;
   };
+  // A click and the keyboard land on the same answer: y once, c always-allow
+  // this kind of command, a always-allow in this project, n never.
+  const answerFromButton = (button: { key: 'y' | 'a' | 'n' | 'c' }) => {
+    answerApproval(button.key !== 'n', button.key === 'c' ? 'command' : button.key === 'a' ? 'project' : 'once');
+  };
   // Clicking a button answers the question directly (OpenCode's row of buttons:
   // a click and the keyboard both land on the same answer). The question always
   // draws on the single bottom input row (app.tsx forces inputRows to 1 while a
@@ -125,7 +130,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     // Same row math as the typing box above, for a single-row box (layout.rows.length 1).
     if (row !== rows - 3) return;
     const button = approvalButtonAt(currentApprovalButtons, col - 3);
-    if (button) answerApproval(button.key !== 'n', button.key === 'a');
+    if (button) answerFromButton(button);
   };
 
   // The block cursor sits at the text insertion point: two columns in (the
@@ -192,7 +197,8 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       // highlight and Enter to confirm it.
       const answer = input.toLowerCase();
       if (answer === 'y') return void answerApproval(true);
-      if (answer === 'a' && currentApprovalTrustable()) return void answerApproval(true, true);
+      if (answer === 'c' && currentApprovalFamily()) return void answerApproval(true, 'command');
+      if (answer === 'a' && currentApprovalTrustable()) return void answerApproval(true, 'project');
       if (answer === 'n') return void answerApproval(false);
       if (key.leftArrow || key.tab) {
         const count = currentApprovalButtons.length;
@@ -206,7 +212,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       }
       if (key.return) {
         const button = currentApprovalButtons[approvalSelected];
-        if (button) answerApproval(button.key !== 'n', button.key === 'a');
+        if (button) answerFromButton(button);
         return;
       }
       return;

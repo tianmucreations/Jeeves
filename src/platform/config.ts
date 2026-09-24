@@ -21,6 +21,9 @@ interface JeevesConfig {
   customService?: { baseURL: string };
   estimatedSpend?: { date: string; amount: number };
   trustedProjects?: string[];
+  // Command kinds (families) trusted per project folder - "always allow this
+  // kind of command". Keyed by the folder's canonical path, like trustedProjects.
+  allowedCommands?: Record<string, string[]>;
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -230,4 +233,14 @@ export function getTrustedProjects(): string[] {
 
 export function setTrustedProjects(folders: string[]): void {
   config.set('trustedProjects', folders);
+}
+
+// Command kinds trusted per project folder ("always allow wc"), remembered from
+// the person's own answer, as Claude Code saves per-repo command rules.
+export function getAllowedCommands(): Record<string, string[]> {
+  return config.get('allowedCommands') ?? {};
+}
+
+export function setAllowedCommands(map: Record<string, string[]>): void {
+  config.set('allowedCommands', map);
 }

@@ -88,7 +88,7 @@ describe('"always allow in this project"', () => {
     const first = requestApproval({ trustable: true });
     const second = requestApproval({ trustable: true });
     const outside = requestApproval({ trustable: false });
-    answerApproval(true, true);
+    answerApproval(true, 'project');
     expect(await first).toBe(true);
     expect(await second).toBe(true);
     expect(isProjectTrusted()).toBe(true);
@@ -103,7 +103,7 @@ describe('"always allow in this project"', () => {
 
   it('"always" cannot be used to answer a question that is not about the project folder', async () => {
     const spending = requestApproval();
-    answerApproval(true, true);
+    answerApproval(true, 'project');
     expect(await spending).toBe(true);
     expect(isProjectTrusted()).toBe(false);
   });

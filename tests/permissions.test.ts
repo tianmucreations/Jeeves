@@ -150,6 +150,38 @@ describe('read-only bash allowlist', () => {
     expect(isReadOnlyBashCommand('yes | tail -1')).toBe(true);
   });
 
+  it('allows the rest of Claude Code\'s built-in read-only set without prompting', () => {
+    for (const command of [
+      'find . -name "*.txt"',
+      'find src -type f -name "*.ts"',
+      'du -sh .',
+      'stat notes.txt',
+      'diff old.txt new.txt',
+      'df -h',
+      'ps aux',
+      'uname -a',
+      'basename /usr/bin/node',
+      'dirname /usr/bin/node',
+      'realpath notes.txt',
+      'shasum notes.txt',
+      'jq . package.json',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(true);
+    }
+  });
+
+  it('still prompts for the write and execute forms of find', () => {
+    for (const command of [
+      'find . -name "*.tmp" -delete',
+      'find . -name "*.sh" -exec chmod +x {} \\;',
+      'find . -ok rm {} \\;',
+      'find . -fls listing.txt',
+      'find . -fprint out.txt',
+    ]) {
+      expect(isReadOnlyBashCommand(command), command).toBe(false);
+    }
+  });
+
   it('allows a heredoc feeding plain text to a read-only command - never asks (the Spain bug, 24 Sept)', () => {
     for (const command of [
       "wc -w <<'EOF'\nSpain occupies most of the Iberian Peninsula.\nEOF",

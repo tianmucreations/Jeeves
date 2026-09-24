@@ -1,12 +1,19 @@
 import { session } from '../state/session.js';
-import { trustProject } from './trust.js';
+import { trustProject, trustCommandFamily, isCommandFamilyTrusted } from './trust.js';
 import { getAddress } from '../platform/config.js';
+import { extractHeredoc, splitOutsideQuotes, commandFamilies } from './command-family.js';
 
 interface PendingApproval {
   resolve: (approved: boolean) => void;
   // Whether "always allow in this project" may answer it: a change inside the
   // project folder. Spending questions and anything outside the folder never are.
   trustable: boolean;
+  // For shell commands: the command itself, so "always allow this kind of
+  // command" can remember its family for the project (Claude Code's saved
+  // `Bash(prefix *)` rules, OpenCode's saved permission patterns).
+  command?: string;
+  // The few words naming the kind, for the button label (`wc`, `npm run`).
+  familyLabel?: string | null;
 }
 
 // Pure-output commands that never require permission (the rule: harmless
@@ -38,6 +45,28 @@ const READ_ONLY_COMMANDS = new Set([
   'cut',
   'fold',
   'column',
+  // The rest of Claude Code's built-in read-only set (code.claude.com/docs/en/
+  // permissions): the same no-prompt classes the established agents run freely.
+  'find',
+  'du',
+  'stat',
+  'diff',
+  'id',
+  'uname',
+  'hostname',
+  'df',
+  'ps',
+  'basename',
+  'dirname',
+  'realpath',
+  'readlink',
+  'md5',
+  'shasum',
+  'md5sum',
+  'sha256sum',
+  'sha1sum',
+  'cksum',
+  'jq',
 ]);
 
 // Multi-word commands where the words themselves are the read-only form.
@@ -47,6 +76,10 @@ const READ_ONLY_TWO_WORD_COMMANDS = new Set([
   'git diff',
   'node --version',
   'npm --version',
+  'python --version',
+  'python3 --version',
+  'pip --version',
+  'pip3 --version',
 ]);
 
 // git branch lists branches when nothing but flags follows; any name argument
@@ -70,6 +103,13 @@ function isReadOnlyAwk(rest: string[]): boolean {
   return !program.includes('system(') && !program.includes('>') && !program.includes('|') && !program.includes('getline');
 }
 
+// find reads and prints unless asked to execute or delete: -exec/-execdir run
+// programs, -ok/-okdir ask then run, -delete removes, -fls/-fprint* write files.
+function isReadOnlyFind(rest: string[]): boolean {
+  const banned = ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fls'];
+  return !rest.some((token) => banned.includes(token) || token.startsWith('-fprint'));
+}
+
 function isReadOnlyStage(tokens: string[], isFinalStage: boolean): boolean {
   if (tokens.length === 0) return false;
   const command = tokens[0];
@@ -85,6 +125,7 @@ function isReadOnlyStage(tokens: string[], isFinalStage: boolean): boolean {
   }
   if (command === 'sed') return isReadOnlySed(rest);
   if (command === 'awk') return isReadOnlyAwk(rest);
+  if (command === 'find') return isReadOnlyFind(rest);
   if (command === 'yes') {
     // yes on its own streams forever; it qualifies only feeding a pipe that ends.
     return !isFinalStage;
@@ -114,100 +155,9 @@ function parseStage(stage: string): { tokens: string[] } | null {
 }
 
 // Splits on a separator character, ignoring quoted text, so a pipe inside quotes
-// (awk '{print $1 | "sort"}') never counts as a shell pipe.
-function splitOutsideQuotes(text: string, separator: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | null = null;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (quote) {
-      current += char;
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      current += char;
-      continue;
-    }
-    if (text.startsWith(separator, i)) {
-      parts.push(current);
-      current = '';
-      i += separator.length - 1;
-      continue;
-    }
-    current += char;
-  }
-  parts.push(current);
-  return parts;
-}
-
-// A heredoc (command <<TAG, some text lines, then TAG alone on a line) feeds
-// those lines to the command as plain data. The data is never interpreted as a
-// command - with a quoted tag it is not expanded at all, and an unquoted tag
-// expands only parameters, never commands (substitutions are banned on the
-// whole command string before this runs). One well-formed heredoc is therefore
-// as harmless as the command it feeds, and the text is removed before the usual
-// checks so its newlines and everyday words cannot disguise the command or trip
-// the interactive-program refusal.
-// Returns the command without the heredoc, null when there is no heredoc, or
-// 'malformed' when one is present but cannot be proven clean (then: prompt).
-function extractHeredoc(command: string): string | null | 'malformed' {
-  const firstLineEnd = command.indexOf('\n');
-  const firstLine = firstLineEnd === -1 ? command : command.slice(0, firstLineEnd);
-  let operatorAt = -1;
-  let quote: '"' | "'" | null = null;
-  for (let i = 0; i < firstLine.length; i++) {
-    const ch = firstLine[i];
-    if (quote) {
-      if (ch === quote) quote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-    if (ch === '<' && firstLine[i + 1] === '<') {
-      operatorAt = i;
-      break;
-    }
-  }
-  if (operatorAt === -1) return null;
-  let at = operatorAt + 2;
-  const dash = firstLine[at] === '-';
-  if (dash) at++;
-  while (firstLine[at] === ' ') at++;
-  let tag = '';
-  if (firstLine[at] === '"' || firstLine[at] === "'") {
-    const end = firstLine.indexOf(firstLine[at], at + 1);
-    if (end === -1) return 'malformed';
-    tag = firstLine.slice(at + 1, end);
-    at = end + 1;
-  } else {
-    while (at < firstLine.length && !/[\s;&|<>()]/.test(firstLine[at])) {
-      tag += firstLine[at];
-      at++;
-    }
-  }
-  if (tag.length === 0) return 'malformed';
-  // Anything on the command line after the tag (a pipe, a second heredoc) cannot
-  // be proven to treat the text as data - so it keeps prompting.
-  if (firstLine.slice(at).trim() !== '') return 'malformed';
-  const body = firstLineEnd === -1 ? [] : command.slice(firstLineEnd + 1).split('\n');
-  const closeAt = body.findIndex((line) => (dash ? line.replace(/^\t+/, '') : line) === tag);
-  if (closeAt === -1) return 'malformed';
-  if (body.slice(closeAt + 1).some((line) => line.trim() !== '')) return 'malformed';
-  return firstLine.slice(0, operatorAt).trim();
-}
-
-// The command with any well-formed heredoc removed (the original otherwise).
-// Shared with the interactive-program refusal, which must judge the command,
-// never the heredoc's prose.
-export function stripHeredoc(command: string): string {
-  const extracted = extractHeredoc(command.trim());
-  return typeof extracted === 'string' ? extracted : command.trim();
-}
+// (awk '{print $1 | "sort"}') never counts as a shell pipe. splitOutsideQuotes
+// and the heredoc helpers live in command-family.ts, shared with the command-kind
+// logic so both judge exactly the same shape of command.
 
 // True when the command is composed entirely of read-only stages: pipes, && and
 // || chains of allowlisted commands, with redirection to /dev/null only. Anything
@@ -251,9 +201,15 @@ export function hasPendingApproval(): boolean {
   return queue.length > 0;
 }
 
-export function requestApproval(options: { trustable?: boolean } = {}): Promise<boolean> {
+export function requestApproval(options: { trustable?: boolean; command?: string } = {}): Promise<boolean> {
   return new Promise((resolve) => {
-    queue.push({ resolve, trustable: options.trustable === true });
+    const families = options.command ? commandFamilies(options.command) : [];
+    queue.push({
+      resolve,
+      trustable: options.trustable === true,
+      command: options.command,
+      familyLabel: options.command ? (families.length === 1 ? families[0] : families.length > 1 ? 'these commands' : null) : null,
+    });
     if (queue.length === 1) {
       session.setActiveApproval();
     }
@@ -265,16 +221,36 @@ export function currentApprovalTrustable(): boolean {
   return queue[0]?.trustable === true;
 }
 
-// always: "always allow in this project" - approves this change, every other change
-// inside the project already waiting, and all future ones in this folder.
-export function answerApproval(approved: boolean, always = false): void {
+// The kind of the command now awaiting an answer (`wc`, `npm run`), for the
+// "always allow this kind" button; null when the question is not a command.
+export function currentApprovalFamily(): string | null {
+  return queue[0]?.familyLabel ?? null;
+}
+
+// scope "project": "always allow in this project" - approves this change, every
+// other change inside the project already waiting, and all future ones in this
+// folder (still backed up, so /undo works).
+// scope "command": "always allow this kind of command" - remembers the command's
+// family for this project, so no command of the same kind asks again here (as
+// Claude Code saves a per-repo `Bash(prefix *)` rule and OpenCode saves the
+// pattern per project). Other questions already waiting whose command is now
+// covered by that memory are answered too.
+export function answerApproval(approved: boolean, scope: 'once' | 'project' | 'command' = 'once'): void {
   const current = queue.shift();
   if (!current) return;
-  if (always && approved && current.trustable) {
+  if (approved && scope === 'project' && current.trustable) {
     trustProject();
     session.addNotice(`From now on I won't ask before changing things in this project folder, ${getAddress() ?? 'Sir'} - every change is still backed up, so /undo puts it back. I'll still ask about anything outside it. Type /ask to have me ask every time again.`);
     for (let i = queue.length - 1; i >= 0; i--) {
       if (queue[i].trustable) queue.splice(i, 1)[0].resolve(true);
+    }
+  }
+  if (approved && scope === 'command' && current.command) {
+    trustCommandFamily(current.command);
+    session.addNotice(`Got it - I won't ask about ${current.familyLabel ?? 'that kind of'} command${current.familyLabel && current.familyLabel !== 'these commands' ? 's' : ''} in this folder again, ${getAddress() ?? 'Sir'}. Type /ask to have me ask every time.`);
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const waiting = queue[i];
+      if (waiting.command && isCommandFamilyTrusted(waiting.command)) queue.splice(i, 1)[0].resolve(true);
     }
   }
   current.resolve(approved);

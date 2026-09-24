@@ -6,7 +6,7 @@ const els = {
   testBanner: $('test-banner'),
   folder: $('folder'), light: $('light'), welcome: $('welcome'), chat: $('chat'), greeting: $('greeting'),
   projects: $('projects'), choose: $('choose'), nokeys: $('nokeys'), scroller: $('scroller'),
-  transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), always: $('always'),
+  transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), always: $('always'), alwaysCommand: $('always-command'), alwaysCommandText: $('always-command-text'),
   composer: $('composer'), busy: $('busy'), stop: $('stop'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
 };
 
@@ -148,6 +148,8 @@ function render(s) {
     const question = [...s.transcript].reverse().find((e) => e.kind === 'tool' && e.state === 'awaiting');
     els.approvalText.textContent = question ? question.text.replace(/^\?\s*/, 'Jeeves would like to: ') : 'Jeeves would like your answer.';
     els.always.hidden = !s.approval.trustable;
+    els.alwaysCommand.hidden = !s.approval.commandLabel;
+    els.alwaysCommandText.textContent = s.approval.commandLabel ? `Always allow ${s.approval.commandLabel} commands` : '';
   }
   els.stop.hidden = s.status !== 'working' && s.status !== 'awaiting-approval';
   els.hint.textContent = els.stop.hidden ? 'Enter to send · Shift + Enter for a new line · /undo puts the last change back' : 'Esc or the square button stops Jeeves';
@@ -221,7 +223,7 @@ document.addEventListener('keydown', (event) => {
   if (els.chat.hidden || !document.getElementById('settings').hidden || !document.getElementById('help').hidden) return;
   const typing = document.activeElement === els.input || document.activeElement?.tagName === 'INPUT';
   if (typing || event.metaKey || event.ctrlKey || event.altKey || event.key.length !== 1) return;
-  if (state?.approval && !els.input.value && 'yan'.includes(event.key.toLowerCase())) return;
+  if (state?.approval && !els.input.value && 'yanc'.includes(event.key.toLowerCase())) return;
   // The key that moves the cursor is typed too - otherwise the first letter is lost
   // (measured: typing "hi" left "i").
   event.preventDefault();
@@ -234,7 +236,7 @@ document.addEventListener('keydown', (event) => {
   if (!state?.approval || event.metaKey || event.ctrlKey || event.altKey) return;
   if (document.activeElement === els.input && els.input.value) return;
   const key = event.key.toLowerCase();
-  if (key === 'y' || key === 'n' || (key === 'a' && state.approval.trustable)) {
+  if (key === 'y' || key === 'n' || (key === 'a' && state.approval.trustable) || (key === 'c' && state.approval.commandLabel)) {
     event.preventDefault();
     window.jeeves.answer(key);
   }
