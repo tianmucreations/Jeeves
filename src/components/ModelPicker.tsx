@@ -14,7 +14,7 @@ import {
   isFreeModel,
   cleanModelName,
 } from '../models/registry.js';
-import { setFavorites, setDailyLimit, hasSavedDailyLimit, getDefaultModel } from '../platform/config.js';
+import { setFavorites, setDailyLimit, hasSavedDailyLimit, getDefaultModel, getWeeklyLimit, setWeeklyLimit } from '../platform/config.js';
 import { applyModelChoice } from '../models/choose.js';
 import {
   hasCredentials,
@@ -185,6 +185,8 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   const [limitValue, setLimitValue] = useState('');
   const [limitNote, setLimitNote] = useState('');
   const [limitReturn, setLimitReturn] = useState<'providers' | 'close'>('providers');
+  // True while the limit screen is editing the weekly limit instead of the daily one.
+  const [limitWeekly, setLimitWeekly] = useState(false);
   const [keyNote, setKeyNote] = useState('');
 
   useEffect(() => {
@@ -203,6 +205,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     session.pickerStart = null;
     if (!start) return;
     if (start.step === 'limit') {
+      setLimitWeekly(start.weekly ?? false);
       setLimitReturn('close');
       setLimitValue('');
       setLimitNote('');
@@ -614,7 +617,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       // From a model choice, Esc or an empty Enter keeps the suggested limit.
       if (key.escape || (key.return && limitValue === '' && limitReturn === 'close')) {
         if (limitReturn === 'close') {
-          setDailyLimit(s.dailyLimit);
+          // Keeping the weekly limit pins the default (7× the daily one) as a real choice.
+          if (limitWeekly) setWeeklyLimit(getWeeklyLimit());
+          else setDailyLimit(s.dailyLimit);
         }
         done();
         return;
@@ -627,8 +632,11 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           return;
         }
         const rounded = Math.round(amount * 100) / 100;
-        setDailyLimit(rounded);
-        s.setDailyLimit(rounded);
+        if (limitWeekly) setWeeklyLimit(rounded);
+        else {
+          setDailyLimit(rounded);
+          s.setDailyLimit(rounded);
+        }
         done();
         return;
       }
@@ -726,21 +734,31 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   if (step === 'limit') {
+    const weekly = limitWeekly;
+    const current = weekly ? getWeeklyLimit() : s.dailyLimit;
     return (
       <Box flexDirection="column" height={rows}>
-        <Text dimColor>Daily spending limit</Text>
+        <Text dimColor>{weekly ? 'Weekly spending limit' : 'Daily spending limit'}</Text>
         <Box flexDirection="column" flexGrow={1} justifyContent="center">
           <Text>
-            <Text>Most to spend in a day, in dollars (now ${s.dailyLimit.toFixed(2)}): </Text>
+            <Text>Most to spend in a {weekly ? 'week' : 'day'}, in dollars (now ${current.toFixed(2)}): </Text>
             <Text>{limitValue}</Text>
             <Text inverse> </Text>
           </Text>
-          <Text dimColor>When today's spending reaches it, Jeeves stops and asks before spending more.</Text>
+          <Text dimColor>
+            {weekly
+              ? "When this week's spending reaches it, Jeeves stops and asks before spending more."
+              : "When today's spending reaches it, Jeeves stops and asks before spending more."}
+          </Text>
         </Box>
         {limitNote ? (
           <Text color="yellow">{limitNote}</Text>
         ) : (
-          <Text dimColor>{limitReturn === 'close' ? `Enter keeps $${s.dailyLimit.toFixed(2)} · or type an amount, then Enter` : 'type an amount · Enter save · Esc back'}</Text>
+          <Text dimColor>
+            {limitReturn === 'close'
+              ? `Enter keeps $${current.toFixed(2)} · or type an amount, then Enter`
+              : 'type an amount · Enter save · Esc back'}
+          </Text>
         )}
       </Box>
     );

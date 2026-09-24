@@ -95,6 +95,11 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
     expect(models.find((row) => row.current)?.label).toBe('GLM-5.3');
   });
 
+  it('offers both spending limits next to the keys', () => {
+    const spending = items(settingsRows(base)).filter((row) => row.action.type === 'limit' || row.action.type === 'limit-weekly');
+    expect(spending.map((row) => row.label)).toEqual(['Daily spending limit', 'Weekly spending limit']);
+  });
+
   it('ends with every command except /settings itself', () => {
     const commands = items(settingsRows(base)).filter((row) => row.action.type === 'command' && row.label.startsWith('/'));
     expect(commands.map((row) => row.label)).toEqual(COMMANDS.map((entry) => entry.command).filter((c) => c !== '/settings'));
@@ -114,10 +119,11 @@ describe('opening the Settings screen', () => {
     session.closeSettings();
   });
 
-  it('the Settings button in the info bar is a real click target', () => {
-    expect(onSettingsButton(1)).toBe(true);
-    expect(onSettingsButton(10)).toBe(true);
-    expect(onSettingsButton(11)).toBe(false);
+  it('the Settings button in the info bar is a real click target, one column in from the edge', () => {
+    expect(onSettingsButton(1)).toBe(false);
+    expect(onSettingsButton(2)).toBe(true);
+    expect(onSettingsButton(11)).toBe(true);
+    expect(onSettingsButton(12)).toBe(false);
     session.closeSettings();
     const opened: [number, number][] = [];
     session.footerClick = (col, row) => {

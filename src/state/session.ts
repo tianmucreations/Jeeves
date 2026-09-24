@@ -101,7 +101,7 @@ class SessionStore {
   inputWheel: ((row: number, up: boolean) => boolean) | null = null;
   // Where the model list opens when Settings sends the person there: straight into
   // one service's models (all of them with full), or the daily limit. Read once.
-  pickerStart: { provider?: string; full?: boolean; step?: 'limit' } | null = null;
+  pickerStart: { provider?: string; full?: boolean; step?: 'limit'; weekly?: boolean } | null = null;
   // Where the folder list opens when Settings sends the person there. Read once.
   folderPickerStart: 'list' | 'browse' | 'create' = 'list';
   transcriptView: { top: number; left: number; height: number; lines: string[]; scrollTop: number } | null = null;

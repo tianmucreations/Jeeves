@@ -18,7 +18,8 @@ export type SettingsAction =
   | { type: 'service'; provider: string }
   | { type: 'model'; provider: string; model: ModelInfo }
   | { type: 'all-models'; provider: string }
-  | { type: 'limit' };
+  | { type: 'limit' }
+  | { type: 'limit-weekly' };
 
 export type SettingsRow =
   | { kind: 'gap' }
@@ -95,6 +96,7 @@ export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   section('KEYS & SPENDING');
   item('Manage keys', 'connect an AI service, or remove one', { type: 'command', command: '/keys' });
   item('Daily spending limit', 'the most Jeeves may spend in a day', { type: 'limit' });
+  item('Weekly spending limit', 'the most Jeeves may spend in a week', { type: 'limit-weekly' });
 
   section('YOU');
   item('How I address you', "Sir, Ma'am, or a name", { type: 'command', command: '/address' });

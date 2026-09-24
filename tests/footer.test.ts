@@ -5,7 +5,7 @@ import { contextLimitFor, shouldAutoSummarise } from '../src/agent/context.js';
 import { DEFAULT_CONTEXT_TOKENS } from '../src/state/session.js';
 import { plainError } from '../src/agent/errors.js';
 
-const base: FooterInfo = { providerId: 'openrouter', allowance: 3, tidying: false, todaySpend: 0.31, creditRemaining: 12.5, creditIsAccount: true, planResetAt: null };
+const base: FooterInfo = { providerId: 'openrouter', allowance: 3, tidying: false, todaySpend: 0.31, creditRemaining: 12.5, creditIsAccount: true, planResetAt: null, weekSpend: 0.42, weekAllowance: 21 };
 const texts = (info: FooterInfo) => footerSegments(info).map((segment) => segment.text);
 
 describe('info bar', () => {
@@ -14,23 +14,29 @@ describe('info bar', () => {
     expect(shortModelName('gpt-4o')).toBe('gpt-4o');
   });
 
-  it("shows today's spend and what is left, nothing else, while all is well", () => {
-    expect(texts(base)).toEqual(['today $0.31 of $3.00', '$12.50 left']);
+  it("shows today's spend with its share of the limit, the week's, and what is left", () => {
+    expect(texts(base)).toEqual(['today $0.31 (10%)', 'week $0.42 (2%)', '$12.50 left']);
     expect(footerSegments(base)[0].color).toBeUndefined();
     expect(footerSegments(base)[1].color).toBeUndefined();
+    expect(footerSegments(base)[2].color).toBeUndefined();
+  });
+
+  it('leaves the week segment out for an older caller that does not send it', () => {
+    const { weekSpend: _w, weekAllowance: _a, ...noWeek } = base;
+    expect(texts(noWeek)).toEqual(['today $0.31 (10%)', '$12.50 left']);
   });
 
   it('turns the balance amber under $5, and adds "credit low - top up" in red under $1', () => {
-    expect(footerSegments({ ...base, creditRemaining: 2.84 })[1].color).toBe('yellow');
+    expect(footerSegments({ ...base, creditRemaining: 2.84 })[2].color).toBe('yellow');
     const low = footerSegments({ ...base, creditRemaining: 0.94 });
-    expect(low.map((s) => s.text)).toEqual(['today $0.31 of $3.00', '$0.94 left', 'credit low - top up']);
-    expect(low[1].color).toBe('red');
+    expect(low.map((s) => s.text)).toEqual(['today $0.31 (10%)', 'week $0.42 (2%)', '$0.94 left', 'credit low - top up']);
     expect(low[2].color).toBe('red');
+    expect(low[3].color).toBe('red');
   });
 
   it('shows placeholders before the first reading, and labels a key limit as such', () => {
-    expect(texts({ ...base, todaySpend: null, creditRemaining: null })).toEqual(['today $— of $3.00', '$— left']);
-    expect(texts({ ...base, creditIsAccount: false })).toEqual(['today $0.31 of $3.00', '$12.50 key limit']);
+    expect(texts({ ...base, todaySpend: null, creditRemaining: null })).toEqual(['today $— (0%)', 'week $0.42 (2%)', '$— left']);
+    expect(texts({ ...base, creditIsAccount: false })).toEqual(['today $0.31 (10%)', 'week $0.42 (2%)', '$12.50 key limit']);
   });
 
   it('shows the flat-rate plan, and when it is used up, when it resets', () => {
@@ -40,11 +46,17 @@ describe('info bar', () => {
     expect(texts({ ...base, providerId: 'zai', planResetAt: '' })).toEqual(['plan used up']);
   });
 
-  it("warns as today's spend nears the daily limit, and shows tidying up while it happens", () => {
-    expect(footerSegments({ ...base, todaySpend: 2.4 })[0]).toEqual({ text: 'today $2.40 of $3.00', color: 'yellow' });
-    expect(footerSegments({ ...base, todaySpend: 3.1 })[0]).toEqual({ text: 'today $3.10 of $3.00', color: 'red' });
+  it("warns as today's spend nears the daily limit, in words and in colour", () => {
+    expect(footerSegments({ ...base, todaySpend: 2.4 })).toEqual([{ text: 'today $2.40 (80%)', color: 'yellow' }, { text: 'week $0.42 (2%)' }, { text: '$12.50 left' }]);
+    expect(footerSegments({ ...base, todaySpend: 3.1 })[0]).toEqual({ text: 'today $3.10 (103%)', color: 'red' });
     expect(texts({ ...base, tidying: true })[0]).toBe('tidying up…');
     expect(texts({ ...base, providerId: 'zai', tidying: true })).toEqual(['tidying up…']);
+  });
+
+  it('warns as the week fills up, independently of today', () => {
+    expect(footerSegments({ ...base, weekSpend: 17.5 })[1]).toEqual({ text: 'week $17.50 (83%)', color: 'yellow' });
+    expect(footerSegments({ ...base, weekSpend: 21 })[1]).toEqual({ text: 'week $21.00 (100%)', color: 'red' });
+    expect(footerSegments({ ...base, weekSpend: 21 })[0].color).toBeUndefined();
   });
 
   it('shows local models as free', () => {

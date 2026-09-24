@@ -1,8 +1,19 @@
 import { session } from '../state/session.js';
 import { requestApproval } from './permissions.js';
-import { getDailyExtra, setDailyExtra, getEstimatedSpend, setEstimatedSpend } from '../platform/config.js';
+import {
+  getDailyExtra,
+  setDailyExtra,
+  getEstimatedSpend,
+  setEstimatedSpend,
+  getWeeklyLimit,
+  getWeeklyExtra,
+  setWeeklyExtra,
+  getSpendLog,
+  addToSpendLog,
+} from '../platform/config.js';
 import { isEstimatedCostService } from '../providers/direct-services.js';
 import { localDate } from '../state/today-spend.js';
+import { mondayOf, spendThisWeek } from '../state/week.js';
 
 // Spending guard rails. Costs come from OpenRouter's own figures (the cost it reports
 // for every step and every research or expert request), added live so the limits
@@ -38,7 +49,8 @@ export function spentThisSession(): number {
 
 // Every paid request reports here. A figure worked out from a price list (a direct
 // connection) is also saved, so today's total survives a restart; OpenRouter's own
-// figures are read back from OpenRouter instead.
+// figures are read back from OpenRouter instead. Each amount also lands in the
+// per-day log, which is where "this week" comes from.
 export function reportSpend(amount: number | undefined, estimated = false, now = new Date()): void {
   if (!amount || amount <= 0) return;
   if (estimated) {
@@ -46,6 +58,7 @@ export function reportSpend(amount: number | undefined, estimated = false, now =
     const today = localDate(now);
     setEstimatedSpend({ date: today, amount: (saved && saved.date === today ? saved.amount : 0) + amount });
   }
+  addToSpendLog(localDate(now), amount);
   sessionTotal += amount;
   if (job) job.spent += amount;
   session.setTodaySpend((session.todaySpend ?? 0) + amount);
@@ -55,6 +68,17 @@ export function reportSpend(amount: number | undefined, estimated = false, now =
 export function allowanceToday(now = new Date()): number {
   const extra = getDailyExtra();
   return session.dailyLimit + (extra && extra.date === localDate(now) ? extra.amount : 0);
+}
+
+// This week's spend (from the per-day log) and its allowance (the weekly limit
+// plus any extra agreed this week). The week starts Monday, local time.
+export function spentThisWeek(now = new Date()): number {
+  return spendThisWeek(getSpendLog(), now);
+}
+
+export function allowanceThisWeek(now = new Date()): number {
+  const extra = getWeeklyExtra();
+  return getWeeklyLimit() + (extra && extra.weekStart === mondayOf(now) ? extra.amount : 0);
 }
 
 async function ask(question: string): Promise<boolean> {
@@ -73,6 +97,14 @@ export async function withinLimits(now = new Date()): Promise<boolean> {
     const extra = getDailyExtra();
     const current = extra && extra.date === localDate(now) ? extra.amount : 0;
     setDailyExtra({ date: localDate(now), amount: current + session.dailyLimit });
+  }
+  const weekAllowance = allowanceThisWeek(now);
+  if (spentThisWeek(now) >= weekAllowance) {
+    const more = await ask(`This week's ${money(weekAllowance)} spending limit is reached. Allow another ${money(getWeeklyLimit())} this week? (y/n)`);
+    if (!more) return false;
+    const extra = getWeeklyExtra();
+    const current = extra && extra.weekStart === mondayOf(now) ? extra.amount : 0;
+    setWeeklyExtra({ weekStart: mondayOf(now), amount: current + getWeeklyLimit() });
   }
   if (job && job.spent >= job.nextAsk) {
     const more = await ask(`This job has cost about ${money(job.spent)} so far. Keep going? (y/n)`);

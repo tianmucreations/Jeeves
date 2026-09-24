@@ -62,6 +62,10 @@ export function runSettingsAction(action: SettingsAction): void {
       session.pickerStart = { step: 'limit' };
       session.openPicker();
       return;
+    case 'limit-weekly':
+      session.pickerStart = { step: 'limit', weekly: true };
+      session.openPicker();
+      return;
     case 'model': {
       if (busy()) return;
       if (action.model.id === session.model && action.provider === session.providerId && getDefaultModel() !== null) return;

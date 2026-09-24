@@ -6,6 +6,9 @@ interface JeevesConfig {
   spendReading?: SpendReading;
   dailyLimit?: number;
   dailyExtra?: { date: string; amount: number };
+  weeklyLimit?: number;
+  weeklyExtra?: { weekStart: string; amount: number };
+  spendLog?: Record<string, number>;
   favorites?: string[];
   recents?: string[];
   projects?: string[];
@@ -55,6 +58,59 @@ export function getDailyExtra(): { date: string; amount: number } | undefined {
 
 export function setDailyExtra(extra: { date: string; amount: number }): void {
   config.set('dailyExtra', extra);
+}
+
+// The weekly spending limit in dollars. Never chosen one: seven times the daily
+// limit, so it only bites someone who raised the daily one (24 Sept).
+export function getWeeklyLimit(): number {
+  const stored = config.get('weeklyLimit');
+  return typeof stored === 'number' && stored > 0 ? stored : 7 * getDailyLimit();
+}
+
+export function setWeeklyLimit(limit: number): void {
+  config.set('weeklyLimit', limit);
+}
+
+// Extra allowance agreed for one week (the week is named by its Monday) when the
+// weekly limit was reached.
+export function getWeeklyExtra(): { weekStart: string; amount: number } | undefined {
+  return config.get('weeklyExtra');
+}
+
+export function setWeeklyExtra(extra: { weekStart: string; amount: number }): void {
+  config.set('weeklyExtra', extra);
+}
+
+// Best-known total spent per local day, kept for the last eight days so the
+// weekly figure survives a restart. OpenRouter's own readings correct today's
+// entry the same way they correct "today" in the bar.
+export function getSpendLog(): Record<string, number> {
+  return config.get('spendLog') ?? {};
+}
+
+function pruneSpendLog(log: Record<string, number>): Record<string, number> {
+  const kept: Record<string, number> = {};
+  for (const date of Object.keys(log).sort().slice(-8)) kept[date] = log[date];
+  return kept;
+}
+
+export function addToSpendLog(date: string, amount: number): void {
+  const log = getSpendLog();
+  log[date] = (log[date] ?? 0) + amount;
+  config.set('spendLog', pruneSpendLog(log));
+}
+
+// The authoritative figure for a day replaces the live accumulation - but never
+// lowers it, as the key's total can lag a request or two behind.
+export function correctSpendLogDay(date: string, amount: number): void {
+  const log = getSpendLog();
+  if ((log[date] ?? 0) >= amount) return;
+  log[date] = amount;
+  config.set('spendLog', pruneSpendLog(log));
+}
+
+export function clearSpendLog(): void {
+  config.delete('spendLog');
 }
 
 // The last OpenRouter usage reading, kept between launches so "today" survives a restart.

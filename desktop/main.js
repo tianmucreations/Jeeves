@@ -28,7 +28,7 @@ const config = await engine('platform/config.js');
 const { loadModels } = await engine('models/registry.js');
 const { toolLineText } = await engine('components/transcript-layout.js');
 const { footerSegments, shortModelName } = await engine('components/Footer.js');
-const { allowanceToday } = await engine('agent/spending.js');
+const { allowanceToday, allowanceThisWeek, spentThisWeek } = await engine('agent/spending.js');
 const { isAuto, workerModel } = await engine('agent/auto.js');
 const { killAllRunningCommands } = await engine('tools/runBash.js');
 const { ensureChatFolder, chatNotice } = await engine('platform/chat-folder.js');
@@ -85,6 +85,8 @@ function snapshot() {
     creditRemaining: s.creditRemaining,
     creditIsAccount: s.creditIsAccount,
     planResetAt: s.planResetAt,
+    weekSpend: spentThisWeek(),
+    weekAllowance: allowanceThisWeek(),
     connected: providers.hasCredentials(),
     connectHint: 'open Settings to connect',
   });

@@ -8,7 +8,7 @@ const { clearOldToolResults, CLEARED_PLACEHOLDER, KEEP_RECENT_TOOL_RESULTS } = a
 const { shouldTakeOver, countToolFailures, conversationForExpert, workingModelId, AUTO_MODEL_ID, AUTO_WORKER_MODEL } = await import('../src/agent/auto.js');
 const spending = await import('../src/agent/spending.js');
 const { session } = await import('../src/state/session.js');
-const { setDailyExtra } = await import('../src/platform/config.js');
+const { setDailyExtra, clearSpendLog } = await import('../src/platform/config.js');
 
 const toolTurn = (id: number, size: number): ModelMessage[] => [
   { role: 'assistant', content: [{ type: 'tool-call', toolCallId: `c${id}`, toolName: 'readFile', input: { path: `f${id}` } }] },
@@ -74,6 +74,7 @@ describe('spending limits', () => {
   beforeEach(() => {
     session.setDailyLimit(3, 0);
     setDailyExtra({ date: '2000-01-01', amount: 0 });
+    clearSpendLog();
     session.todaySpend = 0;
     session.transcript = [];
     answer = true;

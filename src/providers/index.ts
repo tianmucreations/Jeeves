@@ -1,6 +1,6 @@
 import type { Provider } from './types.js';
 import { createOpenRouterProvider, fetchCreditInfo, fetchKeyUsage } from './openrouter.js';
-import { getSpendReading, setSpendReading } from '../platform/config.js';
+import { getSpendReading, setSpendReading, correctSpendLogDay } from '../platform/config.js';
 import { nextSpendReading, spentToday } from '../state/today-spend.js';
 import { createOllamaProvider } from './ollama.js';
 import { createZaiProvider } from './zai.js';
@@ -285,8 +285,11 @@ async function refreshTodaySpend(): Promise<void> {
   if (!resolvedKey) return;
   const usage = await fetchKeyUsage(resolvedKey);
   if (usage === null) return;
-  const reading = nextSpendReading(getSpendReading(), usage, new Date());
+  const now = new Date();
+  const reading = nextSpendReading(getSpendReading(), usage, now);
   setSpendReading(reading);
+  // The same authoritative figure corrects the per-day log, where "this week" comes from.
+  correctSpendLogDay(localDate(now), spentToday(reading) + estimatedToday());
   // Never lower than the live figure: the key's total can lag a request or two behind.
   session.setTodaySpend(Math.max(session.todaySpend ?? 0, spentToday(reading) + estimatedToday()));
 }
