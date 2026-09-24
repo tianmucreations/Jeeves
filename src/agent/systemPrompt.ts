@@ -119,14 +119,47 @@ export function localISODate(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+// The model family of the model in use. OpenCode keeps a different instruction
+// file per family (packages/opencode/src/session/system.ts, provider(model)):
+// each maker's models misbehave in their own ways, and wording that one family
+// obeys perfectly, another drifts from. Jeeves keeps ONE core rulebook - the
+// persona, plain English and honesty rules none of their prompts have - and
+// adds a short tuned note per family, the same selection idea.
+export type ModelFamily = 'glm' | 'claude' | 'gpt' | 'gemini' | 'default';
+
+export function modelFamily(modelId: string): ModelFamily {
+  const id = modelId.toLowerCase();
+  if (id.includes('glm')) return 'glm';
+  if (id.includes('claude')) return 'claude';
+  if (id.includes('gpt') || id.includes('codex') || /(^|\/)o[134]([-.]|$)/.test(id)) return 'gpt';
+  if (id.includes('gemini')) return 'gemini';
+  return 'default';
+}
+
+// The tuning notes. Short on purpose: the core rulebook carries the rules, the
+// note carries what each family keeps forgetting (ours measured, theirs learned
+// from their per-family documents).
+const FAMILY_NOTES: Record<ModelFamily, string> = {
+  glm: `Model notes:
+Answer in the first sentence; a question gets a direct answer, not an essay. Never restate or rephrase the request back before answering, and never ask permission to continue after you have been asked to do something.`,
+  claude: '',
+  gpt: `Model notes:
+Be direct and factual. No lectures, no hedging, no praise of the question, and no appended advice the person did not ask for. A question gets a short answer first; detail only when asked.`,
+  gemini: `Model notes:
+Follow the tool and permission rules above exactly, every time, even for small tasks. Use the fewest words that fully answer. Never narrate a plan before acting - act, then report the result plainly.`,
+  default: '',
+};
+
 // The part of the day as well (owner's request, 19 Sept): the model otherwise
 // guessed "Good evening". It changes three times a day, so the prompt stays
-// cacheable in between.
-export function buildSystemPrompt(address: string, today = localISODate(), dayPart: string = partOfDay()): string {
-  return SYSTEM_PROMPT_TEMPLATE.replaceAll('{{ADDRESS}}', address).replaceAll('{{TODAY}}', today).replaceAll('{{PART_OF_DAY}}', dayPart);
+// cacheable in between - and the family note only changes when the model does.
+export function buildSystemPrompt(address: string, today = localISODate(), dayPart: string = partOfDay(), modelId?: string): string {
+  const core = SYSTEM_PROMPT_TEMPLATE.replaceAll('{{ADDRESS}}', address).replaceAll('{{TODAY}}', today).replaceAll('{{PART_OF_DAY}}', dayPart);
+  const note = modelId ? FAMILY_NOTES[modelFamily(modelId)] : '';
+  return note ? `${core}\n${note}` : core;
 }
 
 // The address the user saved on first launch; "Sir" until one is saved.
-export function getSystemPrompt(): string {
-  return buildSystemPrompt(getAddress() ?? 'Sir');
+export function getSystemPrompt(modelId?: string): string {
+  return buildSystemPrompt(getAddress() ?? 'Sir', localISODate(), partOfDay(), modelId);
 }

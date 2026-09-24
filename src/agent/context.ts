@@ -68,11 +68,12 @@ export async function summariseHistory(): Promise<void> {
     const messages: ModelMessage[] = [...session.history, { role: 'user', content: SUMMARY_INSTRUCTIONS }];
     // On OpenRouter the summary is written by the cheap worker model whatever model
     // is selected - summarising needs care, not the most expensive model.
+    const summaryModel = session.providerId === 'openrouter' ? workerModel() : workingModelId(session.model);
     const result = await provider.stream({
-      modelId: session.providerId === 'openrouter' ? workerModel() : workingModelId(session.model),
+      modelId: summaryModel,
       messages,
       tools: {},
-      instructions: getSystemPrompt(),
+      instructions: getSystemPrompt(summaryModel),
       onToken: () => {},
       onReasoning: () => {},
       onToolCall: () => {},

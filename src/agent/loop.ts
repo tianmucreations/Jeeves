@@ -164,7 +164,7 @@ export async function runTurn(input: string): Promise<void> {
       modelId,
       messages,
       tools,
-      instructions: getSystemPrompt() + note,
+      instructions: getSystemPrompt(modelId) + note,
       abortSignal: stop.signal,
       beforeStep: async ({ stepFailures, stepCosts, messages: stepMessages }) => {
         for (const cost of stepCosts.slice(countedSteps)) reportStepCost(cost);

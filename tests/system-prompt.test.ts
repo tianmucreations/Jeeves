@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildTurnMessages } from '../src/agent/context.js';
-import { SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt } from '../src/agent/systemPrompt.js';
+import { SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt, modelFamily } from '../src/agent/systemPrompt.js';
 import { inputFrameRow } from '../src/ink/cursor.js';
 
 describe('system prompt', () => {
@@ -90,6 +90,42 @@ describe('web research rules', () => {
       'When {{ADDRESS}} asks directly for such a fact, research it.',
     ]) {
       expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
+    }
+  });
+});
+
+describe('per-model-family instructions (OpenCode\'s answer to running on any company\'s models)', () => {
+  it('sorts every model id into its family, vendor prefixes and all', () => {
+    expect(modelFamily('glm-5.3-flash')).toBe('glm');
+    expect(modelFamily('z-ai/glm-5.3')).toBe('glm');
+    expect(modelFamily('claude-sonnet-5')).toBe('claude');
+    expect(modelFamily('anthropic/claude-fable-5')).toBe('claude');
+    expect(modelFamily('gpt-5.6-luna')).toBe('gpt');
+    expect(modelFamily('openai/gpt-4o')).toBe('gpt');
+    expect(modelFamily('o3-pro')).toBe('gpt');
+    expect(modelFamily('codex-mini')).toBe('gpt');
+    expect(modelFamily('gemini-3-flash')).toBe('gemini');
+    expect(modelFamily('google/gemini-3.8-flash')).toBe('gemini');
+    // Everything else - DeepSeek, Mistral, Llama, Qwen - gets the core alone.
+    expect(modelFamily('deepseek-v4-flash')).toBe('default');
+    expect(modelFamily('mistral-medium-2604')).toBe('default');
+  });
+
+  it('appends the family note for the family in use, and nothing for default or claude', () => {
+    expect(buildSystemPrompt('Sir', '2026-09-24', 'morning', 'glm-5.3-flash')).toContain('Model notes');
+    expect(buildSystemPrompt('Sir', '2026-09-24', 'morning', 'gpt-5.6')).toContain('No lectures');
+    expect(buildSystemPrompt('Sir', '2026-09-24', 'morning', 'gemini-3-flash')).toContain('Never narrate a plan');
+    expect(buildSystemPrompt('Sir', '2026-09-24', 'morning', 'claude-sonnet-5')).not.toContain('Model notes');
+    expect(buildSystemPrompt('Sir', '2026-09-24', 'morning', 'deepseek-v4-flash')).not.toContain('Model notes');
+    // No model id (old callers): unchanged prompt.
+    expect(buildSystemPrompt('Sir', '2026-09-24', 'morning')).not.toContain('Model notes');
+  });
+
+  it('every family keeps the core rulebook - the family note only adds', () => {
+    const base = buildSystemPrompt('Sir', '2026-09-24', 'morning', 'claude-sonnet-5');
+    for (const id of ['glm-5.3-flash', 'gpt-5.6', 'gemini-3-flash']) {
+      const tuned = buildSystemPrompt('Sir', '2026-09-24', 'morning', id);
+      expect(tuned.startsWith(base)).toBe(true);
     }
   });
 });
