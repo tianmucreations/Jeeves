@@ -113,31 +113,27 @@ export function fitModelName(name: string, available: number): string {
   return name.length <= available ? name : name.slice(0, available - 1) + '…';
 }
 
-// A real button at the start of the info bar, under the typing box (owner, 23
-// Sept: "an actual button, like the Approve button"). Its left edge must sit
-// EXACTLY on the box's vertical border line, which is drawn through the middle
-// of the first column - so the button's first cell is a half block: yellow from
-// the column's middle outwards, and the border line carries on above it. A full
-// cell starts half a character to the LEFT of the line (owner, 24 Sept: "past
-// the left edge"); one column in was not wanted either. The rest of the button
-// is one plain inverse block with a square right end, like the approval buttons.
+// A real button at the start of the info bar, like the approval buttons (owner,
+// 23 Sept). Since the owner picked layout A (24 Sept) the bar is the box's
+// bottom content row, so the button starts just inside the border wall, on the
+// same left edge as every other row - one plain inverse block with square ends,
+// no half-block caps.
 export const SETTINGS_BUTTON = ' Settings ';
 
 // Whether a click at this column lands on the button (columns count from 1).
-// The half-block cap is column 1; the body fills the columns after it.
+// Column 1 is the wall; the button fills the columns after it.
 export function onSettingsButton(col: number): boolean {
-  return col >= 1 && col <= SETTINGS_BUTTON.length + 1;
+  return col >= 2 && col <= SETTINGS_BUTTON.length + 1;
 }
 
-export function Footer() {
+export function Footer({ width }: { width: number }) {
   const s = useSession();
-  // useWindowSize so the footer re-wraps live when the window is resized,
-  // instead of keeping the column count it started with.
-  const { columns: windowColumns, rows: windowRows } = useWindowSize();
-  const columns = Math.max(windowColumns ?? 80, 40);
-  // The info bar is the window's last row.
+  // The row check still needs the live window height: the bar is the row above
+  // the bottom border (the border took over the last row in layout A).
+  const { rows: windowRows } = useWindowSize();
+  // The info bar is the box's bottom content row.
   session.footerClick = (col: number, row: number) => {
-    if (row !== (windowRows ?? 24) || !onSettingsButton(col)) return false;
+    if (row !== (windowRows ?? 24) - 1 || !onSettingsButton(col)) return false;
     // A question waiting on the buttons above is answered first, never hidden.
     if (session.approvalPending) return true;
     session.openSettings();
@@ -156,15 +152,17 @@ export function Footer() {
     // Whether a service is set up at all - not the brief "disconnected" of an internet drop.
     connected: hasCredentials(),
   });
+  const columns = width;
   const rightWidth = segments.reduce((sum, segment) => sum + segment.text.length, 0) + 3 * (segments.length - 1);
   // In Auto mode the bar names the model actually working: "auto · deepseek-v4-flash-0731".
   const name = isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model);
   const model = fitModelName(name, columns - rightWidth - 2 - SETTINGS_BUTTON.length - 2);
 
+  // Full width, explicitly: a row-direction Box shrink-wraps its children and
+  // space-between collapses (the same Ink trap recorded 17 Sept).
   return (
-    <Box justifyContent="space-between">
+    <Box justifyContent="space-between" width={columns}>
       <Text>
-        <Text color="yellow">▐</Text>
         <Text color="yellow" inverse>
           {SETTINGS_BUTTON}
         </Text>

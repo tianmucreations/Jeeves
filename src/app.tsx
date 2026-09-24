@@ -19,13 +19,14 @@ import { AddressPrompt } from './components/AddressPrompt.js';
 import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './ink/mouse.js';
 import { pressCtrlCToQuit } from './ink/quit.js';
 
-// The main window: a rounded box border around the top section only, with the
-// info bar on its own row below the box. Top to bottom: plain top border, header
-// row inside the box (Jeeves left, dot right), transcript (flexGrow), internal
-// separator, input row, plain bottom border closing the box, then the info bar
-// outside the box at the very bottom (model left, metrics right). Budget:
-// border 1 + header 1 + transcript rows-6 + separator 1 + input 1 + border 1 +
-// info bar 1 = exactly the terminal's rows.
+// The main window: a rounded box border around everything. Top to bottom: plain
+// top border, header row inside the box (Jeeves left, dot right), transcript
+// (flexGrow), internal separator, input row, a second separator, then the info
+// bar as the box's bottom content row (owner's pick A, 24 Sept: the button then
+// lines up with the border and the text with no half-block tricks), and the
+// plain bottom border closing under it. Budget: border 1 + header 1 +
+// transcript rows-7 + separator 1 + input 1 + separator 1 + info bar 1 +
+// border 1 = exactly the terminal's rows.
 // The smallest window the full layout fits in: border, header, one conversation
 // row, separator, typing row, border, info bar - and room to breathe.
 export const MIN_ROWS = 8;
@@ -46,7 +47,7 @@ export function App() {
   // The input box grows with the message (up to MAX_INPUT_ROWS); the transcript gives
   // up the rows. A hint or question in the input row is always one row.
   const inputRows = s.approvalPending || s.transcriptScrollUp > 0 ? 1 : inputRowsFor(s.inputText, inner - 2);
-  const midHeight = Math.max(1, rows - 5 - inputRows);
+  const midHeight = Math.max(1, rows - 6 - inputRows);
   const inputSideLeft = Array.from({ length: inputRows }, () => '│ ').join('\n');
   const inputSideRight = Array.from({ length: inputRows }, () => ' │').join('\n');
   const side = '│\n'.repeat(midHeight - 1) + '│';
@@ -202,10 +203,15 @@ export function App() {
         </Box>
         <Text dimColor>{inputSideRight}</Text>
       </Box>
-      <Text dimColor>╰{separator}╯</Text>
-      <Box height={1} flexDirection="column">
-        <Footer />
+      <Text dimColor>├{separator}┤</Text>
+      <Box height={1} flexShrink={0}>
+        <Text dimColor>│</Text>
+        <Box width={inner} paddingLeft={1} paddingRight={1}>
+          <Footer width={inner - 2} />
+        </Box>
+        <Text dimColor>│</Text>
       </Box>
+      <Text dimColor>╰{separator}╯</Text>
     </Box>
   );
 }

@@ -119,8 +119,9 @@ describe('opening the Settings screen', () => {
     session.closeSettings();
   });
 
-  it('the Settings button in the info bar is a real click target, its cap on the border line', () => {
-    expect(onSettingsButton(1)).toBe(true);
+  it('the Settings button in the info bar is a real click target, inside the border wall (layout A)', () => {
+    expect(onSettingsButton(1)).toBe(false);
+    expect(onSettingsButton(2)).toBe(true);
     expect(onSettingsButton(11)).toBe(true);
     expect(onSettingsButton(12)).toBe(false);
     session.closeSettings();
@@ -130,8 +131,11 @@ describe('opening the Settings screen', () => {
       return true;
     };
     session.transcriptView = null;
-    handleMouseInput('\x1b[<0;3;24M');
-    expect(opened).toEqual([[3, 24]]);
+    // A real click still reaches the handler with its exact column and row
+    // (which row is the bar is the live Footer's job - layout A: the row above
+    // the bottom border).
+    handleMouseInput('\x1b[<0;3;23M');
+    expect(opened).toEqual([[3, 23]]);
     session.footerClick = null;
   });
 });
