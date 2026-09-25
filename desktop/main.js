@@ -20,6 +20,23 @@ loadShellEnv();
 const here = path.dirname(fileURLToPath(import.meta.url));
 const engine = (file) => import(new URL(`../dist/${file}`, import.meta.url).href);
 
+// Batch 6 (25 Sept): the engine must never take the window down with it. An
+// unexpected error inside the engine is caught here, shown in the window as a
+// plain banner (the renderer offers "Carry on"), and the app stays alive. The
+// full split - the engine in its own helper process, as OpenCode's desktop does
+// - is its own project on the plan; this is the guarantee, delivered without
+// rewriting every screen at once.
+let lastCrashNotice = 0;
+function reportEngineCrash(detail) {
+  const now = Date.now();
+  console.error(`[engine] ${detail}`);
+  if (now - lastCrashNotice < 30_000) return;
+  lastCrashNotice = now;
+  if (win && !win.isDestroyed()) win.webContents.send('engine-crashed', { message: String(detail).slice(0, 160) });
+}
+process.on('uncaughtException', (error) => reportEngineCrash(error instanceof Error ? error.message : String(error)));
+process.on('unhandledRejection', (reason) => reportEngineCrash(reason instanceof Error ? reason.message : String(reason)));
+
 const { session } = await engine('state/session.js');
 const { runTurn, stopTurn } = await engine('agent/loop.js');
 const { answerApproval, currentApprovalTrustable } = await engine('agent/permissions.js');
@@ -311,6 +328,11 @@ function createWindow() {
   if (process.env.JEEVES_DESKTOP_SHOT) win.webContents.once('did-finish-load', () => void takeShots(process.env.JEEVES_DESKTOP_SHOT));
   else win.once('ready-to-show', () => win.show());
   void win.loadFile(path.join(here, 'index.html'));
+  // If the window's own rendering dies, bring it back: the engine (and the
+  // conversation it holds) lives on in the app.
+  win.webContents.on('render-process-gone', () => {
+    if (win && !win.isDestroyed()) win.webContents.reload();
+  });
   // Links never open inside Jeeves's window.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) void shell.openExternal(url);
@@ -524,6 +546,23 @@ async function takeShots(out) {
     await wait(400);
     const last = session.transcript[session.transcript.length - 1];
     console.log(`after answering, question box hidden: ${await js("document.getElementById('approval').hidden")}, record: ${JSON.stringify(last.data && last.data.state === 'declined' ? 'you said no' : last.data?.label ?? last.text)}`);
+    app.exit(0);
+    return;
+  }
+  // JEEVES_DESKTOP_CRASHTEST=1: the engine throws unexpectedly - the window must
+  // survive, show its plain banner, and stay usable.
+  if (process.env.JEEVES_DESKTOP_CRASHTEST) {
+    const js = (code) => win.webContents.executeJavaScript(code);
+    await wait(2_000);
+    setTimeout(() => {
+      throw new Error('test crash - an unexpected engine error');
+    }, 300);
+    await wait(1_500);
+    console.log(`window alive: ${!win.isDestroyed()}, banner shown: ${await js("!document.getElementById('crash-banner').hidden")}, text: ${JSON.stringify(await js("document.getElementById('crash-text').textContent.slice(0, 80)"))}`);
+    await shot('22-crash.png');
+    await js("document.getElementById('crash-dismiss').click()");
+    await wait(400);
+    console.log(`after Carry on, banner hidden: ${await js("document.getElementById('crash-banner').hidden")}, window still usable: ${!win.isDestroyed()}`);
     app.exit(0);
     return;
   }

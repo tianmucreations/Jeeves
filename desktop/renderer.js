@@ -7,6 +7,7 @@ const els = {
   folder: $('folder'), light: $('light'), welcome: $('welcome'), chat: $('chat'), greeting: $('greeting'),
   projects: $('projects'), choose: $('choose'), nokeys: $('nokeys'), scroller: $('scroller'),
   transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), approvalDetail: $('approval-detail'), always: $('always'),
+  crashBanner: $('crash-banner'), crashText: $('crash-text'), crashDismiss: $('crash-dismiss'),
   composer: $('composer'), busy: $('busy'), stop: $('stop'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
 };
 
@@ -266,6 +267,16 @@ document.getElementById('just-chat').addEventListener('click', () => void window
 
 window.jeeves.onState(render);
 window.jeeves.ready().then(render);
+
+// The engine hit something it didn't expect: the window stays up, says what
+// happened in plain words, and carries on (batch 6, 25 Sept).
+window.jeeves.onEngineCrashed((info) => {
+  els.crashBanner.hidden = false;
+  els.crashText.textContent = `Something went wrong inside Jeeves. This window and your conversation are still here - the task in progress was stopped.${info && info.message ? ` (${String(info.message).slice(0, 160)})` : ''}`;
+});
+els.crashDismiss.addEventListener('click', () => {
+  els.crashBanner.hidden = true;
+});
 
 // Choosing how to be addressed: a button, or anything typed in the box.
 async function chooseAddress(value) {

@@ -54,6 +54,23 @@ body {
   padding: 4px 0;
 }
 button { font: inherit; cursor: pointer; }
+
+/* Shown when the engine hit a problem it didn't expect: the window survives and
+   says so, instead of closing (batch 6, 25 Sept). */
+.crash-banner {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 64, 64, 0.45);
+  background: #1a0505;
+  color: #ff9b9b;
+  font-size: 13px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.crash-banner[hidden] { display: none; }
+.crash-text { flex: 1; overflow-wrap: anywhere; }
+.crash-banner .btn { flex-shrink: 0; }
 ::selection { background: #3a3d44; color: var(--silver-bright); }
 
 /* Title bar: draggable, room on the left for the window buttons. */

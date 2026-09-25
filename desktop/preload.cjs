@@ -24,4 +24,5 @@ contextBridge.exposeInMainWorld('jeeves', {
   onOpenSettings: (listener) => ipcRenderer.on('open-settings', () => listener()),
   onSettingsChanged: (listener) => ipcRenderer.on('settings-changed', () => listener()),
   onState: (listener) => ipcRenderer.on('state', (_event, state) => listener(state)),
+  onEngineCrashed: (listener) => ipcRenderer.on('engine-crashed', (_event, info) => listener(info)),
 });
