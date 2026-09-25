@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text } from 'ink';
 import chalk from 'chalk';
-import notifier from 'node-notifier';
 import { execa } from 'execa';
 import { platform } from 'node:os';
 import { useSession, type Status } from '../state/session.js';
@@ -68,13 +67,27 @@ async function isTerminalFocused(): Promise<boolean> {
   }
 }
 
+// macOS has a notifier built in (AppleScript's display notification) - the same
+// channel the old notification package used, without the package. Elsewhere the
+// terminal's own alert (the bell) is the one channel every terminal supports.
+async function notify(title: string, message: string): Promise<void> {
+  if (platform() === 'darwin') {
+    await execa('osascript', ['-e', `display notification "${message.replace(/"/g, '')}" with title "${title.replace(/"/g, '')}"`]);
+    return;
+  }
+  if (process.stdout.isTTY && process.env.TERM !== 'dumb') {
+    try {
+      process.stdout.write('\x07');
+    } catch {
+      // A closed stream must never crash the app.
+    }
+  }
+}
+
 async function notifyJobFinished(seconds: number): Promise<void> {
   try {
     if (await isTerminalFocused()) return;
-    notifier.notify({
-      title: 'Done',
-      message: `The task finished after ${Math.round(seconds)} seconds.`,
-    });
+    await notify('Jeeves', `The task finished after ${Math.round(seconds)} seconds.`);
   } catch {
     // Notifications are best-effort and must never surface errors.
   }
@@ -85,10 +98,7 @@ async function notifyJobFinished(seconds: number): Promise<void> {
 async function notifyApprovalWaiting(): Promise<void> {
   try {
     if (await isTerminalFocused()) return;
-    notifier.notify({
-      title: 'Jeeves',
-      message: 'Jeeves needs your permission to continue.',
-    });
+    await notify('Jeeves', 'Jeeves needs your permission to continue.');
   } catch {
     // Notifications are best-effort and must never surface errors.
   }
