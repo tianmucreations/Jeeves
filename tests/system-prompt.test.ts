@@ -221,3 +221,20 @@ describe('per-model-family instructions (OpenCode\'s answer to running on any co
     }
   });
 });
+
+// The measured GLM drifts (25 Sept): after a decline it offered "Say the word if
+// you'd like me to try again", and its working-out ("The user denied... I should
+// accept it in one short sentence") showed in the transcript as reply text.
+describe('the model-manners rules (measured drifts)', () => {
+  it('the decline rule forbids try-again offers as well as alternatives', () => {
+    expect(SYSTEM_PROMPT_TEMPLATE).toContain('do not offer to try again later');
+  });
+
+  it('the GLM note forbids writing deliberation into the reply', () => {
+    const prompt = buildSystemPrompt('Sir', '2026-09-25', 'morning', 'glm-5.3-flash');
+    expect(prompt).toContain('never a place to think');
+    expect(prompt).toContain('no offer to try again');
+    // The other families carry no such note - the drift was measured on GLM.
+    expect(buildSystemPrompt('Sir', '2026-09-25', 'morning', 'claude-sonnet-5')).not.toContain('never a place to think');
+  });
+});
