@@ -6,6 +6,7 @@ import { copySelection } from '../ink/selection.js';
 import { pressCtrlCToQuit } from '../ink/quit.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
 import { session, useSession } from '../state/session.js';
+import { getInputHistory, pushInputHistory } from '../platform/config.js';
 import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
 import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 import { approvalButtons, approvalButtonAt } from '../ink/approval-buttons.js';
@@ -46,6 +47,11 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // move it, and typing goes in where it is - owner, 19 Sept).
   const cursorRef = useRef<number | null>(null);
   const [, setCursorTick] = useState(0);
+  // OpenCode's input history: what has been sent, so Up at the start of the box
+  // walks back through previous messages. index null = not navigating (and draft
+  // holds what was being typed, brought back by Down past the newest).
+  const sentHistory = useRef(getInputHistory());
+  const historyNav = useRef<{ index: number | null; draft: string }>({ index: null, draft: '' });
   // Which button is highlighted for arrow-key + Enter use (Left/Right/Tab move
   // it, Enter confirms - a mouse click still answers directly, same as
   // OpenCode's row of buttons). Reset whenever a new question replaces the last
@@ -80,8 +86,10 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     const up = cursorRef.current === null ? 0 : scrollToShowCursor(text, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
     if (up !== draftUpRef.current) scrollDraft(up);
   };
-  // Typed or pasted text goes in at the cursor.
+  // Typed or pasted text goes in at the cursor. Editing a recalled message ends
+  // the walk through history - the text stays as it now is.
   const insert = (text: string) => {
+    historyNav.current.index = null;
     const all = chars();
     const at = cursorRef.current ?? all.length;
     const added = Array.from(text);
@@ -243,6 +251,37 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       if (key.ctrl && input === 'a') return moveCursor(0);
       if (key.ctrl && input === 'e') return moveCursor(null);
     }
+    // Up-arrow history, as Claude Code and OpenCode both do it: with the cursor
+    // at the very start of the box (an empty box counts), Up walks back through
+    // previous messages to resend or edit one; Down walks forward, and past the
+    // newest brings back what was being typed. Anywhere else - cursor inside the
+    // text - Up and Down scroll the conversation as they always have.
+    {
+      const navigating = historyNav.current.index !== null;
+      const atStart = navigating || cursorRef.current === 0 || !valueRef.current;
+      if (key.upArrow && atStart && sentHistory.current.length > 0 && s.transcriptScrollUp === 0 && layout.maxScrollUp === 0) {
+        const state = historyNav.current;
+        if (state.index === null) {
+          state.draft = valueRef.current;
+          state.index = sentHistory.current.length - 1;
+        } else {
+          state.index = Math.max(0, state.index - 1);
+        }
+        setValue(sentHistory.current[state.index], 0);
+        return;
+      }
+      if (key.downArrow && navigating) {
+        const state = historyNav.current;
+        state.index = (state.index ?? 0) + 1;
+        if (state.index >= sentHistory.current.length) {
+          state.index = null;
+          setValue(state.draft);
+        } else {
+          setValue(sentHistory.current[state.index], 0);
+        }
+        return;
+      }
+    }
     // The alternate screen has no native scrollback, so these keys scroll the
     // transcript region itself (Claude Code's bindings): arrows move 3 rows,
     // Page Up/Down a full page, End jumps back to the newest and re-follows.
@@ -273,6 +312,10 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       const text = valueRef.current.trim();
       setValue(burst.rest);
       if (!text) return;
+      // Sent messages are remembered for Up-arrow recall (OpenCode's history).
+      pushInputHistory(text);
+      sentHistory.current = getInputHistory();
+      historyNav.current = { index: null, draft: '' };
       s.followTranscript();
       // /exit is honoured even mid-turn so a wedged request can never trap the user.
       if (text === '/exit' || s.status !== 'working') {
@@ -286,6 +329,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     }
     if (key.backspace || key.delete) {
       s.followTranscript();
+      historyNav.current.index = null;
       // The character before the cursor goes (one whole character, never half of one).
       const all = chars();
       const at = cursorRef.current ?? all.length;

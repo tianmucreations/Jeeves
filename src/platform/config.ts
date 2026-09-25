@@ -24,6 +24,9 @@ interface JeevesConfig {
   // Command kinds (families) trusted per project folder - "always allow this
   // kind of command". Keyed by the folder's canonical path, like trustedProjects.
   allowedCommands?: Record<string, string[]>;
+  // What the person has sent, newest last, so Up brings a previous message back
+  // (OpenCode's prompt history, capped like theirs).
+  inputHistory?: string[];
 }
 
 // Persistent settings. Phase 7 expands this into the full config surface
@@ -243,4 +246,21 @@ export function getAllowedCommands(): Record<string, string[]> {
 
 export function setAllowedCommands(map: Record<string, string[]>): void {
   config.set('allowedCommands', map);
+}
+
+// OpenCode's prompt history (component/prompt/history.tsx): what the person has
+// sent, newest last, so Up brings a previous message back to resend or edit.
+// Capped at their 50 entries; a message sent twice in a row is kept once.
+const INPUT_HISTORY_CAP = 50;
+
+export function getInputHistory(): string[] {
+  return config.get('inputHistory') ?? [];
+}
+
+export function pushInputHistory(entry: string): void {
+  const text = entry.trim();
+  if (!text) return;
+  const all = getInputHistory();
+  if (all[all.length - 1] === text) return;
+  config.set('inputHistory', [...all, text].slice(-INPUT_HISTORY_CAP));
 }

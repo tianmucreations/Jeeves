@@ -24,7 +24,7 @@ export const KEY_BINDINGS: HelpEntry[] = [
   { command: 'Esc', description: 'stop what Jeeves is doing, or go back' },
   { command: 'Ctrl+C', description: 'clear what you are typing or stop Jeeves; press it twice to quit' },
   { command: 'y / a / n', description: 'answer a question: yes, always allow in this folder, or no - or click a button, or use ← → and Enter' },
-  { command: '↑ ↓', description: 'move in a list, or scroll the conversation (the mouse wheel or trackpad scrolls too - over the typing box, a long message); Page Up / Page Down jump a whole screen; End returns to the newest' },
+  { command: '↑ ↓', description: 'at an empty box, walk back through your previous messages (Down comes forward again); any other time they scroll the conversation - the wheel or trackpad scrolls too, and over the typing box, a long message; Page Up / Page Down jump a whole screen; End returns to the newest' },
   { command: '← →', description: `move the cursor in what you are typing; ${WORD_JUMP_KEYS} jump a word; Ctrl+A / Ctrl+E go to the start / end; or click where you want it` },
   { command: 'copying', description: 'drag over any text - it is copied when you let go' },
   { command: 'Ctrl+R', description: 'show the notes Jeeves made while thinking about the last answer' },
