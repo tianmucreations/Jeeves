@@ -90,9 +90,10 @@ describe('oversized answers are saved, not lost', () => {
     await rm(path.join(tmpdir(), 'jeeves-tool-results'), { recursive: true, force: true }).catch(() => {});
   });
 
-  // A real shell start can take seconds on a cold Windows machine (the 19 Sept
-  // lesson) - give it room, like the other shell tests.
-  it('a result past the cap keeps its start and names where the whole thing went', async () => {
+  // The spill logic itself is shell-independent; the command that produces an
+  // oversized answer uses Unix tools, so like the heredoc test this runs on
+  // macOS and Linux only.
+  it.skipIf(process.platform === 'win32')('a result past the cap keeps its start and names where the whole thing went', async () => {
     const run = TOOLS.runBash.execute!({ command: 'yes 0 | head -c 200000' }, options);
     const out = (await run) as string;
     expect(out.length).toBeLessThan(3_000);
