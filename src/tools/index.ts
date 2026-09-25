@@ -159,6 +159,17 @@ function defineTool<S extends z.ZodObject>(config: {
   });
 }
 
+// Whether a shell command needs the person's yes: anything not on the read-only
+// list, except a command whose kind was allowed in this folder before AND that
+// stays inside the project folder. 25 Sept: a remembered kind used to wave the
+// command through no matter where it pointed - a folder landed in the person's
+// HOME folder that way. "Always allow" covers this folder's own drawers only;
+// anything reaching outside (the home folder included) asks every time, with the
+// outside warning on the question and no Always Allow button (/undo can't cover it).
+export function runBashNeedsPermission(command: string): boolean {
+  return !isReadOnlyBashCommand(command) && !(isCommandFamilyTrusted(command) && !commandMayReachOutside(command));
+}
+
 export const TOOLS: ToolSet = {
   readFile: defineTool({
     name: 'readFile',
@@ -224,9 +235,9 @@ export const TOOLS: ToolSet = {
     schema: runBashSchema,
     // Read-only commands never ask (the allowlist lives in permissions.ts);
     // command kinds the person has already allowed in this folder don't ask
-    // either ("always allow this kind of command", as Claude Code remembers
-    // per-repo command rules); everything else still prompts.
-    permission: (input) => !isReadOnlyBashCommand(input.command) && !isCommandFamilyTrusted(input.command),
+    // either - but only while the command stays inside this project folder
+    // (see runBashNeedsPermission).
+    permission: (input) => runBashNeedsPermission(input.command),
     approvalCommand: (input) => input.command,
     warningInline: true,
     summarize: (input) => {

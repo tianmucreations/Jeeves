@@ -130,6 +130,10 @@ describe("the projects folder fact (the wrong-drawer folder, 25 Sept: 'create a 
       'say exactly where it went, in everyday words',
       'Never say a thing is done while leaving where it went unclear',
       'ask one short question rather than guessing',
+      // 25 Sept: a folder landed in the person's home folder.
+      'When the person does not say where a new file or folder goes, it goes in the working directory - never the home folder.',
+      "The home folder root (~ itself) is the computer's index, not a drawer: never put anything directly inside it.",
+      'name the sensible place (the project folder, or Documents) and get a yes before acting',
     ]) {
       expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
     }

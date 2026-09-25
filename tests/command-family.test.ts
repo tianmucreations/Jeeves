@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import os from 'node:os';
 import path from 'node:path';
 import { commandFamily, commandFamilies } from '../src/agent/command-family.js';
 import { trustCommandFamily, isCommandFamilyTrusted, untrustCommandFamilies } from '../src/agent/trust.js';
+import { runBashNeedsPermission } from '../src/tools/index.js';
 import { requestApproval, answerApproval, hasPendingApproval } from '../src/agent/permissions.js';
 import { session } from '../src/state/session.js';
 
@@ -74,6 +76,21 @@ describe('a command kind allowed once never asks again in that folder', () => {
     trustCommandFamily('wc -w notes.txt');
     untrustCommandFamilies(folder);
     expect(isCommandFamilyTrusted('wc -w notes.txt')).toBe(false);
+  });
+
+  // 25 Sept: a folder landed in the person's HOME folder - a kind allowed once
+  // used to wave the command through wherever it pointed. The remembered kind
+  // covers this folder's own drawers only; anything reaching outside asks.
+  it('asks again when the command reaches outside the folder, even with the kind allowed', () => {
+    trustCommandFamily('mkdir -p inside/project');
+    // Inside: still silent - the anti-fatigue benefit stays.
+    expect(runBashNeedsPermission('mkdir -p inside/more')).toBe(false);
+    // The home folder above all: asks, every time, with no Always Allow button.
+    expect(runBashNeedsPermission(`mkdir -p ${os.homedir()}/test`)).toBe(true);
+    expect(runBashNeedsPermission('mkdir -p ../beside')).toBe(true);
+    expect(runBashNeedsPermission('mkdir -p /Users/someone/elsewhere')).toBe(true);
+    // An unallowed kind asks as before.
+    expect(runBashNeedsPermission('mv a b')).toBe(true);
   });
 });
 
