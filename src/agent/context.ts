@@ -44,11 +44,32 @@ export function shouldAutoSummarise(conversationTokens: number, limit: number): 
 
 // A failed summary is never announced - the user could do nothing about it. It is
 // retried quietly, but only after a few messages, so a service that keeps failing
-// is not asked (and billed) for a summary on every single message.
+// is not asked (and billed) for a summary on every single message. After three
+// failures in a row the summariser gives up for this conversation (Claude Code's
+// autocompact circuit breaker: endless retry attempts burned real money there) -
+// /clear starts it over.
 export const SUMMARY_RETRY_AFTER = 3;
+export const SUMMARY_MAX_CONSECUTIVE_FAILURES = 3;
 let messagesUntilRetry = 0;
+let summaryFailures = 0;
+
+export function noteSummaryFailure(): void {
+  summaryFailures += 1;
+  messagesUntilRetry = SUMMARY_RETRY_AFTER;
+}
+
+// True once the breaker has tripped: the conversation carries on unsummarised.
+export function summariserDisabled(): boolean {
+  return summaryFailures >= SUMMARY_MAX_CONSECUTIVE_FAILURES;
+}
+
+export function resetSummariser(): void {
+  messagesUntilRetry = 0;
+  summaryFailures = 0;
+}
 
 export function summaryDue(conversationTokens: number, limit: number): boolean {
+  if (summariserDisabled()) return false;
   if (messagesUntilRetry > 0) {
     messagesUntilRetry -= 1;
     return false;
@@ -80,8 +101,10 @@ export async function summariseHistory(): Promise<void> {
     });
     for (const cost of result.stepCosts ?? []) reportStepCost(cost);
     const summary = result.text.trim();
-    // Silent either way: the user can do nothing about it (a failure retries later).
+    // Silent either way: the user can do nothing about it (a failure retries later,
+    // until the breaker gives up for this conversation).
     if (summary) {
+      summaryFailures = 0;
       session.setHistory([
         {
           role: 'user',
@@ -89,10 +112,10 @@ export async function summariseHistory(): Promise<void> {
         },
       ]);
     } else {
-      messagesUntilRetry = SUMMARY_RETRY_AFTER;
+      noteSummaryFailure();
     }
   } catch {
-    messagesUntilRetry = SUMMARY_RETRY_AFTER;
+    noteSummaryFailure();
   }
   session.setTidying(false);
   session.setStatus('idle');

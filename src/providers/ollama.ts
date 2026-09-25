@@ -2,6 +2,7 @@ import { streamText, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
 import { silenceGuard } from './silence.js';
+import { repairToolCall } from './repair.js';
 import { prepareStepFor } from './step-control.js';
 import type { ModelInfo } from '../models/registry.js';
 
@@ -36,6 +37,7 @@ export function createOllamaProvider(): Provider {
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        repairToolCall,
         prepareStep: prepareStepFor(beforeStep, (id) => client.chat(id)),
         abortSignal: guard.signal,
         // The library prints every failure to the screen by default, over Jeeves's
@@ -65,6 +67,7 @@ export function createOllamaProvider(): Provider {
       const finalStep = await result.finalStep;
       const responseMessages = await result.responseMessages;
       const usage = await result.usage;
+      const steps = await result.steps;
       return {
         text,
         reasoning: finalStep.reasoningText ?? '',
@@ -77,6 +80,8 @@ export function createOllamaProvider(): Provider {
         },
         cost: 0,
         rateLimit: null,
+        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
+        finishReason: finalStep.finishReason,
       };
     },
   };

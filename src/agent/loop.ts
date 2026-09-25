@@ -15,6 +15,7 @@ import { requestApproval, hasPendingApproval, answerApproval } from './permissio
 import { withRateLimitRetry } from './retry.js';
 import { recordModelFailure, recordModelSuccess } from './model-health.js';
 import { killAllRunningCommands } from '../tools/runBash.js';
+import { resetDoomLoop } from './doom-loop.js';
 import type { StreamOptions } from '../providers/types.js';
 import { clearOldToolResults } from './housekeeping.js';
 import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
@@ -54,6 +55,18 @@ export function endsMidIntention(text: string): boolean {
 
 const CONTINUE_NUDGE =
   'You stopped after describing something you were about to do, without doing it and without saying the task is finished. Either do it now, with a tool call in this turn, or say plainly that the task is done.';
+
+// OpenCode's graceful step cap (max-steps.ts): a long job that reaches the step
+// limit gets one last reply with the tools off, told to wrap up plainly - never a
+// dead stop the person has to puzzle over.
+const STEP_CAP_REQUEST =
+  'This task has used up the steps allowed for one go, so there are no more tools now. Reply with a short, plain summary for the person: what is done and where it is, what is not done, and the one thing to type next to carry on. Do not apologise and do not describe your working.';
+
+// Claude Code's withheld max-output-tokens recovery: a reply cut off by the
+// model's own size limit is resumed directly - no apology, no recap. Offered
+// once: a failing recovery must never become its own doom loop.
+const LENGTH_RESUME_REQUEST =
+  'Your reply was cut off by the size limit. Resume exactly where you stopped, in mid-sentence if need be. No apology and no recap. If what remains is long, work in smaller pieces from here.';
 
 // The job now running, so the person can stop it (Claude Code's Esc: the request is
 // cancelled and running commands are closed).
@@ -146,6 +159,7 @@ export async function runTurn(input: string): Promise<void> {
   currentStop = stop;
   let countedSteps = 0;
   session.beginTurn();
+  resetDoomLoop();
   session.setStatus('working');
   const turnStart = session.transcript.length;
   let assistantId: number | null = null;
@@ -154,7 +168,7 @@ export async function runTurn(input: string): Promise<void> {
     // A note from /undo travels with the next message, so the model knows files changed back.
     const note_ = session.pendingContextNote;
     session.pendingContextNote = null;
-    const messages = buildTurnMessages(session.history, note_ ? `${note_}\n\n${input}` : input);
+    let messages = buildTurnMessages(session.history, note_ ? `${note_}\n\n${input}` : input);
     // Models without tool support get a tool-free chat mode automatically (spec 4.2).
     const currentModel = session.models.find((model) => model.id === modelId);
     const toolCapable = !currentModel || isToolCapable(currentModel);
@@ -216,8 +230,52 @@ export async function runTurn(input: string): Promise<void> {
       },
     };
     let uncheckedNotice = false;
-    let result = await withRateLimitRetry(() => provider.stream(streamOptions), session.providerId, stop.signal);
+    let result;
+    try {
+      result = await withRateLimitRetry(() => provider.stream(streamOptions), session.providerId, stop.signal);
+    } catch (error) {
+      // Claude Code's single reactive compact: a conversation that outgrew the
+      // model mid-job is tidied hard, once, and the turn retried silently. A
+      // second failure is shown, so a doomed retry can never spiral.
+      if (stop.signal.aborted || plainError(error, session.providerId).kind !== 'context') throw error;
+      const cleared = clearOldToolResults(session.history);
+      if (cleared.freedTokens > 0) session.setHistory(cleared.messages);
+      await summariseHistory();
+      session.setStatus('working');
+      messages = buildTurnMessages(session.history, input);
+      result = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages }), session.providerId, stop.signal);
+    }
     let allMessages = [...messages, ...result.messages];
+    // A reply cut off by the model's own size limit resumes directly, once
+    // (Claude Code's withheld-error recovery - the person never sees the error).
+    if (!stop.signal.aborted && result.finishReason === 'length') {
+      for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
+      countedSteps = 0;
+      const resumeMessages = [...allMessages, { role: 'user' as const, content: LENGTH_RESUME_REQUEST }];
+      const resumed = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: resumeMessages }), session.providerId, stop.signal);
+      allMessages = [...resumeMessages, ...resumed.messages];
+      result = {
+        ...resumed,
+        text: (result.text ?? '') + (resumed.text ?? ''),
+        stepCosts: [...(result.stepCosts ?? []), ...(resumed.stepCosts ?? [])],
+        finishReason: resumed.finishReason,
+      };
+    }
+    // A long job that reached the step cap ends with a plain summary, not a dead
+    // stop (OpenCode's max-steps prefill): one last reply, tools off.
+    if (!stop.signal.aborted && result.hitStepCap) {
+      for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
+      countedSteps = 0;
+      const capMessages = [...allMessages, { role: 'user' as const, content: STEP_CAP_REQUEST }];
+      const capped = await withRateLimitRetry(() => provider.stream({ ...streamOptions, tools: {}, messages: capMessages }), session.providerId, stop.signal);
+      allMessages = [...capMessages, ...capped.messages];
+      result = {
+        ...capped,
+        text: result.text && capped.text ? `${result.text}\n\n${capped.text}` : capped.text || result.text,
+        stepCosts: [...(result.stepCosts ?? []), ...(capped.stepCosts ?? [])],
+        finishReason: capped.finishReason,
+      };
+    }
     // Auto's double-check, once, when this job changed a program or wrote a document
     // (where the cheap worker's mistakes were measured - see review.ts).
     if (auto && REVIEW_FINISHED_JOBS && jobNeedsReview(session.transcript.slice(turnStart)) && !stop.signal.aborted) {

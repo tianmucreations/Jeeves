@@ -8,6 +8,7 @@ import { createGroq } from '@ai-sdk/groq';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
 import { silenceGuard } from './silence.js';
+import { repairToolCall } from './repair.js';
 import { prepareStepFor, type FinishedStep } from './step-control.js';
 import { directService, serviceNameFor, CUSTOM_SERVICE_ID, type DirectServiceId } from './direct-services.js';
 import { estimateCost, priceOf, type StepUsage } from './catalogue.js';
@@ -92,6 +93,7 @@ function streamWith(
         messages: caching ? markForCaching(messages) : messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        repairToolCall,
         // The marks move to the newest messages at every step of a job.
         prepareStep:
           prepare || caching
@@ -144,6 +146,8 @@ function streamWith(
         rateLimit: null,
         // Worked out from the price list: these services don't report a cost.
         stepCosts: steps.map(stepCostOf),
+        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
+        finishReason: finalStep.finishReason,
       };
     },
   };

@@ -4,6 +4,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { Provider, StreamOptions, StreamResult, RateLimitInfo } from './types.js';
 import { silenceGuard } from './silence.js';
 import { prepareStepFor, stepCost } from './step-control.js';
+import { repairToolCall } from './repair.js';
 
 // Assumption: the spec's "maxSteps" is called stopWhen/stepCountIs in AI SDK 7 (the installed version); same cap of 25.
 const MAX_TOOL_STEPS = 25;
@@ -105,6 +106,7 @@ export function createOpenRouterProvider(apiKey: string): Provider {
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        repairToolCall,
         prepareStep: prepareStepFor(beforeStep, (id) => openrouter.chat(id, { usage: { include: true } })),
         abortSignal: guard.signal,
         // The library prints every failure to the screen by default, over Jeeves's
@@ -144,6 +146,8 @@ const finalStep = await result.finalStep;
       const responseMessages = await result.responseMessages;
       const usage = await result.usage;
 
+      const steps = await result.steps;
+
       const headers = finalStep.response.headers;
       const limit = headerNumber(headers, 'x-ratelimit-limit');
       const remaining = headerNumber(headers, 'x-ratelimit-remaining');
@@ -165,7 +169,9 @@ const finalStep = await result.finalStep;
         },
         cost: 0,
         rateLimit,
-        stepCosts: (await result.steps).map(stepCost),
+        stepCosts: steps.map(stepCost),
+        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
+        finishReason: finalStep.finishReason,
       };
     },
   };

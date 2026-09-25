@@ -2,6 +2,7 @@ import { streamText, stepCountIs } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
 import { silenceGuard } from './silence.js';
+import { repairToolCall } from './repair.js';
 import { prepareStepFor } from './step-control.js';
 import type { ModelInfo } from '../models/registry.js';
 
@@ -83,6 +84,7 @@ export function createZaiProvider(apiKey: string): Provider {
         messages,
         tools,
         stopWhen: stepCountIs(MAX_TOOL_STEPS),
+        repairToolCall,
         prepareStep: prepareStepFor(beforeStep, (id) => client.chatModel(id)),
         abortSignal: guard.signal,
         // The library prints every failure to the screen by default, over Jeeves's
@@ -112,6 +114,7 @@ export function createZaiProvider(apiKey: string): Provider {
       const finalStep = await result.finalStep;
       const responseMessages = await result.responseMessages;
       const usage = await result.usage;
+      const steps = await result.steps;
       return {
         text,
         reasoning: finalStep.reasoningText ?? '',
@@ -124,6 +127,8 @@ export function createZaiProvider(apiKey: string): Provider {
         },
         cost: 0,
         rateLimit: null,
+        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
+        finishReason: finalStep.finishReason,
       };
     },
   };

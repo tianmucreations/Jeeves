@@ -20,6 +20,12 @@ export interface StreamResult {
   rateLimit: RateLimitInfo | null;
   // What each step of the job cost, where the service reports it (OpenRouter).
   stepCosts?: number[];
+  // True when the step cap stopped a job that still wanted to call tools - the
+  // loop ends it with a plain summary instead of a dead stop (OpenCode).
+  hitStepCap?: boolean;
+  // Why the model stopped its final answer ('length' = cut off by its own size
+  // limit - Claude Code's withheld-error recovery case).
+  finishReason?: string;
 }
 
 // Called before each step of a job: may swap the model for that step (Auto mode's

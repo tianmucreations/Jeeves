@@ -24,6 +24,7 @@ import {
   commandEditsFiles,
 } from '../agent/research-gate.js';
 import { holdUntilReproduced } from '../agent/review.js';
+import { doomLoopCheck } from '../agent/doom-loop.js';
 import { describeCommand, describeDone } from './describe.js';
 import { PlainError } from './plain.js';
 import { writeRefusal, writePreview } from './write-safety.js';
@@ -161,6 +162,12 @@ function defineTool<S extends z.ZodObject>(config: {
         });
         throw new Error(held);
       }
+      // The doom-loop guard (OpenCode's): a third identical call in a row is
+      // refused and the model is told to stop and speak plainly. The refusal is
+      // for the model - the two earlier identical calls are already on screen as
+      // lines, so no extra record is drawn.
+      const doom = doomLoopCheck(config.name, input);
+      if (doom) throw new PlainError(doom);
       const coveredElsewhere = config.alreadyTrustedElsewhere?.(input) ?? false;
       const warning = coveredElsewhere ? null : (config.warning?.(input) ?? null);
       // A change inside the project folder (no outside warning) may be "always allowed".
