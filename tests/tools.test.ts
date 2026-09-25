@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
+import { tmpdir, homedir } from 'node:os';
+import os from 'node:os';
 import path from 'node:path';
 import { readFileSchema, runReadFile } from '../src/tools/readFile.js';
 import { writeFileSchema, runWriteFile } from '../src/tools/writeFile.js';
@@ -55,6 +56,23 @@ describe('tool executors', () => {
     const out = await runListDir({ path: dir });
     expect(out).toContain('hello.txt');
     expect(out).not.toContain('secret.txt');
+  });
+
+  // 25 Sept: "~/Documents/Projects" was answered with "That folder does not
+  // exist." - the tilde must mean the home folder, as the shell reads it.
+  it('listDir, readFile and writeFile understand the home-folder shorthand (~/...)', async () => {
+    const homeDir = path.join(os.homedir(), `jeeves-tilde-${path.basename(dir)}`);
+    await mkdir(homeDir, { recursive: true });
+    try {
+      await writeFile(path.join(homeDir, 'note.txt'), 'found me');
+      const tilde = `~/${path.basename(homeDir)}`;
+      expect(await runListDir({ path: tilde })).toContain('note.txt');
+      expect(await runReadFile({ path: `${tilde}/note.txt` })).toBe('found me');
+      await runWriteFile({ path: `${tilde}/made.txt`, content: 'written' });
+      expect(await runReadFile({ path: `${tilde}/made.txt` })).toBe('written');
+    } finally {
+      await rm(homeDir, { recursive: true, force: true });
+    }
   });
 
   it('listDir lists recursively when asked', async () => {

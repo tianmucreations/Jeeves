@@ -3,8 +3,19 @@ import { homedir } from 'node:os';
 import { existsSync, readdirSync } from 'node:fs';
 
 // Path helpers. Resolving against the current folder keeps behaviour identical on macOS, Windows, and Linux.
+
+// The tools accept the home-folder shorthand (~/...), as the shell does: a leading
+// ~ alone or ~/ means the person's home folder. 25 Sept: listDir said "That folder
+// does not exist." about ~/Documents/Projects - path.resolve treated ~ as a folder
+// NAME under the project. A bare ~name (another user's folder) is left alone.
+export function expandHome(p: string): string {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(homedir(), p.slice(2));
+  return p;
+}
+
 export function resolveFromCwd(p: string): string {
-  return path.resolve(p);
+  return path.resolve(expandHome(p));
 }
 
 export interface FolderEntry {

@@ -116,6 +116,11 @@ describe('warnings for changes /undo cannot reverse', () => {
     expect(isOutsideProject('../elsewhere.txt', '/Users/sam/Project')).toBe(true);
     expect(isOutsideProject('/Users/sam/Desktop/x.txt', '/Users/sam/Project')).toBe(true);
     expect(isOutsideProject('/Users/sam/Project/x.txt', '/Users/sam/Project')).toBe(false);
+    // The shell shorthand is the home folder, wherever it appears: outside any
+    // project. 25 Sept: ~/Documents was judged INSIDE the project, so a write
+    // there showed no outside warning - and listDir claimed it did not exist.
+    expect(isOutsideProject('~/Documents/Projects', '/Users/sam/Project')).toBe(true);
+    expect(isOutsideProject('~/notes.txt', '/Users/sam/Project')).toBe(true);
   });
 
   it('flags commands that may reach outside the folder', () => {
