@@ -22,6 +22,7 @@ import {
 import { holdUntilReproduced } from '../agent/review.js';
 import { describeCommand, describeDone } from './describe.js';
 import { PlainError } from './plain.js';
+import { writeRefusal, writePreview } from './write-safety.js';
 
 // Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
 const MAX_RESULT_CHARS = 150_000;
@@ -103,6 +104,12 @@ function defineTool<S extends z.ZodObject>(config: {
   // Checked before anything is asked or done (as Claude Code's validateInput): a
   // reason the action is held, which goes back to the model, or null.
   hold?: (input: z.output<S>) => Promise<string | null> | string | null;
+  // Refused before anything is asked or done (Claude Code's read-before-write
+  // validateInput): a short plain reason the write cannot happen yet, or null.
+  validate?: (input: z.output<S>) => Promise<string | null> | string | null;
+  // Plain lines shown above the permission question (Claude Code's diff-in-the-
+  // prompt, OpenCode's diff in its permission panel): what will actually change.
+  preview?: (input: z.output<S>) => Promise<string | null> | string | null;
 }) {
   return tool({
     description: config.description,
@@ -111,6 +118,14 @@ function defineTool<S extends z.ZodObject>(config: {
       // The SDK validates before execute; parsing again keeps this layer strictly typed.
       const input = config.schema.parse(rawInput);
       const summary = config.summarize(input);
+      // Read-before-write (and changed-since-read): refused before any question,
+      // so the person is never asked to allow something that would be unsafe.
+      const invalid = (await config.validate?.(input)) ?? null;
+      if (invalid) {
+        const refused = session.addToolLine(config.name, summary, 'running');
+        session.updateToolLine(refused, { state: 'failed', label: invalid });
+        throw new PlainError(`Not done: ${invalid}.`);
+      }
       const held = (await config.hold?.(input)) ?? null;
       if (held) {
         const heldLine = session.addToolLine(config.name, summary, 'running');
@@ -128,9 +143,17 @@ function defineTool<S extends z.ZodObject>(config: {
         (typeof config.permission === 'function' ? config.permission(input) : config.permission) &&
         !(trustable && (coveredElsewhere || isProjectTrusted()));
       if (warning && !config.warningInline) session.addNotice(warning);
-      const lineId = session.addToolLine(config.name, summary, needsPermission ? 'awaiting' : 'running');
+      const lineId = session.addToolLine(
+        config.name,
+        summary,
+        needsPermission ? 'awaiting' : 'running',
+        needsPermission ? ((await config.preview?.(input)) ?? undefined) : undefined
+      );
       if (needsPermission) {
+        // The preview was computed before the line was created, so the question
+        // appears complete in one frame (nothing flashes half-drawn).
         const approved = await requestApproval({ trustable, command: config.approvalCommand?.(input) });
+        session.updateToolLine(lineId, { detail: undefined });
         if (!approved) {
           session.updateToolLine(lineId, { state: 'declined' });
           throw new Error(`Permission denied by the user - ${config.name} ${summary} was not executed.`);
@@ -193,9 +216,16 @@ export const TOOLS: ToolSet = {
   }),
   writeFile: defineTool({
     name: 'writeFile',
-    description: 'Write text content to a file, creating the file if it does not exist.',
+    description:
+      'Write text content to a file, creating the file if it does not exist. To change a file that already exists, read it first.',
     schema: writeFileSchema,
     permission: true,
+    // Claude Code's FileWriteTool.validateInput: an existing file must have been
+    // read in this conversation, and must not have changed since (a file the
+    // person edited by hand mid-conversation can never be clobbered).
+    validate: (input) => writeRefusal(resolveFromCwd(input.path)),
+    // The before/after lines ride on the question itself.
+    preview: async (input) => writePreview(resolveFromCwd(input.path), input.content),
     summarize: (input) => `${input.path} (${input.content.length} characters)`,
     label: () => 'Wrote 1 file',
     run: runWriteFile,

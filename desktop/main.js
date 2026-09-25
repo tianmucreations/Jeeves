@@ -74,7 +74,7 @@ function snapshot() {
     const line = toolLineText(entry.data);
     // The window shows its own buttons for a question, so the "(y/n)" text goes.
     const text = entry.data.state === 'awaiting' ? line.text.replace(/ — allow\? \(y\/n\)$/, '') : line.text;
-    return { id: entry.id, kind: 'tool', state: entry.data.state, text, color: line.color ?? null, dim: !!line.dim };
+    return { id: entry.id, kind: 'tool', state: entry.data.state, text, color: line.color ?? null, dim: !!line.dim, detail: entry.data.detail ?? null };
   });
   const segments = footerSegments({
     providerId: s.providerId,
@@ -473,6 +473,32 @@ async function takeShots(out) {
     console.log(`PATH has node: ${process.env.PATH.split(':').some((dir) => existsSync(path.join(dir, 'node')))}`);
     console.log(`live reply finished in ${Date.now() - t} ms, status ${session.status}`);
     await shot('4-live.png');
+    app.exit(0);
+    return;
+  }
+  // JEEVES_DESKTOP_PREVIEWTEST=1: the real write gate in the window - an existing
+  // file is read, then a write waits with its changed lines above the buttons;
+  // after answering, the preview is gone and only the record line remains.
+  if (process.env.JEEVES_DESKTOP_PREVIEWTEST) {
+    const js = (code) => win.webContents.executeJavaScript(code);
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const target = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'jeeves-preview-')), 'notes.txt');
+    await fs.writeFile(target, 'old line\nkeep me');
+    const { runReadFile } = await engine('tools/readFile.js');
+    await runReadFile({ path: target });
+    const { TOOLS } = await engine('tools/index.js');
+    const call = TOOLS.writeFile.execute({ path: target, content: 'new line\nkeep me' }, { toolCallId: 'p1', messages: [] });
+    await wait(800);
+    await shot('21-preview.png');
+    console.log(`box: ${JSON.stringify(await js("document.getElementById('approval-text').textContent"))}`);
+    console.log(`detail visible: ${await js("!document.getElementById('approval-detail').hidden")}, detail: ${JSON.stringify(await js("document.getElementById('approval-detail').textContent"))}`);
+    const { answerApproval } = await engine('agent/permissions.js');
+    answerApproval(false);
+    await call.catch(() => {});
+    await wait(400);
+    const last = session.transcript[session.transcript.length - 1];
+    console.log(`after answering, question box hidden: ${await js("document.getElementById('approval').hidden")}, record: ${JSON.stringify(last.data && last.data.state === 'declined' ? 'you said no' : last.data?.label ?? last.text)}`);
     app.exit(0);
     return;
   }

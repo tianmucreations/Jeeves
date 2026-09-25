@@ -70,6 +70,8 @@ describe('a folder trusted once stays trusted when reached from a different proj
       );
       // Deny it - the point here is only that it asked at all.
       const { answerApproval, hasPendingApproval } = await import('../src/agent/permissions.js');
+      // The gate's checks resolve over a few microtasks; wait for the question.
+      for (let i = 0; i < 200 && !hasPendingApproval(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
       expect(hasPendingApproval()).toBe(true);
       answerApproval(false);
       await call.catch(() => {});

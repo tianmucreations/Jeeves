@@ -166,6 +166,15 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number): Di
         pushWrapped(entry.text, '', '', 'yellow');
         break;
       case 'tool': {
+        // The change itself sits above the question, dim, so the person approves
+        // with open eyes (Claude Code's diff-in-the-prompt). The lines are
+        // already short and marked - old / + new; they only ever show while
+        // the question waits.
+        if (entry.data.state === 'awaiting' && entry.data.detail) {
+          for (const line of entry.data.detail.split('\n')) {
+            lines.push({ text: clipLine('  ' + line, width), dim: true });
+          }
+        }
         const rendered = toolLineText(entry.data);
         lines.push({ text: clipLine(rendered.text, width), color: rendered.color, dim: rendered.dim });
         break;

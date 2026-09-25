@@ -6,7 +6,7 @@ const els = {
   testBanner: $('test-banner'),
   folder: $('folder'), light: $('light'), welcome: $('welcome'), chat: $('chat'), greeting: $('greeting'),
   projects: $('projects'), choose: $('choose'), nokeys: $('nokeys'), scroller: $('scroller'),
-  transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), always: $('always'),
+  transcript: $('transcript'), approval: $('approval'), approvalText: $('approval-text'), approvalDetail: $('approval-detail'), always: $('always'),
   composer: $('composer'), busy: $('busy'), stop: $('stop'), input: $('input'), hint: $('hint'), model: $('model'), segments: $('segments'),
 };
 
@@ -151,6 +151,9 @@ function render(s) {
   if (asking) {
     const question = [...s.transcript].reverse().find((e) => e.kind === 'tool' && e.state === 'awaiting');
     els.approvalText.textContent = question ? question.text.replace(/^\?\s*/, 'Jeeves would like to: ') : 'Jeeves would like your answer.';
+    // The change itself, above the buttons (the terminal shows the same lines).
+    els.approvalDetail.hidden = !question || !question.detail;
+    if (question && question.detail) els.approvalDetail.textContent = question.detail;
     els.always.hidden = !s.approval.trustable;
   }
   els.stop.hidden = s.status !== 'working' && s.status !== 'awaiting-approval';

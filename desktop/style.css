@@ -190,6 +190,12 @@ body.welcoming .brand { visibility: hidden; }
   padding: 14px 16px; margin-bottom: 10px;
 }
 .approval-text { color: var(--amber); font-family: var(--mono); font-size: 13px; margin-bottom: 12px; overflow-wrap: anywhere; }
+/* The change itself, above the buttons: - old line / + new line (the terminal's
+   preview, shared from the engine's write-safety). */
+.approval-detail {
+  font-family: var(--mono); font-size: 12px; color: var(--silver-dim);
+  margin: 0 0 12px 0; white-space: pre-wrap; overflow-wrap: anywhere;
+}
 .approval-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn { border-radius: 999px; padding: 7px 14px; border: 1px solid var(--edge); background: none; color: var(--silver); }
 .btn kbd { font-family: var(--mono); font-size: 11px; color: var(--silver-dim); margin-left: 6px; }

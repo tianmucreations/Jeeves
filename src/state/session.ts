@@ -15,6 +15,9 @@ export interface ToolLineData {
   summary: string;
   state: ToolLineState;
   label: string;
+  // Plain changed-lines shown above the question while a write waits for its
+  // answer (write-safety's preview); cleared once the question is answered.
+  detail?: string;
 }
 
 export type TranscriptEntry =
@@ -241,9 +244,9 @@ class SessionStore {
     this.reasoningEntryId = null;
   }
 
-  addToolLine(tool: string, summary: string, state: ToolLineState): number {
+  addToolLine(tool: string, summary: string, state: ToolLineState, detail?: string): number {
     const id = this.nextId++;
-    this.transcript = [...this.transcript, { id, kind: 'tool', data: { tool, summary, state, label: '' } }];
+    this.transcript = [...this.transcript, { id, kind: 'tool', data: { tool, summary, state, label: '', detail } }];
     this.emit();
     return id;
   }

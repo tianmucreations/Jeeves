@@ -144,6 +144,10 @@ describe('double-check: reproduce before changing anything', () => {
     process.chdir(dir);
     try {
       await writeFile(path.join(dir, 'letter.txt'), 'Dear Mr Patel');
+      // The file must have been read before a write can touch it (write-safety,
+      // 25 Sept) - the same first step the model itself must take.
+      const readOptions = { toolCallId: 'r0', messages: [] } as never;
+      await TOOLS.readFile.execute!({ path: 'letter.txt' }, readOptions);
       startReproducing();
       const options = { toolCallId: 'r1', messages: [] } as never;
       await expect(TOOLS.writeFile.execute!({ path: 'letter.txt', content: 'x' }, options)).rejects.toThrow('reproduce the reported problem');
