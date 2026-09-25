@@ -90,6 +90,8 @@ describe('oversized answers are saved, not lost', () => {
     await rm(path.join(tmpdir(), 'jeeves-tool-results'), { recursive: true, force: true }).catch(() => {});
   });
 
+  // A real shell start can take seconds on a cold Windows machine (the 19 Sept
+  // lesson) - give it room, like the other shell tests.
   it('a result past the cap keeps its start and names where the whole thing went', async () => {
     const run = TOOLS.runBash.execute!({ command: 'yes 0 | head -c 200000' }, options);
     const out = (await run) as string;
@@ -102,5 +104,5 @@ describe('oversized answers are saved, not lost', () => {
     expect(spilled).toContain('0');
     const files = await readdir(path.join(tmpdir(), 'jeeves-tool-results'));
     expect(files.length).toBe(1);
-  });
+  }, 30_000);
 });
