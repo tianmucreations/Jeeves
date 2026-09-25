@@ -93,7 +93,7 @@ describe('tool executors', () => {
       expect(await runListDir({ path: tilde })).toContain('note.txt');
       expect(await runReadFile({ path: `${tilde}/note.txt` })).toBe('found me');
       await runWriteFile({ path: `${tilde}/made.txt`, content: 'written' });
-      expect(await runReadFile({ path: `${tilde}/made.txt` })).toBe('written');
+      expect(await runReadFile({ path: `${tilde}/made.txt`, limit: 100 })).toBe('written');
     } finally {
       await rm(homeDir, { recursive: true, force: true });
     }
@@ -112,7 +112,7 @@ describe('tool executors', () => {
   it('writeFile writes content and creates folders', async () => {
     const target = path.join(dir, 'new', 'made.txt');
     await runWriteFile({ path: target, content: 'x' });
-    expect(await runReadFile({ path: target })).toBe('x');
+    expect(await runReadFile({ path: target, limit: 100 })).toBe('x');
   });
 
   // Starting a real shell can take several seconds on a cold Windows machine: GitHub's

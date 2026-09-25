@@ -50,5 +50,6 @@ export async function runListDir(input: z.output<typeof listDirSchema>): Promise
   const sorted = entries.sort();
   const cap = 2000;
   const shown = sorted.slice(0, cap).join('\n');
-  return sorted.length > cap ? `${shown}\n(and ${sorted.length - cap} more)` : shown;
+  // A way onward, not a dead cut: the rest are inside the subfolders listed.
+  return sorted.length > cap ? `${shown}\n(and ${sorted.length - cap} more - list a subfolder to see the rest)` : shown;
 }

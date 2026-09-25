@@ -34,6 +34,14 @@ export function resetSeenFiles(): void {
   seen.clear();
 }
 
+// True when the file is on disk exactly as this conversation last saw it.
+export async function fileUnchanged(resolved: string): Promise<boolean> {
+  const current = await snapshot(resolved);
+  if (!current) return false;
+  const before = seen.get(resolved);
+  return before !== undefined && before.mtimeMs === current.mtimeMs && before.size === current.size;
+}
+
 // A reason the write is refused before anything is asked or changed, or null.
 // The words go to the model as its instruction and to the screen as the record.
 export async function writeRefusal(resolved: string): Promise<string | null> {

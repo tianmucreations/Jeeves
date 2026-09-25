@@ -1,5 +1,9 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
+import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { session } from '../state/session.js';
 import { requestApproval, isReadOnlyBashCommand } from '../agent/permissions.js';
 import { readFileSchema, runReadFile } from './readFile.js';
@@ -24,11 +28,33 @@ import { describeCommand, describeDone } from './describe.js';
 import { PlainError } from './plain.js';
 import { writeRefusal, writePreview } from './write-safety.js';
 
-// Assumption: every tool result is capped to keep huge outputs from flooding the conversation.
+// Assumption: every tool result is capped so a huge answer can never flood the
+// conversation - but not cut off blind: the full text is saved and its place is
+// named (Claude Code's toolResultStorage.ts), so the model can go back for more.
 const MAX_RESULT_CHARS = 150_000;
+const SPILL_PREVIEW_CHARS = 2_000;
 
-function truncate(text: string): string {
-  return text.length > MAX_RESULT_CHARS ? text.slice(0, MAX_RESULT_CHARS) + '\n[output truncated]' : text;
+async function truncate(text: string): Promise<string> {
+  if (text.length <= MAX_RESULT_CHARS) return text;
+  const spillDir = path.join(tmpdir(), 'jeeves-tool-results');
+  // Best-effort cleanup of spills older than a week (OpenCode's truncation dir).
+  try {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const name of await readdir(spillDir)) {
+      const full = path.join(spillDir, name);
+      const info = await stat(full).catch(() => null);
+      if (info && info.mtimeMs < weekAgo) await rm(full, { force: true }).catch(() => {});
+    }
+  } catch {
+    // Nothing to clean up yet.
+  }
+  await mkdir(spillDir, { recursive: true });
+  const spill = path.join(spillDir, `${Date.now()}-${randomUUID()}.txt`);
+  await writeFile(spill, text, 'utf8');
+  return (
+    text.slice(0, SPILL_PREVIEW_CHARS) +
+    `\n[the answer was too long to show: the whole thing is saved at ${spill} - read that file for the rest (it also comes in pieces; use offset)]`
+  );
 }
 
 function describeError(error: unknown): string {
@@ -171,7 +197,7 @@ function defineTool<S extends z.ZodObject>(config: {
         }
       }
       try {
-        const result = truncate(await config.run(input));
+        const result = await truncate(await config.run(input));
         session.updateToolLine(lineId, { state: 'done', label: config.label(input, result) });
         return result;
       } catch (error) {
@@ -196,11 +222,12 @@ export function runBashNeedsPermission(command: string): boolean {
 export const TOOLS: ToolSet = {
   readFile: defineTool({
     name: 'readFile',
-    description: 'Read the contents of a text file at the given path.',
+    description:
+      'Read the contents of a text file at the given path. Big files come 2000 lines at a time; continue with offset for the line to start from.',
     schema: readFileSchema,
     permission: false,
     summarize: (input) => input.path,
-    label: (input) => `Read ${input.path}`,
+    label: (input) => (input.offset ? `Read ${input.path} (from line ${input.offset})` : `Read ${input.path}`),
     run: runReadFile,
     hold: (input) => holdUntilReproduced('readFile', input.path, false),
   }),

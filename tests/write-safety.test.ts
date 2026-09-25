@@ -53,7 +53,9 @@ describe('read-before-write (write-safety)', () => {
     await waitUntilAsked();
     answerApproval(true);
     await call;
-    expect(await runReadFile({ path: path.join(dir, 'new.txt') })).toBe('hello');
+    // Read back with a limit: a plain re-read of an unchanged file comes back as
+    // a note now (read-safety), and the limit asks for the contents themselves.
+    expect(await runReadFile({ path: path.join(dir, 'new.txt'), limit: 100 })).toBe('hello');
   });
 
   it('an existing file nobody has read is refused before the question', async () => {
@@ -74,12 +76,12 @@ describe('read-before-write (write-safety)', () => {
     await waitUntilAsked();
     answerApproval(true);
     await first;
-    expect(await runReadFile({ path: path.join(dir, 'unread.txt') })).toBe('second words');
+    expect(await runReadFile({ path: path.join(dir, 'unread.txt'), limit: 100 })).toBe('second words');
     const second = TOOLS.writeFile.execute!({ path: path.join(dir, 'unread.txt'), content: 'third words' }, options);
     await waitUntilAsked();
     answerApproval(true);
     await second;
-    expect(await runReadFile({ path: path.join(dir, 'unread.txt') })).toBe('third words');
+    expect(await runReadFile({ path: path.join(dir, 'unread.txt'), limit: 100 })).toBe('third words');
   });
 
   it('a file changed since it was read is refused, and a fresh read releases it', async () => {
@@ -93,7 +95,7 @@ describe('read-before-write (write-safety)', () => {
     await waitUntilAsked();
     answerApproval(true);
     await call;
-    expect(await runReadFile({ path: path.join(dir, 'unread.txt') })).toBe('now current');
+    expect(await runReadFile({ path: path.join(dir, 'unread.txt'), limit: 100 })).toBe('now current');
   });
 
   it('a fresh conversation starts the memory over: the same file is refused again', async () => {
