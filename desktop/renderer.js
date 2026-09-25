@@ -71,6 +71,10 @@ function renderTranscript(entries) {
   for (const [id, { el }] of drawn) if (!keep.has(id)) { el.remove(); drawn.delete(id); }
   let previous = null;
   for (const entry of entries) {
+    // The one question waits in the box above the typing area - never drawn here
+    // too (25 Sept: it appeared twice, once in the flow and once in the box).
+    // Once answered the entry becomes the record line (done / said no) and shows.
+    if (entry.kind === 'tool' && entry.state === 'awaiting') continue;
     const el = drawEntry(entry);
     const expected = previous ? previous.nextSibling : els.transcript.firstChild;
     if (el !== expected) els.transcript.insertBefore(el, expected);

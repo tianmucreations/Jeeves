@@ -484,6 +484,9 @@ async function takeShots(out) {
   session.addToolLine('runBash', 'mkdir -p Photos Documents Spreadsheets Installers', 'awaiting');
   const answered = requestApproval({ trustable: true });
   await shot('2-question.png');
+  // 25 Sept: the question must appear ONCE - in the box above the typing area,
+  // never also as a line in the conversation.
+  console.log(`question in the flow: ${await win.webContents.executeJavaScript(`(document.getElementById('transcript').textContent.match(/allow\\?/g) || []).length`)} time(s), box: ${JSON.stringify(await win.webContents.executeJavaScript("document.getElementById('approval-text').textContent"))}`);
   // Copying: select the answer text in the window and copy it, as Command+C does.
   {
     const { clipboard } = await import('electron');

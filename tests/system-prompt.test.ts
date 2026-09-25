@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { buildTurnMessages } from '../src/agent/context.js';
-import { SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt, modelFamily } from '../src/agent/systemPrompt.js';
+import { SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt, modelFamily, projectsFolder } from '../src/agent/systemPrompt.js';
 import { inputFrameRow } from '../src/ink/cursor.js';
 
 describe('system prompt', () => {
@@ -66,6 +70,79 @@ describe('system prompt', () => {
     expect(prompt).toContain("Today's date is 2026-09-19, and it is morning (this computer's own date and clock).");
     expect(prompt).toContain('mean the year of today\'s date: search for that year by name');
     expect(buildSystemPrompt('Sir')).toMatch(/Today's date is \d{4}-\d{2}-\d{2}, and it is (morning|afternoon|evening) /);
+  });
+});
+
+describe("the projects folder fact (the wrong-drawer folder, 25 Sept: 'create a folder in projects' went into the chat folder)", () => {
+  it('works the projects folder out only from real evidence: the most common existing parent, strictly ahead', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'jeeves-projects-'));
+    try {
+      const projects = path.join(root, 'Documents', 'Projects');
+      mkdirSync(path.join(projects, 'Claude Usage Monitor'), { recursive: true });
+      mkdirSync(path.join(projects, 'YourNotes Project'), { recursive: true });
+      mkdirSync(path.join(projects, 'Income Streams Research'), { recursive: true });
+      const documents = path.join(root, 'Documents');
+      mkdirSync(path.join(documents, 'Test Project'), { recursive: true });
+      mkdirSync(path.join(documents, 'Trading Projects'), { recursive: true });
+      const desktop = path.join(root, 'Desktop');
+      mkdirSync(path.join(desktop, 'Solo Project'), { recursive: true });
+      mkdirSync(path.join(desktop, 'Another Project'), { recursive: true });
+      // The owner's real shape, 25 Sept: most projects in one parent, strays
+      // elsewhere, plus stale entries from folders renamed or deleted since -
+      // the dead paths must not split the vote.
+      const recents = [
+        path.join(projects, 'Claude Usage Monitor'),
+        path.join(projects, 'YourNotes Project'),
+        path.join(documents, 'Test Project'),
+        path.join(desktop, 'Solo Project'),
+        path.join(documents, 'Trading Projects'),
+        path.join(projects, 'Income Streams Research'),
+        path.join(documents, 'Jeeves CLI Project'), // stale: never created
+        path.join(documents, 'Jeeves'), // stale: never created
+      ];
+      expect(projectsFolder(recents)).toBe(projects);
+      // A tie proves nothing: two parents holding two projects each.
+      expect(projectsFolder([path.join(documents, 'Test Project'), path.join(documents, 'Trading Projects'), path.join(desktop, 'Solo Project'), path.join(projects, 'Claude Usage Monitor'), path.join(projects, 'YourNotes Project'), path.join(projects, 'Income Streams Research')])).toBe(projects);
+      expect(projectsFolder([path.join(documents, 'Test Project'), path.join(documents, 'Trading Projects'), path.join(desktop, 'Solo Project'), path.join(desktop, 'Another Project')])).toBeNull();
+      // One project alone proves nothing.
+      expect(projectsFolder([path.join(projects, 'Claude Usage Monitor')])).toBeNull();
+      expect(projectsFolder([])).toBeNull();
+      // A parent equal to the home folder itself can never count - everything shares it.
+      const home = os.homedir();
+      const homeA = mkdtempSync(path.join(home, 'jeeves-home-test-'));
+      const homeB = `${homeA}-two`;
+      mkdirSync(homeB, { recursive: true });
+      try {
+        // Two projects sitting directly in the home folder prove nothing.
+        expect(projectsFolder([homeA, homeB])).toBeNull();
+      } finally {
+        rmSync(homeA, { recursive: true, force: true });
+        rmSync(homeB, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('tells the model where the projects live and forbids the wrong-drawer done', () => {
+    for (const rule of [
+      '{{PROJECTS_FOLDER_FACT}}',
+      'say exactly where it went, in everyday words',
+      'Never say a thing is done while leaving where it went unclear',
+      'ask one short question rather than guessing',
+    ]) {
+      expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
+    }
+    const withFact = buildSystemPrompt('Sir', '2026-09-25', 'morning', 'glm-5.3-flash', '~/Documents/projects');
+    expect(withFact).toContain('The person\'s projects live in ~/Documents/projects. When they say "the projects folder" or "projects", they mean that folder');
+    expect(withFact).toContain('say exactly where it went');
+    const withoutFact = buildSystemPrompt('Sir', '2026-09-25', 'morning', 'glm-5.3-flash', null);
+    expect(withoutFact).not.toContain('projects live in');
+    expect(withoutFact).toContain('ask one short question rather than guessing');
+    // No placeholder ever survives, and no torn gap is left where the fact was dropped.
+    expect(withoutFact).not.toContain('{{');
+    expect(withoutFact).not.toMatch(/\n{3,}/);
+    expect(withFact).not.toContain('{{');
   });
 });
 
