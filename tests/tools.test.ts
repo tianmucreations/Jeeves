@@ -37,17 +37,18 @@ describe('tool schemas validate strictly', () => {
 // treated ~ as a folder NAME, so ~/Documents/Projects "did not exist".
 describe('expandPath (the one path helper, both sources\' contract)', () => {
   it('expands the home shorthand, normalises absolute, and resolves relative against the base', () => {
+    const base = path.resolve('/base');
     expect(expandPath('~')).toBe(homedir());
-    expect(expandPath('~/Documents/Projects')).toBe(path.join(homedir(), 'Documents/Projects'));
-    expect(expandPath('/tmp/x/../y', '/base')).toBe(path.normalize('/tmp/y'));
-    expect(expandPath('notes/a.txt', '/base')).toBe('/base/notes/a.txt');
-    expect(expandPath('./x', '/base')).toBe('/base/x');
+    expect(expandPath('~/Documents/Projects')).toBe(path.join(homedir(), 'Documents', 'Projects'));
+    expect(expandPath('/tmp/x/../y', base)).toBe(path.normalize('/tmp/y'));
+    expect(expandPath('notes/a.txt', base)).toBe(path.join(base, 'notes', 'a.txt'));
+    expect(expandPath('./x', base)).toBe(path.join(base, 'x'));
     // Claude Code's contract: whitespace trimmed, empty means the base folder.
     expect(expandPath('  ~/x  ')).toBe(path.join(homedir(), 'x'));
-    expect(expandPath('', '/base')).toBe('/base');
-    expect(expandPath('   ', '/base')).toBe('/base');
+    expect(expandPath('', base)).toBe(path.normalize(base));
+    expect(expandPath('   ', base)).toBe(path.normalize(base));
     // A bare ~name (another user's folder) is NOT our home folder.
-    expect(expandPath('~other/x', '/base')).toBe('/base/~other/x');
+    expect(expandPath('~other/x', base)).toBe(path.join(base, '~other', 'x'));
     // Null bytes are refused before anything touches the filesystem.
     expect(() => expandPath('a\0b')).toThrow();
   });
