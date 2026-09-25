@@ -4,18 +4,34 @@ import { existsSync, readdirSync } from 'node:fs';
 
 // Path helpers. Resolving against the current folder keeps behaviour identical on macOS, Windows, and Linux.
 
-// The tools accept the home-folder shorthand (~/...), as the shell does: a leading
-// ~ alone or ~/ means the person's home folder. 25 Sept: listDir said "That folder
-// does not exist." about ~/Documents/Projects - path.resolve treated ~ as a folder
-// NAME under the project. A bare ~name (another user's folder) is left alone.
-export function expandHome(p: string): string {
-  if (p === '~') return homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(homedir(), p.slice(2));
-  return p;
+// THE one helper every file path goes through before any tool uses it. This is
+// Claude Code's expandPath (src/utils/path.ts) - its file tools run every input
+// through it ("expand so hook allowlists can't be bypassed via ~ or relative
+// paths"), and OpenCode's file tools follow the same absolute-or-join-to-
+// working-directory pattern (packages/opencode/src/tool/write.ts). Both demand
+// absolute paths in their tool schemas AND expand whatever arrives anyway.
+// 25 Sept: path.resolve alone treated ~ as a folder NAME under the project, so
+// ~/Documents/Projects was told "That folder does not exist." and the
+// outside-project check judged a home-folder write as inside the project.
+// Semantics (Claude Code's, verbatim):
+//   ~          -> the home folder
+//   ~/x        -> x inside the home folder
+//   absolute   -> normalised
+//   relative   -> resolved against baseDir (the working directory)
+//   whitespace -> trimmed; empty -> the base directory; null bytes -> refused
+// A bare ~name (another user's folder) is left alone.
+export function expandPath(p: string, baseDir: string = process.cwd()): string {
+  if (p.includes('\0')) throw new Error('Path contains null bytes');
+  const trimmed = p.trim();
+  if (!trimmed) return path.normalize(baseDir);
+  if (trimmed === '~') return homedir();
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) return path.join(homedir(), trimmed.slice(2));
+  if (path.isAbsolute(trimmed)) return path.normalize(trimmed);
+  return path.resolve(baseDir, trimmed);
 }
 
 export function resolveFromCwd(p: string): string {
-  return path.resolve(expandHome(p));
+  return expandPath(p);
 }
 
 export interface FolderEntry {

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { session } from '../state/session.js';
 import { settingsFolder } from '../platform/config.js';
-import { expandHome } from '../platform/paths.js';
+import { expandPath } from '../platform/paths.js';
 import { CheckpointStore } from './store.js';
 
 // Ties backups to the conversation: one checkpoint per message, taken just before
@@ -88,11 +88,12 @@ function listNames(files: string[]): string {
 }
 
 // Is this location outside the project folder (so /undo cannot reverse a change to it)?
-// A leading ~ is the person's home folder, as the shell reads it - without expanding
-// it here, ~/Documents was judged INSIDE the project (path.resolve made it a folder
-// named ~ under the project), so a write there showed no outside warning.
+// The target goes through expandPath first - the same expansion Claude Code applies
+// before its permission check, "so allowlists can't be bypassed via ~ or relative
+// paths": without it ~/Documents was judged INSIDE the project (path.resolve made
+// it a folder named ~ under the project) and a home-folder write showed no warning.
 export function isOutsideProject(target: string, folder = process.cwd()): boolean {
-  const relative = path.relative(path.resolve(folder), path.resolve(folder, expandHome(target)));
+  const relative = path.relative(path.resolve(folder), expandPath(target, folder));
   return relative.startsWith('..') || path.isAbsolute(relative);
 }
 

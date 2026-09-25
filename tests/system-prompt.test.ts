@@ -137,6 +137,17 @@ describe("the projects folder fact (the wrong-drawer folder, 25 Sept: 'create a 
     ]) {
       expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
     }
+    // The env block, both sources' answer to path guessing (OpenCode's
+    // session/system.ts <env> block, Claude Code's src/context.ts): the model is
+    // told the real working directory, home folder and platform, so it never
+    // invents a location.
+    const built = buildSystemPrompt('Sir', '2026-09-25', 'morning', null as never, null);
+    expect(built).toContain('Here is some useful information about the environment you are running in:');
+    expect(built).toMatch(/Working directory: \S.*\(the project folder/);
+    expect(built).toMatch(new RegExp(`Home folder: ${os.homedir().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(~ in a path means this folder\\)`));
+    expect(built).toContain('Platform: darwin (macOS)');
+    expect(built).toContain('Is directory a git repo: yes');
+    expect(built).toContain('Use absolute paths in tool calls');
     const withFact = buildSystemPrompt('Sir', '2026-09-25', 'morning', 'glm-5.3-flash', '~/Documents/projects');
     expect(withFact).toContain('The person\'s projects live in ~/Documents/projects. When they say "the projects folder" or "projects", they mean that folder');
     expect(withFact).toContain('say exactly where it went');

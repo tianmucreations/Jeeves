@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { resolveFromCwd } from '../platform/paths.js';
 
 export const writeFileSchema = z.object({
-  path: z.string().describe('Path of the file to write'),
+  path: z.string().describe("The absolute path to the file to write. A leading ~ means the home folder; a relative path is resolved against the working directory."),
   content: z.string().describe('The complete text content for the file'),
 });
 

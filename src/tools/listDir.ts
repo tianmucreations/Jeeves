@@ -6,7 +6,7 @@ import { resolveFromCwd } from '../platform/paths.js';
 import { PlainError } from './plain.js';
 
 export const listDirSchema = z.object({
-  path: z.string().describe('Directory to list'),
+  path: z.string().describe("The absolute path to the directory to list. A leading ~ means the home folder; a relative path is resolved against the working directory."),
   recursive: z.boolean().optional().describe('Include all subfolders'),
 });
 

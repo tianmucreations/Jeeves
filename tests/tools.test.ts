@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import os from 'node:os';
 import path from 'node:path';
+import { expandPath } from '../src/platform/paths.js';
 import { readFileSchema, runReadFile } from '../src/tools/readFile.js';
 import { writeFileSchema, runWriteFile } from '../src/tools/writeFile.js';
 import { listDirSchema, runListDir } from '../src/tools/listDir.js';
@@ -27,6 +28,28 @@ describe('tool schemas validate strictly', () => {
   });
   it('runBash rejects a missing command', () => {
     expect(() => runBashSchema.parse({})).toThrow();
+  });
+});
+
+// THE one path expansion every tool goes through - Claude Code's expandPath
+// (src/utils/path.ts), the same contract OpenCode's file tools implement with
+// their "must be absolute, not relative" schemas. 25 Sept: path.resolve alone
+// treated ~ as a folder NAME, so ~/Documents/Projects "did not exist".
+describe('expandPath (the one path helper, both sources\' contract)', () => {
+  it('expands the home shorthand, normalises absolute, and resolves relative against the base', () => {
+    expect(expandPath('~')).toBe(homedir());
+    expect(expandPath('~/Documents/Projects')).toBe(path.join(homedir(), 'Documents/Projects'));
+    expect(expandPath('/tmp/x/../y', '/base')).toBe(path.normalize('/tmp/y'));
+    expect(expandPath('notes/a.txt', '/base')).toBe('/base/notes/a.txt');
+    expect(expandPath('./x', '/base')).toBe('/base/x');
+    // Claude Code's contract: whitespace trimmed, empty means the base folder.
+    expect(expandPath('  ~/x  ')).toBe(path.join(homedir(), 'x'));
+    expect(expandPath('', '/base')).toBe('/base');
+    expect(expandPath('   ', '/base')).toBe('/base');
+    // A bare ~name (another user's folder) is NOT our home folder.
+    expect(expandPath('~other/x', '/base')).toBe('/base/~other/x');
+    // Null bytes are refused before anything touches the filesystem.
+    expect(() => expandPath('a\0b')).toThrow();
   });
 });
 

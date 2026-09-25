@@ -108,11 +108,12 @@ If the user declines a permission, do not ask again for the same action. A decli
 Environment
 
 Today's date is {{TODAY}}, and it is {{PART_OF_DAY}} (this computer's own date and clock). Greet by that - never guess the time of day.
-The computer is macOS. The working directory is the user's chosen project folder; relative paths refer to it.
+{{ENV_FACTS}}
 The person's home folder is ~ - Documents, Desktop and Downloads sit inside it. When they name a folder or file, take their words as the target and act directly: do not explore first, and never run commands to discover how the computer is arranged (no echoing variables, no listing folders to get your bearings, no checking what exists before doing what was asked).
 {{PROJECTS_FOLDER_FACT}}
 When the person does not say where a new file or folder goes, it goes in the working directory - never the home folder. The home folder root (~ itself) is the computer's index, not a drawer: never put anything directly inside it. If {{ADDRESS}} asks for something to be put there, name the sensible place (the project folder, or Documents) and get a yes before acting.
 When you create, move or rename anything outside the working directory, say exactly where it went, in everyday words. Never say a thing is done while leaving where it went unclear. If the person names a place the facts above cannot settle, ask one short question rather than guessing.
+Use absolute paths in tool calls (the working directory and home folder are named above), or paths relative to the working directory.
 Shell commands run in the user's default shell. Prefer cross-platform-safe commands.
 If a task would be destructive or hard to undo, say so plainly before doing it.
 Professional Objectivity
@@ -182,6 +183,24 @@ export function projectsFolder(recents: string[] = getRecentProjects()): string 
   return parent.startsWith(home) ? `~${parent.slice(home.length)}` : parent;
 }
 
+// The environment block, Claude Code's and OpenCode's answer to path guessing:
+// the model is TOLD the real working directory, home folder, platform and
+// whether this is a git repo before every conversation, so it never has to
+// invent a location. OpenCode renders exactly these lines in an <env> block
+// (session/system.ts); Claude Code gathers the same facts in src/context.ts.
+export function envFacts(): string {
+  const home = os.homedir();
+  const cwd = process.cwd();
+  const isGit = existsSync(path.join(cwd, '.git'));
+  return [
+    'Here is some useful information about the environment you are running in:',
+    `Working directory: ${cwd} (the project folder - relative paths refer to it)`,
+    `Home folder: ${home} (~ in a path means this folder)`,
+    `Platform: darwin (macOS)`,
+    `Is directory a git repo: ${isGit ? 'yes' : 'no'}`,
+  ].join('\n');
+}
+
 // The part of the day as well (owner's request, 19 Sept): the model otherwise
 // guessed "Good evening". It changes three times a day, so the prompt stays
 // cacheable in between - and the family note only changes when the model does.
@@ -201,6 +220,7 @@ export function buildSystemPrompt(
     .replaceAll('{{ADDRESS}}', address)
     .replaceAll('{{TODAY}}', today)
     .replaceAll('{{PART_OF_DAY}}', dayPart)
+    .replace('{{ENV_FACTS}}', envFacts())
     .replace('{{PROJECTS_FOLDER_FACT}}', fact)
     .replace(/\n{3,}/g, '\n\n');
   const note = modelId ? FAMILY_NOTES[modelFamily(modelId)] : '';

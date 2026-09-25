@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { resolveFromCwd } from '../platform/paths.js';
 
 export const readFileSchema = z.object({
-  path: z.string().describe('Path of the file to read, relative to the current folder or absolute'),
+  path: z.string().describe("The absolute path to the file to read. A leading ~ means the home folder; a relative path is resolved against the working directory."),
 });
 
 export async function runReadFile(input: z.output<typeof readFileSchema>): Promise<string> {
