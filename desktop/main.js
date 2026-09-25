@@ -5,7 +5,7 @@
 // to the window and passes the person's messages and answers back.
 // Prototype limits: the engine runs in the main process (a utilityProcess comes
 // later); choosing a model and adding keys still happen in the terminal Jeeves.
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -121,6 +121,7 @@ let pending = null;
 // When the current job started, for the "Working… 5s" note.
 let workingSince = null;
 function sendState() {
+  watchApprovalForNotify();
   if (session.status === 'working' && workingSince === null) workingSince = Date.now();
   if (session.status === 'idle' || session.status === 'disconnected') workingSince = null;
   if (pending || !win) return;
@@ -130,6 +131,30 @@ function sendState() {
   }, 40);
 }
 session.subscribe(sendState);
+
+// Claude Code's useNotifyAfterTimeout: a permission question is a stopped job.
+// If it still waits six seconds later and the person is elsewhere, the Mac says
+// so; clicking the notification brings the window forward. Each question gets
+// its own timer (the serial number tells them apart).
+let approvalNotifyTimer = null;
+let lastApprovalSerial = 0;
+function watchApprovalForNotify() {
+  if (session.approvalSerial === lastApprovalSerial) return;
+  lastApprovalSerial = session.approvalSerial;
+  if (approvalNotifyTimer) clearTimeout(approvalNotifyTimer);
+  approvalNotifyTimer = setTimeout(() => {
+    approvalNotifyTimer = null;
+    if (!session.approvalPending || !win || win.isDestroyed() || win.isFocused()) return;
+    const note = new Notification({ title: 'Jeeves', body: 'Jeeves needs your permission to continue.' });
+    note.on('click', () => {
+      if (win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+      }
+    });
+    note.show();
+  }, 6_000);
+}
 await registerSettings(
   engine,
   () => {

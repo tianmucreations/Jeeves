@@ -36,6 +36,9 @@ class SessionStore {
   providerName = 'OpenRouter';
   status: Status = 'idle';
   approvalPending = false;
+  // Incremented each time a question arrives, so screens and the desktop can
+  // tell a new question from the one before (a notification timer restarts).
+  approvalSerial = 0;
   verbose = false;
   showLastReasoning = false;
   pickerOpen = false;
@@ -161,6 +164,7 @@ class SessionStore {
 
   setActiveApproval(): void {
     this.approvalPending = true;
+    this.approvalSerial += 1;
     this.status = 'awaiting-approval';
     this.emit();
   }

@@ -80,6 +80,20 @@ async function notifyJobFinished(seconds: number): Promise<void> {
   }
 }
 
+// Claude Code's useNotifyAfterTimeout: a permission question is a stopped job.
+// If it still waits after six seconds and the person is elsewhere, say so.
+async function notifyApprovalWaiting(): Promise<void> {
+  try {
+    if (await isTerminalFocused()) return;
+    notifier.notify({
+      title: 'Jeeves',
+      message: 'Jeeves needs your permission to continue.',
+    });
+  } catch {
+    // Notifications are best-effort and must never surface errors.
+  }
+}
+
 export function TrafficLight() {
   const s = useSession();
   const [pulseTick, setPulseTick] = useState(0);
@@ -114,6 +128,14 @@ export function TrafficLight() {
       if (seconds >= 20) void notifyJobFinished(seconds);
     }
   }, [s.status]);
+
+  // A permission question left waiting: one notification after six seconds, per
+  // question (a new question restarts the timer with its own serial number).
+  useEffect(() => {
+    if (!s.approvalPending) return;
+    const timer = setTimeout(() => void notifyApprovalWaiting(), 6_000);
+    return () => clearTimeout(timer);
+  }, [s.approvalPending, s.approvalSerial]);
 
   const color = s.status === 'working' ? PULSE_GREENS[pulseTick] : STATIC_COLORS[s.status];
   return <Text>{chalk.hex(color)(DOT)}</Text>;

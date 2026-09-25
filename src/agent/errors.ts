@@ -93,6 +93,12 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   if (status === 429 || text.includes('429') || text.includes('rate limit') || text.includes('rate_limit') || text.includes('too many requests')) {
     return make(`${service} is asking us to slow down - wait a few seconds and ask again.`, 'rate-limit');
   }
+  // A bad server (5xx) is the service's own temporary trouble - OpenCode's retry
+  // policy treats it as retryable, so it is recognised as its own kind here and
+  // not lumped in with unrecognised failures.
+  if ((status !== null && status >= 500) || /\b5\d{2}\b/.test(text)) {
+    return make(`${service} stumbled on its side - I tried again several times. Asking again in a moment is worth a try.`, 'network');
+  }
   const name = (error as { name?: unknown } | null)?.name;
   if (name === 'TimeoutError' || text.includes('timed out') || text.includes('timeout')) {
     return make(`${service} stopped responding partway through - please ask again.`, 'network');

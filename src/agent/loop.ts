@@ -229,10 +229,21 @@ export async function runTurn(input: string): Promise<void> {
         session.closeReasoningEntry();
       },
     };
+    // A retried stream starts its answer over, so any partly streamed text goes
+    // first - otherwise the retry would draw it twice.
+    const resetStreamOutput = (): void => {
+      session.setThinking(false);
+      if (assistantId !== null) {
+        session.setAssistantText(assistantId, '');
+        session.finishAssistant(assistantId);
+        assistantId = null;
+      }
+      session.closeReasoningEntry();
+    };
     let uncheckedNotice = false;
     let result;
     try {
-      result = await withRateLimitRetry(() => provider.stream(streamOptions), session.providerId, stop.signal);
+      result = await withRateLimitRetry(() => provider.stream(streamOptions), session.providerId, stop.signal, resetStreamOutput);
     } catch (error) {
       // Claude Code's single reactive compact: a conversation that outgrew the
       // model mid-job is tidied hard, once, and the turn retried silently. A
@@ -243,7 +254,7 @@ export async function runTurn(input: string): Promise<void> {
       await summariseHistory();
       session.setStatus('working');
       messages = buildTurnMessages(session.history, input);
-      result = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages }), session.providerId, stop.signal);
+      result = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages }), session.providerId, stop.signal, resetStreamOutput);
     }
     let allMessages = [...messages, ...result.messages];
     // A reply cut off by the model's own size limit resumes directly, once
@@ -252,7 +263,7 @@ export async function runTurn(input: string): Promise<void> {
       for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
       countedSteps = 0;
       const resumeMessages = [...allMessages, { role: 'user' as const, content: LENGTH_RESUME_REQUEST }];
-      const resumed = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: resumeMessages }), session.providerId, stop.signal);
+      const resumed = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: resumeMessages }), session.providerId, stop.signal, resetStreamOutput);
       allMessages = [...resumeMessages, ...resumed.messages];
       result = {
         ...resumed,
@@ -267,7 +278,7 @@ export async function runTurn(input: string): Promise<void> {
       for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
       countedSteps = 0;
       const capMessages = [...allMessages, { role: 'user' as const, content: STEP_CAP_REQUEST }];
-      const capped = await withRateLimitRetry(() => provider.stream({ ...streamOptions, tools: {}, messages: capMessages }), session.providerId, stop.signal);
+      const capped = await withRateLimitRetry(() => provider.stream({ ...streamOptions, tools: {}, messages: capMessages }), session.providerId, stop.signal, resetStreamOutput);
       allMessages = [...capMessages, ...capped.messages];
       result = {
         ...capped,
@@ -291,7 +302,7 @@ export async function runTurn(input: string): Promise<void> {
         // Changing files waits until the worker has reproduced a problem.
         startReproducing();
         try {
-          result = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: fixMessages }), session.providerId, stop.signal);
+          result = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: fixMessages }), session.providerId, stop.signal, resetStreamOutput);
         } finally {
           stopReproducing();
         }
@@ -305,7 +316,7 @@ export async function runTurn(input: string): Promise<void> {
       for (const cost of (result.stepCosts ?? []).slice(countedSteps)) reportStepCost(cost);
       countedSteps = 0;
       const continueMessages = [...allMessages, { role: 'user' as const, content: CONTINUE_NUDGE }];
-      const continued = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: continueMessages }), session.providerId, stop.signal);
+      const continued = await withRateLimitRetry(() => provider.stream({ ...streamOptions, messages: continueMessages }), session.providerId, stop.signal, resetStreamOutput);
       allMessages = [...continueMessages, ...continued.messages];
       result = { ...continued, text: result.text && continued.text ? `${result.text}\n\n${continued.text}` : result.text || continued.text };
     }
