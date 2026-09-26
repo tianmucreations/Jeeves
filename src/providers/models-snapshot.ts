@@ -1,5 +1,5 @@
 // Built-in copy of the models.dev catalogue (MIT licence), trimmed to what Jeeves uses.
-// Taken 2026-09-25 by scripts/update-models-snapshot.ts - do not edit by hand.
+// Taken 2026-09-26 by scripts/update-models-snapshot.ts - do not edit by hand.
 import type { Catalogue } from './catalogue.js';
 
 export const MODELS_SNAPSHOT: Catalogue = {
