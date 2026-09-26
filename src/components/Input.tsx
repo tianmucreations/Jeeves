@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import stringWidth from 'string-width';
-import { Box, Text, useCursor, useInput, usePaste, useWindowSize } from 'ink';
+import { Box, Text, useInput, usePaste, useWindowSize } from 'ink';
 import { runTurn, stopTurn } from '../agent/loop.js';
 import { copySelection } from '../ink/selection.js';
 import { pressCtrlCToQuit } from '../ink/quit.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
 import { session, useSession } from '../state/session.js';
 import { getInputHistory, pushInputHistory } from '../platform/config.js';
-import { BLOCK_CURSOR, inputFrameRow } from '../ink/cursor.js';
 import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
 import { approvalButtons, approvalButtonAt } from '../ink/approval-buttons.js';
 import { inputLayout, splitTypedBurst, cleanPaste, scrollToShowCursor, previousWordStart, nextWordEnd } from './input-layout.js';
@@ -37,7 +36,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // started with (see AlternateScreen.tsx), which is what let the cursor drift
   // onto the border after a resize.
   const { rows: windowRows } = useWindowSize();
-  const { setCursorPosition } = useCursor();
   // How far the box is scrolled back through a message taller than it (0 = the
   // end, where the typing is). A ref for the same reason as the text.
   const draftUpRef = useRef(0);
@@ -123,6 +121,14 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
     return true;
   };
+  // THE CURSOR IS DRAWN, NOT ASKED FOR (26 Sept). Claude Code does it this way: the
+  // visible cursor is an inverted character in the text (Cursor.ts, invert()),
+  // and it never depends on where the terminal thinks its own cursor is - which
+  // Ink works out with relative moves that were off by one or two rows on
+  // several screens, and whose shape Terminal.app ignores. The terminal's real
+  // cursor stays hidden; the block below is part of the frame, so it is always
+  // exactly where the typing point is. Inside the text the highlighted character
+  // is the cursor (cursorAt).
   // A click and the keyboard land on the same answer: Allow once, Always Allow,
   // Decline. Y / A / N do the same from the keyboard.
   const answerFromButton = (button: { key: 'y' | 'a' | 'n' }) => {
@@ -140,32 +146,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     const button = approvalButtonAt(currentApprovalButtons, col - 3);
     if (button) answerFromButton(button);
   };
-
-  // The block cursor sits at the text insertion point: two columns in (the
-  // border's │ and its padding space) plus the visible text's width, measured
-  // with stringWidth so wide characters count. y is the input row, fourth from
-  // the bottom (border, info bar, separator, input); inputFrameRow carries the
-  // +1 Ink's fullscreen frames need. Set during render, as Ink documents: useCursor
-  // hands the position to Ink in its own useInsertionEffect, which runs before
-  // this commit's frame is written - a useLayoutEffect call runs after that and
-  // only lands a frame late (measured: the cursor stayed hidden when the window
-  // opened). Hidden while the row shows a hint instead of the text, and while the
-  // box is scrolled back through a long message (the typing point is out of view).
-  // The last row of the box stays on the same terminal row however tall the box
-  // grows (it grows upwards), so the cursor's row is unchanged.
-  setCursorPosition(
-    showingText ? { x: 2 + layout.cursorX, y: inputFrameRow(windowRows ?? 24) } : undefined
-  );
-
-  // The terminal's real cursor becomes a steady block for the whole session; it is
-  // restored to the shell's default shape by the AlternateScreen exit paths.
-  useEffect(() => {
-    try {
-      process.stdout.write(BLOCK_CURSOR);
-    } catch {
-      // A closed stream must never crash the app.
-    }
-  }, []);
 
   useInput((input, key) => {
     // SGR mouse events arrive as CSI chunks Ink cannot resolve; the wheel
@@ -378,7 +358,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // words for it to sit on (owner, 24 Sept). A single space keeps the row at
   // one line tall (an empty Ink line has no height).
   if (!valueRef.current) {
-    return <Text>{' '}</Text>;
+    return <Text inverse>{' '}</Text>;
   }
   return (
     <Box flexDirection="column">
@@ -398,6 +378,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
           <Text key={index} dimColor={row.hint}>
             {row.text}
             {row.trailingSpaces ? <Text dimColor>{row.trailingSpaces}</Text> : null}
+            {showingText && index === layout.rows.length - 1 ? <Text inverse>{' '}</Text> : null}
           </Text>
         );
       })}

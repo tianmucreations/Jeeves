@@ -18,6 +18,9 @@ export interface ToolLineData {
   // Plain changed-lines shown above the question while a write waits for its
   // answer (write-safety's preview); cleared once the question is answered.
   detail?: string;
+  // A finished look-around (read, list, search) leaves no line behind: the person
+  // asked for an answer, not a diary of ticks (owner, 26 Sept). /verbose shows them.
+  quiet?: boolean;
 }
 
 export type TranscriptEntry =
@@ -114,7 +117,7 @@ class SessionStore {
   pickerStart: { provider?: string; full?: boolean; step?: 'limit'; weekly?: boolean } | null = null;
   // Where the folder list opens when Settings sends the person there. Read once.
   folderPickerStart: 'list' | 'browse' | 'create' = 'list';
-  transcriptView: { top: number; left: number; height: number; lines: string[]; scrollTop: number } | null = null;
+  transcriptView: { top: number; left: number; height: number; lines: string[]; gutters?: number[]; scrollTop: number } | null = null;
   // What is being typed in the input box (the window sizes the box to fit it).
   inputText = '';
   // Messages sent while Jeeves was busy, in order; each is sent when he finishes.

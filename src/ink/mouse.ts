@@ -1,5 +1,5 @@
 import { session } from '../state/session.js';
-import { pointAt, copySelection } from './selection.js';
+import { pointAt, copySelection, wordBoundsAt } from './selection.js';
 
 // SGR mouse tracking (modes 1000 + 1002 + 1006), enabled for the whole session by
 // the AlternateScreen takeover and disabled on every exit path. Claude Code's
@@ -61,6 +61,14 @@ export function parseMouseSequence(input: string): ParsedMouseEvent | null {
 // opens Settings. A left-button
 // press in the conversation starts a selection, dragging extends it, and releasing
 // copies it. Nothing here ever reaches the text being typed.
+// Double-click selects the word under the pointer and triple-click the whole line,
+// copied when the button comes up - as Claude Code (App.tsx: 500 ms, one cell of
+// jitter allowed) and every terminal's own selection. Most people "highlight"
+// something by double-clicking it, which used to do nothing here (owner, 26 Sept).
+const MULTI_CLICK_MS = 500;
+const lastClick = { time: 0, col: -1, row: -1, count: 0 };
+let multiClickSelection = false;
+
 export function handleMouseInput(input: string): void {
   const event = parseMouseSequence(input);
   if (event === null) return;
@@ -74,6 +82,20 @@ export function handleMouseInput(input: string): void {
   if (event.button !== 0) return;
   if (event.kind === 'press') {
     const point = pointAt(event.col, event.row);
+    const now = Date.now();
+    const near = now - lastClick.time < MULTI_CLICK_MS && Math.abs(event.col - lastClick.col) <= 1 && Math.abs(event.row - lastClick.row) <= 1;
+    lastClick.count = near ? lastClick.count + 1 : 1;
+    Object.assign(lastClick, { time: now, col: event.col, row: event.row });
+    multiClickSelection = false;
+    const text = point ? session.transcriptView?.lines[point.line] : undefined;
+    if (point && text !== undefined && lastClick.count >= 2) {
+      const range = lastClick.count === 2 ? wordBoundsAt(text, point.ch) : ([0, Array.from(text).length] as [number, number]);
+      if (range) {
+        session.setSelection({ anchor: { line: point.line, ch: range[0] }, focus: { line: point.line, ch: Math.max(range[0], range[1] - 1) } });
+        multiClickSelection = true;
+        return;
+      }
+    }
     session.setSelection(point ? { anchor: point, focus: point } : null);
     // Outside the conversation: a click answers a pending question if one is on
     // screen, otherwise it places the cursor in the typing box.
@@ -81,6 +103,15 @@ export function handleMouseInput(input: string): void {
       if (session.footerClick?.(event.col, event.row)) return;
       if (session.approvalPending) session.approvalClick?.(event.col, event.row);
       else session.inputClick?.(event.col, event.row);
+    }
+    return;
+  }
+  // A word or line picked by double or triple click stays as picked, and is
+  // copied when the button comes up.
+  if (multiClickSelection) {
+    if (event.kind === 'release') {
+      multiClickSelection = false;
+      void copySelection();
     }
     return;
   }

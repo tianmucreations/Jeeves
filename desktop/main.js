@@ -43,7 +43,7 @@ const { answerApproval, currentApprovalTrustable } = await engine('agent/permiss
 const providers = await engine('providers/index.js');
 const config = await engine('platform/config.js');
 const { loadModels } = await engine('models/registry.js');
-const { toolLineText } = await engine('components/transcript-layout.js');
+const { toolLineText, isQuietEntry } = await engine('components/transcript-layout.js');
 const { footerSegments, shortModelName } = await engine('components/Footer.js');
 const { allowanceToday } = await engine('agent/spending.js');
 const { isAuto, workerModel } = await engine('agent/auto.js');
@@ -86,7 +86,7 @@ function niceFolder(p) {
 // Everything the window draws, in one plain object.
 function snapshot() {
   const s = session;
-  const transcript = s.transcript.map((entry) => {
+  const transcript = s.transcript.filter((entry) => !isQuietEntry(entry, s.verbose)).map((entry) => {
     if (entry.kind !== 'tool') return { id: entry.id, kind: entry.kind, text: entry.text };
     const line = toolLineText(entry.data);
     // The window shows its own buttons for a question, so the "(y/n)" text goes.

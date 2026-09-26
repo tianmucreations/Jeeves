@@ -156,7 +156,7 @@ body.welcoming .brand { visibility: hidden; }
   background: var(--band); color: #ffffff; border-radius: 12px;
 }
 .entry.user:first-child { margin-top: 0; }
-.entry.assistant { margin: 14px 0 10px; color: var(--silver); }
+.entry.assistant { margin: 14px 0 10px; color: var(--silver); border-left: 3px solid var(--gold); padding-left: 14px; }
 .entry.assistant strong { color: var(--silver-bright); font-weight: 600; }
 .entry.assistant code { font-family: var(--mono); font-size: 13px; background: #141416; padding: 1px 5px; border-radius: 4px; color: var(--silver-bright); }
 .entry.assistant .h { color: var(--silver-bright); font-weight: 600; }

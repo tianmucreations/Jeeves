@@ -15,7 +15,7 @@ export const COMMANDS: HelpEntry[] = [
   { command: '/ask', description: 'ask before every change again (after "always allow")' },
   { command: '/clear', description: 'start a fresh conversation' },
   { command: '/address', description: 'change how Jeeves addresses you' },
-  { command: '/verbose', description: 'show technical details as well (for curious people)' },
+  { command: '/verbose', description: 'also show each step Jeeves takes, and the technical details (for curious people)' },
   { command: '/exit', description: 'quit' },
 ];
 
@@ -26,6 +26,6 @@ export const KEY_BINDINGS: HelpEntry[] = [
   { command: 'y / a / n', description: 'answer a question: yes, always allow in this folder, or no - or click a button, or use ← → and Enter' },
   { command: '↑ ↓', description: 'at an empty box, walk back through your previous messages (Down comes forward again); any other time they scroll the conversation - the wheel or trackpad scrolls too, and over the typing box, a long message; Page Up / Page Down jump a whole screen; End returns to the newest' },
   { command: '← →', description: `move the cursor in what you are typing; ${WORD_JUMP_KEYS} jump a word; Ctrl+A / Ctrl+E go to the start / end; or click where you want it` },
-  { command: 'copying', description: 'drag over any text - it is copied when you let go' },
+  { command: 'copying', description: 'drag over text, or double-click a word or triple-click a line - it is copied when you let go' },
   { command: 'Ctrl+R', description: 'show the notes Jeeves made while thinking about the last answer' },
 ];

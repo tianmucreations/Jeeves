@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text } from 'ink';
 import chalk from 'chalk';
 import { execa } from 'execa';
@@ -84,15 +84,6 @@ async function notify(title: string, message: string): Promise<void> {
   }
 }
 
-async function notifyJobFinished(seconds: number): Promise<void> {
-  try {
-    if (await isTerminalFocused()) return;
-    await notify('Jeeves', `The task finished after ${Math.round(seconds)} seconds.`);
-  } catch {
-    // Notifications are best-effort and must never surface errors.
-  }
-}
-
 // Claude Code's useNotifyAfterTimeout: a permission question is a stopped job.
 // If it still waits after six seconds and the person is elsewhere, say so.
 async function notifyApprovalWaiting(): Promise<void> {
@@ -107,7 +98,6 @@ async function notifyApprovalWaiting(): Promise<void> {
 export function TrafficLight() {
   const s = useSession();
   const [pulseTick, setPulseTick] = useState(0);
-  const jobStartRef = useRef<number | null>(null);
 
   // Pulse only while working; the interval is always cleaned up on change and unmount.
   useEffect(() => {
@@ -122,21 +112,6 @@ export function TrafficLight() {
   // Mirror the state in the terminal tab title; degrades silently where unsupported.
   useEffect(() => {
     setTabTitle(TITLE_LABELS[s.status]);
-  }, [s.status]);
-
-  // Watch for long jobs completing; notify when the terminal is not focused.
-  useEffect(() => {
-    if (s.status === 'working') {
-      if (jobStartRef.current === null) jobStartRef.current = Date.now();
-      return;
-    }
-    if (s.status !== 'idle') return;
-    const started = jobStartRef.current;
-    jobStartRef.current = null;
-    if (started !== null) {
-      const seconds = (Date.now() - started) / 1000;
-      if (seconds >= 20) void notifyJobFinished(seconds);
-    }
   }, [s.status]);
 
   // A permission question left waiting: one notification after six seconds, per

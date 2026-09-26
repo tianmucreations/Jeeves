@@ -110,3 +110,33 @@ describe('buildDisplayLines', () => {
     expect(lines[1].color).toBe('red');
   });
 });
+describe('a screen of answers, not a diary of ticks (26 Sept)', () => {
+  const tool = (id: number, state: 'done' | 'failed' | 'awaiting' | 'running' | 'declined', quiet: boolean): TranscriptEntry => ({
+    id,
+    kind: 'tool',
+    data: { tool: 'readFile', summary: 'notes.txt', state, label: 'Read notes.txt', quiet },
+  });
+
+  it('a finished look-around leaves no line behind, unless /verbose', () => {
+    const entries: TranscriptEntry[] = [tool(1, 'done', true), { id: 2, kind: 'assistant', text: 'All good.' }];
+    expect(buildDisplayLines(entries, 60).some((l) => l.text.includes('✓'))).toBe(false);
+    expect(buildDisplayLines(entries, 60, true).some((l) => l.text.includes('✓ Read notes.txt'))).toBe(true);
+  });
+
+  it('a question, a running action, a refusal, a failure and a change all still show', () => {
+    const shown = (state: 'done' | 'failed' | 'awaiting' | 'running' | 'declined', quiet: boolean) =>
+      buildDisplayLines([tool(1, state, quiet)], 60).length;
+    for (const state of ['failed', 'awaiting', 'running', 'declined'] as const) expect(shown(state, true), state).toBe(1);
+    expect(shown('done', false)).toBe(1); // a change that was made is the record
+  });
+
+  it("Jeeves's answer lines carry a gutter, kept apart from the text so it is never copied", () => {
+    const lines = buildDisplayLines([{ id: 1, kind: 'assistant', text: 'word '.repeat(40).trim() }], 40);
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines) {
+      expect(line.gutter).toBe(2);
+      expect(line.text.length).toBeLessThanOrEqual(38);
+      expect(line.text.startsWith('▎')).toBe(false);
+    }
+  });
+});

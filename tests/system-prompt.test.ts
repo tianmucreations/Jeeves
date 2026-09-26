@@ -5,7 +5,6 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { buildTurnMessages } from '../src/agent/context.js';
 import { SYSTEM_PROMPT_TEMPLATE, buildSystemPrompt, modelFamily, projectsFolder } from '../src/agent/systemPrompt.js';
-import { inputFrameRow } from '../src/ink/cursor.js';
 
 describe('system prompt', () => {
   it('keeps the conversation as history plus the new user message (no role:system - AI SDK 7 rejects it in messages)', () => {
@@ -20,43 +19,48 @@ describe('system prompt', () => {
 
   it('carries the butler identity from the specification', () => {
     for (const rule of [
-      "You are Jeeves, a gentleman's personal assistant built by Tianmu Creations.",
-      'in the tradition of P.G. Wodehouse',
+      'You are Jeeves, a personal assistant built by Tianmu Creations.',
       'You address the user as {{ADDRESS}}.',
       'Only use tools to complete tasks. Never use a tool — runBash, readFile, anything — to communicate with the user.',
       'This is the most important rule.',
-      'Do not create files unless absolutely necessary. Prefer editing an existing file.',
-      'Your wit never costs clarity: say the plain fact first.',
+      'Do not create files unless necessary; prefer editing an existing one.',
+      // 26 Sept: the flowery-butler wording and the long fact-checking rules made
+      // the model think 5-10x longer and write word soup (measured); the rulebook
+      // now says plainly: short, plain, answer first.
+      'Most replies should be one to three short sentences.',
+      'Answer in the first sentence.',
+      'No wit, flourishes, metaphors or figures of speech - say the plain fact.',
       'Write for a person who has not seen your working.',
-      'so never use them: say what the thing actually is.',
-      'Never put a metaphor or figure of speech in place of a fact.',
-      'Be brief, but clarity comes first',
+      'say what the thing actually is.',
+      'No preamble, no closing summary, no offer of further help, and never restate the request.',
       'Never say "Let me...", "I\'ll now...", "Now let me...", or "First, I will..." before acting.',
       'A task is not finished until you say so in plain words; ending on an unfulfilled intention is not the same as finishing.',
-      'always say plainly, in a sentence or two, that a task is finished and what the outcome was - that is required, not optional.',
-      'Before reporting a task complete, verify it. Run the command, read the output, check the file.',
+      'always say plainly, in a sentence or two, that it is finished and what the outcome was - that is required, not optional.',
+      'verify it: run the command, read the output, check the file.',
       'When a dedicated tool exists, use it instead of runBash.',
       'Reserve runBash for genuine system commands (git, npm, tests, builds) — not for ls, cat, pwd, or echo.',
       'If the user declines a permission, do not ask again for the same action.',
-      'Prioritise technical accuracy over validating the user\'s beliefs.',
+      'Prioritise accuracy over validating the user\'s beliefs',
     ]) {
       expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
     }
   });
 
-  it('forbids guessing: checked facts only, general knowledge flagged with an offer to confirm', () => {
+  it('forbids guessing, briefly: checked or certain, else say so in a few words', () => {
     for (const rule of [
-      'Facts, Not Guesses',
+      'Being Right',
       'Never guess and never assume.',
-      'Only state something as fact when you have checked it in this conversation',
-      'That is general knowledge rather than checked fact, {{ADDRESS}}. Shall I confirm it before we rely on it?',
+      'you checked it in this conversation',
+      'say so in a few words - one short clause, not a paragraph - and do not offer to confirm every answer.',
       '"I don\'t know" and "I haven\'t checked that yet" are always acceptable answers.',
       'Never invent file names, folder names, commands, settings, version numbers, prices, dates, or quotations.',
-      'Remove any claim you have not checked, or mark it plainly as unchecked.',
     ]) {
       expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
     }
-    expect(buildSystemPrompt('Sir')).toContain('rather than checked fact, Sir. Shall I confirm it');
+  });
+
+  it('the rulebook stays lean (26 Sept: long rulebooks made the model think 5-10x longer)', () => {
+    expect(SYSTEM_PROMPT_TEMPLATE.length).toBeLessThan(11_000);
   });
 
   it('substitutes the saved address for {{ADDRESS}}', () => {
@@ -161,17 +165,6 @@ describe("the projects folder fact (the wrong-drawer folder, 25 Sept: 'create a 
   });
 });
 
-describe('input cursor row geometry', () => {
-  it('computes the y that lands the cursor on the input row', () => {
-    // Layout A: border 1, transcript rows-7, separator 1, input 1, separator 1,
-    // info bar 1, border 1. The input text sits on frame row rows-4; Ink's
-    // fullscreen frames draw the cursor one row above the y passed, so
-    // inputFrameRow returns rows-3.
-    expect(inputFrameRow(24)).toBe(21);
-    expect(inputFrameRow(40)).toBe(37);
-  });
-});
-
 describe('web research rules', () => {
   it('research before stating outside facts, from official sources, with the quote', () => {
     for (const rule of [
@@ -179,7 +172,8 @@ describe('web research rules', () => {
       'webSearch to find where to look. Its snippets are not checked facts.',
       "readWebPage on the most official source: the maker's own website, documentation, release list, or registry",
       'State the fact only once readWebPage has returned the exact quote',
-      'When {{ADDRESS}} asks directly for such a fact, research it.',
+      'Research only when the answer changes over time',
+      'Explaining how something works needs no research: just answer it.',
     ]) {
       expect(SYSTEM_PROMPT_TEMPLATE).toContain(rule);
     }

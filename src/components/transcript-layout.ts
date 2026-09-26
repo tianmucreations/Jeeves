@@ -10,7 +10,16 @@ export interface DisplayLine {
   own?: boolean;
   // Bold, italic or code parts of the line (Jeeves's answers), by character.
   spans?: StyleSpan[];
+  // Jeeves's answer lines carry a gold bar in front (drawn apart from the text, so
+  // it is never copied): the width in columns, 0 or absent for every other line.
+  gutter?: number;
 }
+
+// The bar down the left of every answer line, in Tianmu gold: when scrolling back
+// through a long conversation the answers stand out from the actions and notes
+// between them (owner, 26 Sept: "I scroll for ages to find where his answer starts").
+export const ANSWER_GUTTER = '▎ ';
+export const ANSWER_GUTTER_COLOUR = '#c9a96a';
 
 // Wraps formatted text at word boundaries, carrying each style range onto the
 // lines it lands on. Every line break in the text starts a new line.
@@ -127,7 +136,12 @@ export function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' 
 }
 
 // Turns transcript entries into physical display lines that fit the given width.
-export function buildDisplayLines(entries: TranscriptEntry[], width: number): DisplayLine[] {
+// A finished look-around (read, list, search) is not kept on screen unless /verbose.
+export function isQuietEntry(entry: TranscriptEntry, verbose: boolean): boolean {
+  return !verbose && entry.kind === 'tool' && entry.data.state === 'done' && entry.data.quiet === true;
+}
+
+export function buildDisplayLines(entries: TranscriptEntry[], width: number, verbose = false): DisplayLine[] {
   const lines: DisplayLine[] = [];
   const pushWrapped = (text: string, prefix: string, indent: string, color?: 'yellow' | 'red', dim?: boolean) => {
     for (const line of wrapWithPrefix(text, width, prefix, indent)) {
@@ -135,6 +149,7 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number): Di
     }
   };
   for (const entry of entries) {
+    if (isQuietEntry(entry, verbose)) continue;
     switch (entry.kind) {
       case 'user': {
         // A single space: an empty line would be drawn with no height at all.
@@ -151,8 +166,8 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number): Di
         {
           // Markdown drawn as formatting, never as stray ** and ## marks.
           const styled = renderMarkdown(entry.text);
-          for (const line of wrapStyled(styled.text, styled.spans, width)) {
-            lines.push({ text: line.text, spans: line.spans.length ? line.spans : undefined });
+          for (const line of wrapStyled(styled.text, styled.spans, width - ANSWER_GUTTER.length)) {
+            lines.push({ text: line.text, spans: line.spans.length ? line.spans : undefined, gutter: ANSWER_GUTTER.length });
           }
         }
         break;

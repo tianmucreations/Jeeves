@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { session, useSession, type TranscriptEntry } from '../state/session.js';
-import { buildDisplayLines, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
+import { buildDisplayLines, ANSWER_GUTTER, ANSWER_GUTTER_COLOUR, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
 import { selectedRange } from '../ink/selection.js';
 import type { StyleSpan } from './markdown.js';
 
@@ -70,17 +70,30 @@ export function Transcript({ width }: { width: number }) {
     return s.transcript;
   }, [s.transcript, s.showLastReasoning, s.lastReasoning]);
 
-  const lines = useMemo(() => buildDisplayLines(entries, width), [entries, width]);
+  const lines = useMemo(() => buildDisplayLines(entries, width, s.verbose), [entries, width, s.verbose]);
 
   // Virtual scroll: never above the first line, never below the newest.
-  const maxScroll = Math.max(0, content.height - viewport.height);
+  // Ink's measured height of the content lags a frame behind and, once the person
+  // has scrolled back, was seen to stop following the growing answer (26 Sept, in
+  // a real window) - so the number of lines drawn is the floor: every line is one row.
+  const contentRows = Math.max(lines.length, content.height);
+  const maxScroll = Math.max(0, contentRows - viewport.height);
   const scrollTop = Math.min(s.transcriptScrollUp, maxScroll);
-  // The session clamps key and wheel scrolling to this same limit.
+  // The session clamps key and wheel scrolling to this same limit. And while the
+  // person is reading back, new lines arriving at the bottom must not slide what
+  // they are reading away (26 Sept: scrolling up while Jeeves wrote was useless -
+  // the offset counts from the bottom, so every new line pushed the page up and out
+  // of view). Claude Code and OpenCode keep the reading position anchored while
+  // output streams; the offset grows by exactly the lines that were added.
+  const lastHeight = useRef(0);
   useEffect(() => {
+    const added = contentRows - lastHeight.current;
+    lastHeight.current = contentRows;
     session.setTranscriptScrollMax(maxScroll);
-  }, [maxScroll]);
+    if (added > 0 && session.transcriptScrollUp > 0) session.scrollTranscript(added);
+  }, [contentRows, maxScroll]);
   // The mouse turns a screen position into a line and character with this.
-  session.transcriptView = { top: VIEW_TOP, left: VIEW_LEFT, height: viewport.height, lines: lines.map((line) => line.text), scrollTop };
+  session.transcriptView = { top: VIEW_TOP, left: VIEW_LEFT, height: viewport.height, lines: lines.map((line) => line.text), gutters: lines.map((line) => line.gutter ?? 0), scrollTop };
 
   return (
     <Box flexDirection="column" overflow="hidden" flexGrow={1} justifyContent="flex-end" ref={outer}>
@@ -88,7 +101,14 @@ export function Transcript({ width }: { width: number }) {
         {lines.map((line, index) => {
           // Selected text is drawn reversed, as a terminal's own selection is.
           const range = s.selection ? selectedRange(index, line.text.length) : null;
-          if (line.spans) return <Text key={index}>{styledSegments(line.text, line.spans, range)}</Text>;
+          if (line.spans || line.gutter) {
+            return (
+              <Text key={index}>
+                {line.gutter ? <Text color={ANSWER_GUTTER_COLOUR}>{ANSWER_GUTTER}</Text> : null}
+                {styledSegments(line.text, line.spans ?? [], range)}
+              </Text>
+            );
+          }
           return (
             <Text
               key={index}

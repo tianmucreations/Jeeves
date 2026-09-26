@@ -128,6 +128,9 @@ function defineTool<S extends z.ZodObject>(config: {
   // The heads-up is folded into the tool's own question line instead of shown
   // as a separate notice above it (one line, not two alarming ones).
   warningInline?: boolean;
+  // True for a look-around that changes nothing: once done, its line is not kept on
+  // screen (the window shows what is happening while it runs, then only the answer).
+  quiet?: (input: z.output<S>) => boolean;
   // Checked before anything is asked or done (as Claude Code's validateInput): a
   // reason the action is held, which goes back to the model, or null.
   hold?: (input: z.output<S>) => Promise<string | null> | string | null;
@@ -205,7 +208,7 @@ function defineTool<S extends z.ZodObject>(config: {
       }
       try {
         const result = await truncate(await config.run(input));
-        session.updateToolLine(lineId, { state: 'done', label: config.label(input, result) });
+        session.updateToolLine(lineId, { state: 'done', label: config.label(input, result), quiet: config.quiet?.(input) ?? false });
         return result;
       } catch (error) {
         session.updateToolLine(lineId, { state: 'failed', label: plainToolFailure(error) });
@@ -233,6 +236,7 @@ export const TOOLS: ToolSet = {
       'Read the contents of a text file at the given path. Big files come 2000 lines at a time; continue with offset for the line to start from.',
     schema: readFileSchema,
     permission: false,
+    quiet: () => true,
     summarize: (input) => input.path,
     label: (input) => (input.offset ? `Read ${input.path} (from line ${input.offset})` : `Read ${input.path}`),
     run: runReadFile,
@@ -243,6 +247,7 @@ export const TOOLS: ToolSet = {
     description: 'List the files and folders in a directory, ignoring .gitignore rules. Set recursive to true to include subfolders.',
     schema: listDirSchema,
     permission: false,
+    quiet: () => true,
     summarize: (input) => input.path,
     label: (input, result) => `Listed ${input.path} (${result.split('\n').length} items)`,
     run: runListDir,
@@ -267,14 +272,19 @@ export const TOOLS: ToolSet = {
     changesFiles: () => true,
     warning: (input) =>
       isOutsideProject(input.path)
-        ? `Heads up: ${input.path} is outside your project folder, so /undo can't reverse this change.`
+        ? 'outside the project folder'
         : null,
     alreadyTrustedElsewhere: (input) => isOutsideProject(input.path) && isPathTrusted(input.path),
+    // Outside the project still asks every time (no Always Allow), but the
+    // "Heads up... /undo can't reverse" line is gone: it only frightened people
+    // (owner, 26 Sept: Claude Code and OpenCode show nothing like it).
+    warningInline: true,
   }),
   webSearch: defineTool({
     name: 'webSearch',
     description: 'Search the web. Returns titles, addresses and short snippets - a list of where to look, not checked facts.',
     schema: webSearchSchema,
+    quiet: () => true,
     // On a service with no search of its own, a search borrows OpenRouter (about a cent
     // each) only after a yes, asked once per conversation - never "always allowed".
     permission: () => borrowedSearchNeedsAsking(),
@@ -289,6 +299,7 @@ export const TOOLS: ToolSet = {
     description: 'Open a web page and find one fact on it. Returns the answer with the exact quote from the page, or says it is not stated there.',
     schema: readWebPageSchema,
     permission: false,
+    quiet: () => true,
     summarize: (input) => clip(input.url, 60),
     label: (input) => `Read ${clip(input.url.replace(/^https?:\/\//, ''), 50)}${researchService() === 'zai' ? ' (Z.ai plan)' : ''}`,
     run: runReadWebPage,
@@ -304,6 +315,7 @@ export const TOOLS: ToolSet = {
     permission: (input) => runBashNeedsPermission(input.command),
     approvalCommand: (input) => input.command,
     warningInline: true,
+    quiet: (input) => isReadOnlyBashCommand(input.command),
     summarize: (input) => {
       const described = describeCommand(input.command);
       // The outside-folder heads-up rides on the question itself: one plain line,
@@ -329,7 +341,7 @@ export const TOOLS: ToolSet = {
     changesFiles: (input) => !isReadOnlyBashCommand(input.command),
     warning: (input) =>
       !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
-        ? "Heads up: this command may change things outside your project folder, which /undo can't reverse."
+        ? 'outside the project folder'
         : null,
     alreadyTrustedElsewhere: (input) =>
       !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command) && isCommandTrusted(input.command),
@@ -344,6 +356,7 @@ TOOLS.noteResearch = defineTool({
     'Record your research before building something new (kind "build") or after the same failure twice (kind "problem"). List only pages you opened with readWebPage in this conversation.',
   schema: noteResearchSchema,
   permission: false,
+  quiet: () => true,
   summarize: (input) => clip(input.subject, 60),
   label: (_input, result) => (result.startsWith('Recorded') ? 'Research noted' : 'Research note not accepted yet'),
   run: async (input) => {

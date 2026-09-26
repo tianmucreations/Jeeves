@@ -30,7 +30,29 @@ export function pointAt(col: number, row: number, clamp = false): TextPoint | nu
     if (!clamp) return null;
     return { line: Math.max(0, Math.min(view.lines.length - 1, line)), ch: line < 0 ? 0 : Number.MAX_SAFE_INTEGER };
   }
-  return { line, ch: Math.max(0, col - view.left) };
+  // An answer line's gold bar is in front of its text, not part of it.
+  return { line, ch: Math.max(0, col - view.left - (view.gutters?.[line] ?? 0)) };
+}
+
+// Double-click selects a word (Claude Code's selection.ts wordBoundsAt): the run of
+// characters of the same kind at the click - letters, digits and the marks that
+// glue paths and addresses together (/ . - + ~ _), or a run of other punctuation.
+// A click on plain space selects nothing. Returns [from, to) in the line's text.
+const WORD_CHAR = /[\p{L}\p{N}_/.\-+~\\]/u;
+function charClass(c: string): 0 | 1 | 2 {
+  if (c === ' ' || c === '') return 0;
+  return WORD_CHAR.test(c) ? 1 : 2;
+}
+export function wordBoundsAt(text: string, ch: number): [number, number] | null {
+  const chars = Array.from(text);
+  if (ch < 0 || ch >= chars.length) return null;
+  const cls = charClass(chars[ch]);
+  if (cls === 0) return null;
+  let from = ch;
+  let to = ch + 1;
+  while (from > 0 && charClass(chars[from - 1]) === cls) from--;
+  while (to < chars.length && charClass(chars[to]) === cls) to++;
+  return [from, to];
 }
 
 // Start and end in reading order.
