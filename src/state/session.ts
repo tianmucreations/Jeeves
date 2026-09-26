@@ -98,6 +98,22 @@ class SessionStore {
   // The furthest the transcript can scroll up (contentHeight - viewportHeight),
   // reported by the Transcript from its live measurements.
   transcriptScrollMax = Number.POSITIVE_INFINITY;
+  // A short message that floats over the corner of the window and goes by itself
+  // ("Copied to clipboard"), as OpenCode's toast does (ui/toast.tsx: top-right, over
+  // the content, nothing moves). null when none is showing.
+  toast: { text: string; kind: 'info' | 'error' } | null = null;
+  private toastTimer: NodeJS.Timeout | null = null;
+  showToast(text: string, kind: 'info' | 'error' = 'info', ms = 3000): void {
+    this.toast = { text, kind };
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      this.toast = null;
+      this.toastTimer = null;
+      this.emit();
+    }, ms);
+    this.toastTimer.unref();
+    this.emit();
+  }
   // Text selected with the mouse in the conversation (Claude Code's in-app selection):
   // line and character positions within the drawn lines, so it stays on its words
   // while the view scrolls. null when nothing is selected.
@@ -137,9 +153,34 @@ class SessionStore {
 
   getSnapshot = (): number => this.version;
 
+  private lastEmit = 0;
+  private emitTimer: NodeJS.Timeout | null = null;
+
   private emit(): void {
     this.version += 1;
+    this.lastEmit = Date.now();
     for (const listener of this.listeners) listener();
+  }
+
+  // For the flood: tokens arrive faster than a screen can be redrawn, and every
+  // emit redraws synchronously (useSyncExternalStore has no way to wait). At a
+  // hundred or more tokens a second the redraws never let go of the program: in a
+  // real window the main loop stalled for up to 7.7 SECONDS in a single answer, and
+  // the wheel, the keys and every timer queued behind it - that was "I can't scroll
+  // back until he has finished" and the jumpiness (26 Sept, measured with a
+  // heartbeat). The text is stored at once; only the redraw is limited, to about
+  // twenty a second - the way Claude Code throttles its own frames (16-32 ms).
+  private emitThrottled(ms = 50): void {
+    const wait = ms - (Date.now() - this.lastEmit);
+    if (wait <= 0) {
+      this.emit();
+      return;
+    }
+    if (this.emitTimer) return;
+    this.emitTimer = setTimeout(() => {
+      this.emitTimer = null;
+      this.emit();
+    }, wait);
   }
 
   setInputText(text: string): void {
@@ -214,7 +255,7 @@ class SessionStore {
     this.transcript = this.transcript.map((entry) =>
       entry.id === id && entry.kind === 'assistant' ? { ...entry, text: entry.text + token } : entry
     );
-    this.emit();
+    this.emitThrottled();
   }
 
   setAssistantText(id: number, text: string): void {
@@ -244,7 +285,7 @@ class SessionStore {
     this.transcript = this.transcript.map((entry) =>
       entry.id === target && entry.kind === 'reasoning' ? { ...entry, text: entry.text + delta } : entry
     );
-    this.emit();
+    this.emitThrottled();
   }
 
   closeReasoningEntry(): void {

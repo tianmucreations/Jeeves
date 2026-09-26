@@ -7,7 +7,7 @@ import { pressCtrlCToQuit } from '../ink/quit.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
 import { session, useSession } from '../state/session.js';
 import { getInputHistory, pushInputHistory } from '../platform/config.js';
-import { isMouseSequence, handleMouseInput } from '../ink/mouse.js';
+import { isMouseSequence, handleMouseInput, subscribeMouse } from '../ink/mouse.js';
 import { approvalButtons, approvalButtonAt } from '../ink/approval-buttons.js';
 import { inputLayout, splitTypedBurst, cleanPaste, scrollToShowCursor, previousWordStart, nextWordEnd } from './input-layout.js';
 
@@ -147,14 +147,13 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     if (button) answerFromButton(button);
   };
 
+  // The wheel scrolls the conversation and clicks and drags select and copy; the
+  // mouse never reaches the text being typed.
+  useEffect(() => subscribeMouse(handleMouseInput), []);
+
   useInput((input, key) => {
-    // SGR mouse events arrive as CSI chunks Ink cannot resolve; the wheel
-    // scrolls the transcript and every other mouse event is consumed here so
-    // none of it ever lands in the text.
-    if (isMouseSequence(input)) {
-      handleMouseInput(input);
-      return;
-    }
+    // (Mouse reports no longer arrive here - see subscribeMouse below.)
+    if (isMouseSequence(input)) return;
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
     // Ctrl+C, as Claude Code: copy a selection, else clear the typing, else stop the
     // job, else quit only when pressed twice. It used to quit at once, losing the

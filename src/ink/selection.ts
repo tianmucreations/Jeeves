@@ -140,17 +140,14 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   return (await copyNative(text)) || sent;
 }
 
-let noteTimer: NodeJS.Timeout | null = null;
-
-// Copies the selection and says so in the info bar for two seconds.
+// Copies the selection and says so in a small message floating in the corner of the
+// window for three seconds (OpenCode's "Copied to clipboard" toast). The selection
+// stays highlighted; nothing else on the screen moves.
 export async function copySelection(): Promise<void> {
   const view = session.transcriptView;
   const text = view ? selectedText(view.lines) : '';
   if (!text) return;
   const copied = await copyToClipboard(text);
-  session.setBusyNote(copied ? 'copied' : "couldn't copy");
-  if (noteTimer) clearTimeout(noteTimer);
-  noteTimer = setTimeout(() => {
-    if (session.busyNote === 'copied' || session.busyNote === "couldn't copy") session.setBusyNote(null);
-  }, 2000);
+  if (copied) session.showToast('Copied to clipboard');
+  else session.showToast("Couldn't copy that", 'error');
 }

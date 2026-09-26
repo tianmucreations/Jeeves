@@ -61,8 +61,23 @@ export const ZAI_MODELS: ModelInfo[] = [
   },
 ];
 
+// The Flash models answer without their private thinking phase. Measured 26 Sept, same
+// request ("write about 900 words on the history of Spain"): thinking on, the first
+// word came after 70-140 SECONDS of silence (5,000-8,000 thinking chunks spent
+// planning paragraph counts); thinking off, after 4 seconds, whole piece in 35. Tool
+// calls work the same either way. OpenCode leaves thinking on but its prompt makes
+// the model answer in a few lines; Jeeves's people ask for letters and pieces of
+// writing, so the wait is removed at its source instead. The bigger GLM-5.3 keeps
+// thinking: it is the one to choose for hard jobs.
+export function answersWithoutThinking(modelId: string): boolean {
+  return /flash/i.test(modelId);
+}
+
 export function createZaiProvider(apiKey: string): Provider {
-  const client = createOpenAICompatible({ name: 'zai', apiKey, baseURL: ZAI_CODING_BASE_URL, includeUsage: true });
+  // A test can point this at a local pretend service (bench/fake-zai.mts) so streaming
+  // can be exercised without spending the plan; honoured only when NODE_ENV is test.
+  const baseURL = process.env.NODE_ENV === 'test' && process.env.JEEVES_ZAI_BASE_URL ? process.env.JEEVES_ZAI_BASE_URL : ZAI_CODING_BASE_URL;
+  const client = createOpenAICompatible({ name: 'zai', apiKey, baseURL, includeUsage: true });
   return {
     id: 'zai',
     name: 'Z.ai',
@@ -87,6 +102,7 @@ export function createZaiProvider(apiKey: string): Provider {
         repairToolCall,
         prepareStep: prepareStepFor(beforeStep, (id) => client.chatModel(id)),
         abortSignal: guard.signal,
+        providerOptions: answersWithoutThinking(modelId) ? { zai: { thinking: { type: 'disabled' } } } : undefined,
         // The library prints every failure to the screen by default, over Jeeves's
         // window; the failure still arrives below and is explained in plain English.
         onError: () => {},

@@ -305,3 +305,8 @@ body.welcoming .brand { visibility: hidden; }
 .help-body dd { margin: 2px 0 0; color: var(--silver-dim); font-size: 13.5px; }
 #open-help { margin-left: auto; }
 #open-settings { margin-left: 8px; }
+
+/* A short message that floats over the top right and goes by itself (OpenCode's toast). */
+.toast { position: fixed; top: 104px; right: 24px; z-index: 50; padding: 10px 16px; background: var(--band); color: #ffffff; border-left: 3px solid var(--gold); border-radius: 6px; font-size: 14px; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+.toast[hidden] { display: none; }
+.toast.error { border-left-color: var(--red); }

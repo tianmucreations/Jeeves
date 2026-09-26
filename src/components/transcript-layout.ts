@@ -136,6 +136,24 @@ export function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' 
 }
 
 // Turns transcript entries into physical display lines that fit the given width.
+// Formatting an answer (markdown, then wrapping) is the costly part of a redraw, and
+// a redraw used to redo EVERY earlier answer each time a new word arrived: a long
+// conversation made each word slower than the last. Finished text and width give the
+// same lines every time, so they are kept (the newest few hundred).
+const answerCache = new Map<string, { text: string; spans: StyleSpan[] }[]>();
+function answerLines(text: string, width: number, keep: boolean): { text: string; spans: StyleSpan[] }[] {
+  const key = `${width}\u0000${text}`;
+  const hit = answerCache.get(key);
+  if (hit) return hit;
+  const styled = renderMarkdown(text);
+  const wrapped = wrapStyled(styled.text, styled.spans, width);
+  // The answer still being written changes with every word: never worth keeping.
+  if (!keep) return wrapped;
+  answerCache.set(key, wrapped);
+  if (answerCache.size > 300) answerCache.delete(answerCache.keys().next().value as string);
+  return wrapped;
+}
+
 // A finished look-around (read, list, search) is not kept on screen unless /verbose.
 export function isQuietEntry(entry: TranscriptEntry, verbose: boolean): boolean {
   return !verbose && entry.kind === 'tool' && entry.data.state === 'done' && entry.data.quiet === true;
@@ -165,8 +183,7 @@ export function buildDisplayLines(entries: TranscriptEntry[], width: number, ver
         if (lines.length > 0 && lines[lines.length - 1].text.trim() !== '') lines.push({ text: ' ' });
         {
           // Markdown drawn as formatting, never as stray ** and ## marks.
-          const styled = renderMarkdown(entry.text);
-          for (const line of wrapStyled(styled.text, styled.spans, width - ANSWER_GUTTER.length)) {
+          for (const line of answerLines(entry.text, width - ANSWER_GUTTER.length, entry !== entries[entries.length - 1])) {
             lines.push({ text: line.text, spans: line.spans.length ? line.spans : undefined, gutter: ANSWER_GUTTER.length });
           }
         }

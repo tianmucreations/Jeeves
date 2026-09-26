@@ -18,7 +18,7 @@ const LIGHT_TITLES = {
   idle: 'Ready', working: 'Working…', 'awaiting-approval': 'Waiting for your answer', disconnected: 'Not connected',
 };
 
-// A little of Markdown, drawn safely: headings, **bold** and `code`.
+// A little of Markdown, drawn safely: headings, **bold**, *italic* and `code`.
 function fillRich(el, text) {
   el.textContent = '';
   const lines = text.split('\n');
@@ -26,12 +26,14 @@ function fillRich(el, text) {
     const heading = /^#{1,6}\s+(.*)$/.exec(line);
     const target = heading ? el.appendChild(Object.assign(document.createElement('span'), { className: 'h' })) : el;
     const body = heading ? heading[1] : line;
-    for (const part of body.split(/(\*\*[^*]+\*\*|`[^`]+`)/)) {
+    for (const part of body.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*)/)) {
       if (!part) continue;
       if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
         target.appendChild(document.createElement('strong')).textContent = part.slice(2, -2);
       } else if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
         target.appendChild(document.createElement('code')).textContent = part.slice(1, -1);
+      } else if (part.length > 2 && part.startsWith('*') && part.endsWith('*') && !part.startsWith('**')) {
+        target.appendChild(document.createElement('em')).textContent = part.slice(1, -1);
       } else {
         target.appendChild(document.createTextNode(part));
       }
@@ -315,4 +317,28 @@ document.getElementById('welcome-key-form').addEventListener('submit', async (ev
   input.value = '';
   connectNote.className = result.ok ? 'note good' : 'note';
   connectNote.textContent = result.message;
+});
+
+
+// Highlight text in the conversation and it is copied, with a small "Copied to
+// clipboard" message that floats in the corner for three seconds (as Claude Code and
+// OpenCode do in the terminal; the terminal version of Jeeves does the same).
+let toastTimer = null;
+function showToast(text, error) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.toggle('error', !!error);
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
+}
+let lastCopied = '';
+els.scroller.addEventListener('mouseup', () => {
+  setTimeout(() => {
+    const picked = window.getSelection().toString().trim();
+    if (!picked) { lastCopied = ''; return; }
+    if (picked === lastCopied) return;
+    lastCopied = picked;
+    window.jeeves.copyText(picked).then((ok) => (ok ? showToast('Copied to clipboard') : showToast("Couldn't copy that", true)), () => showToast("Couldn't copy that", true));
+  }, 10);
 });

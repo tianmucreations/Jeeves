@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import path from 'node:path';
 import { Box, Text, useInput } from 'ink';
 import { session, useSession } from '../state/session.js';
@@ -13,7 +13,7 @@ import { displayPath } from '../platform/paths.js';
 import { PROVIDER_ROWS, hasCredentialsFor } from '../providers/index.js';
 import { isDirectService } from '../providers/direct-services.js';
 import { ZAI_MODELS } from '../providers/zai.js';
-import { isMouseSequence, parseMouseSequence } from '../ink/mouse.js';
+import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
 
 // The folder, service and model are changed between tasks only, as their own screens are.
 function busy(): boolean {
@@ -129,21 +129,26 @@ export function SettingsView({ rows }: { rows: number }) {
   };
   const shownTop = clampTop(top);
 
-  useInput((input, key) => {
-    if (isMouseSequence(input)) {
-      const event = parseMouseSequence(input);
-      if (!event) return;
-      if (event.kind === 'wheel') {
-        setTop((current) => clampTop(current + (event.button === 0 ? -1 : 1)));
-        return;
-      }
-      // A click on a row chooses it; the list starts on the screen's second row.
-      if (event.kind === 'press' && event.button === 0) {
-        const row = list[shownTop + event.row - 2];
-        if (row?.kind === 'item') runSettingsAction(row.action);
-      }
+  // Mouse reports come from the mouse filter, not the keyboard (stdin-filter.ts).
+  const onMouse = (report: string) => {
+    const event = parseMouseSequence(report);
+    if (!event) return;
+    if (event.kind === 'wheel') {
+      setTop((current) => clampTop(current + (event.button === 0 ? -1 : 1)));
       return;
     }
+    // A click on a row chooses it; the list starts on the screen's second row.
+    if (event.kind === 'press' && event.button === 0) {
+      const row = list[shownTop + event.row - 2];
+      if (row?.kind === 'item') runSettingsAction(row.action);
+    }
+  };
+  const onMouseRef = useRef(onMouse);
+  onMouseRef.current = onMouse;
+  useEffect(() => subscribeMouse((report) => onMouseRef.current(report)), []);
+
+  useInput((input, key) => {
+    if (isMouseSequence(input)) return;
     if (key.escape) {
       session.closeSettings();
       return;

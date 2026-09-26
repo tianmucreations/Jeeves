@@ -24,6 +24,42 @@ export interface ParsedMouseEvent {
   row: number;
 }
 
+// Whoever is showing on screen listens here. Mouse reports never travel through
+// Ink's keyboard events any more (see stdin-filter.ts); they are handed to the
+// listeners directly - the conversation's typing box and the Settings list.
+const listeners = new Set<(report: string) => void>();
+export function subscribeMouse(listener: (report: string) => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+// A trackpad flick sends dozens of wheel reports a second. They are gathered for
+// one frame's time and handled together (one redraw, not dozens) - Claude Code's
+// ScrollBox does the same with a microtask-coalesced scrollBy. Anything else
+// (a click, a drag) first lets the gathered wheel reports through, then runs.
+const WHEEL_BATCH_MS = 16;
+let wheelQueue: string[] = [];
+let wheelTimer: NodeJS.Timeout | null = null;
+
+function flushWheel(): void {
+  if (wheelTimer) clearTimeout(wheelTimer);
+  wheelTimer = null;
+  const queued = wheelQueue;
+  wheelQueue = [];
+  for (const report of queued) for (const listener of [...listeners]) listener(report);
+}
+
+export function dispatchMouse(report: string): void {
+  const event = parseMouseSequence(report);
+  if (event?.kind === 'wheel') {
+    wheelQueue.push(report);
+    if (!wheelTimer) wheelTimer = setTimeout(flushWheel, WHEEL_BATCH_MS);
+    return;
+  }
+  flushWheel();
+  for (const listener of [...listeners]) listener(report);
+}
+
 export function isMouseSequence(input: string): boolean {
   return MOUSE_RE.test(input);
 }

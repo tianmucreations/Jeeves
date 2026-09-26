@@ -40,3 +40,12 @@ describe('Z.ai provider adapter', () => {
     expect(PROVIDER_ROWS[0].id).toBe('openrouter');
   });
 });
+
+describe('the Flash models answer without a thinking phase (26 Sept)', () => {
+  it('only the Flash models skip thinking; the big model keeps it', async () => {
+    const { answersWithoutThinking } = await import('../src/providers/zai.js');
+    expect(answersWithoutThinking('glm-5.3-flash')).toBe(true);
+    expect(answersWithoutThinking('glm-5.3')).toBe(false);
+    expect(answersWithoutThinking('glm-5.2')).toBe(false);
+  });
+});

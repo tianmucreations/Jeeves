@@ -5,7 +5,7 @@
 // to the window and passes the person's messages and answers back.
 // Prototype limits: the engine runs in the main process (a utilityProcess comes
 // later); choosing a model and adding keys still happen in the terminal Jeeves.
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, Notification, clipboard as systemClipboard } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -237,6 +237,12 @@ ipcMain.on('cancel-change-folder', () => {
 });
 
 ipcMain.handle('ready', () => snapshot());
+// Highlighted text is copied here (the window's own clipboard door refuses when it is not the focused window).
+ipcMain.handle('copy-text', (_event, text) => {
+  if (typeof text !== 'string' || !text) return false;
+  systemClipboard.writeText(text.slice(0, 1_000_000));
+  return true;
+});
 // How to address the person (the terminal's AddressPrompt, same rules).
 ipcMain.handle('set-address', (_event, raw) => {
   const address = cleanAddress(String(raw ?? ''));
@@ -585,6 +591,12 @@ async function takeShots(out) {
     win.webContents.copy();
     await wait(300);
     console.log(`copied from the window: ${JSON.stringify(clipboard.readText().slice(0, 60))}`);
+    // Highlighting alone copies it and floats "Copied to clipboard" in the corner.
+    clipboard.writeText('untouched');
+    await win.webContents.executeJavaScript("document.getElementById('scroller').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))");
+    await wait(400);
+    console.log(`toast: ${JSON.stringify(await win.webContents.executeJavaScript("(() => { const t = document.getElementById('toast'); return t.hidden ? null : t.textContent; })()"))}, clipboard now: ${JSON.stringify(clipboard.readText().slice(0, 30))}`);
+    await shot('4-toast.png');
     clipboard.writeText(before);
   }
   // A real picture, window buttons included (hidden pictures leave them out).

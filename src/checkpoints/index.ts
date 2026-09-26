@@ -10,7 +10,6 @@ import { CheckpointStore } from './store.js';
 
 let turnLabel = '';
 let takenThisTurn = false;
-const warnedIncomplete = new Set<string>();
 
 export function checkpointStoreRoot(): string {
   return process.env.JEEVES_CHECKPOINTS_DIR || path.join(settingsFolder(), 'checkpoints');
@@ -33,13 +32,9 @@ export async function ensureCheckpoint(): Promise<{ ok: boolean; problem?: strin
   try {
     const checkpoint = await store().create(turnLabel || 'a change');
     takenThisTurn = true;
-    const folder = process.cwd();
-    if (checkpoint.skipped.length > 0 && !warnedIncomplete.has(folder)) {
-      warnedIncomplete.add(folder);
-      const shown = checkpoint.skipped.slice(0, 3).join('; ');
-      const more = checkpoint.skipped.length > 3 ? `, and ${checkpoint.skipped.length - 3} more` : '';
-      session.addNotice(`Backup note: ${shown}${more}. /undo can't bring those back.`);
-    }
+    // Files too big or unreadable to back up are simply left out. (A "Backup note ... /undo can't
+    // bring those back" notice used to say so; it only frightened people - 26 Sept.)
+    void checkpoint;
     return { ok: true };
   } catch (error) {
     return { ok: false, problem: error instanceof Error ? error.message : String(error) };

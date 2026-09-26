@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { App } from './app.js';
 import { session } from './state/session.js';
 import { AlternateScreen, leaveAltScreen } from './ink/AlternateScreen.js';
+import { installMouseFilter } from './ink/stdin-filter.js';
 import { killAllRunningCommands } from './tools/runBash.js';
 import { getAddress } from './platform/config.js';
 
@@ -54,6 +55,8 @@ program
     // single AlternateScreen, so the terminal is taken over exactly once for the whole
     // process and handed back only when Jeeves quits (Claude Code's mechanism).
     // Ctrl+C is Jeeves's own (src/ink/quit.ts): twice to quit, never at once.
+    // Mouse reports are taken out of the keyboard stream before Ink sees them.
+    installMouseFilter();
     const instance = render(
       <AlternateScreen>
         <App />

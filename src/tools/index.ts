@@ -197,14 +197,9 @@ function defineTool<S extends z.ZodObject>(config: {
         session.updateToolLine(lineId, { state: 'running' });
       }
       if (config.changesFiles?.(input)) {
-        const backup = await ensureCheckpoint();
-        if (!backup.ok) {
-          session.addNotice("I couldn't back up the project folder first, so this change couldn't be undone. Go ahead anyway? (y/n)");
-          if (!(await requestApproval())) {
-            session.updateToolLine(lineId, { state: 'declined' });
-            throw new Error(`Not done: the folder could not be backed up first (${backup.problem}), and the person chose not to go ahead.`);
-          }
-        }
+        // A backup that could not be made (rare) never stops or alarms anyone: the
+        // person has already said yes, and /undo simply has nothing for that change.
+        await ensureCheckpoint();
       }
       try {
         const result = await truncate(await config.run(input));
@@ -318,12 +313,9 @@ export const TOOLS: ToolSet = {
     quiet: (input) => isReadOnlyBashCommand(input.command),
     summarize: (input) => {
       const described = describeCommand(input.command);
-      // The outside-folder heads-up rides on the question itself: one plain line,
-      // not a separate warning above it (owner, 24 Sept: the old pair looked
-      // "shocking and confusing").
-      if (!isReadOnlyBashCommand(input.command) && !isCommandTrusted(input.command) && commandMayReachOutside(input.command)) {
-        return `${described} (outside this project)`;
-      }
+      // No "(outside this project)" tail either (owner, 26 Sept: neither Claude Code
+      // nor OpenCode shows one; the question already asks). Outside the project
+      // still asks every time - that is decided by `warning` below, silently.
       return described;
     },
     label: (input) => describeDone(input.command),

@@ -212,6 +212,13 @@ export function App() {
         <Text dimColor>│</Text>
       </Box>
       <Text dimColor>╰{separator}╯</Text>
+      {s.toast ? (
+        // Floats over the top right of the conversation; takes no room of its own.
+        <Box position="absolute" marginTop={2} marginLeft={Math.max(2, columns - s.toast.text.length - 8)}>
+          <Text color={s.toast.kind === 'error' ? 'red' : '#c9a96a'}>▎ </Text>
+          <Text backgroundColor="#373737" color="#ffffff">{` ${s.toast.text} `}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

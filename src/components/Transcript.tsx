@@ -78,20 +78,29 @@ export function Transcript({ width }: { width: number }) {
   // a real window) - so the number of lines drawn is the floor: every line is one row.
   const contentRows = Math.max(lines.length, content.height);
   const maxScroll = Math.max(0, contentRows - viewport.height);
-  const scrollTop = Math.min(s.transcriptScrollUp, maxScroll);
-  // The session clamps key and wheel scrolling to this same limit. And while the
-  // person is reading back, new lines arriving at the bottom must not slide what
-  // they are reading away (26 Sept: scrolling up while Jeeves wrote was useless -
-  // the offset counts from the bottom, so every new line pushed the page up and out
-  // of view). Claude Code and OpenCode keep the reading position anchored while
-  // output streams; the offset grows by exactly the lines that were added.
-  const lastHeight = useRef(0);
+  // READING BACK WHILE JEEVES WRITES - the reading place is anchored to the TEXT, not to the
+  // bottom. The session counts rows up from the bottom, so every new line would push
+  // the page up; Claude Code's ScrollBox instead keeps scrollTop (rows from the TOP)
+  // and only follows when pinned to the bottom. Same thing here: whenever the person
+  // moves (the number in the session differs from what this component last settled
+  // on) the place is noted as rows-from-the-bottom AND how tall the content was; on
+  // every draw after that the offset is that plus the rows added since - worked out
+  // in THIS draw, so no frame is ever drawn with the page in the wrong place (the
+  // first version corrected it in an effect a frame later: 78 different pictures in
+  // 12 seconds of one answer, measured).
+  const place = useRef({ up: 0, rows: 0, settled: 0 });
+  if (s.transcriptScrollUp !== place.current.settled) {
+    place.current = { up: s.transcriptScrollUp, rows: contentRows, settled: s.transcriptScrollUp };
+  }
+  const followed = place.current.up === 0 ? 0 : Math.min(maxScroll, place.current.up + (contentRows - place.current.rows));
+  const scrollTop = Math.min(followed, maxScroll);
+  // Tell the session (silently: the number changes, nothing needs to redraw) so the
+  // next wheel notch or key press counts from where the page really is now.
+  if (session.transcriptScrollUp !== scrollTop) session.transcriptScrollUp = scrollTop;
+  place.current.settled = scrollTop;
   useEffect(() => {
-    const added = contentRows - lastHeight.current;
-    lastHeight.current = contentRows;
     session.setTranscriptScrollMax(maxScroll);
-    if (added > 0 && session.transcriptScrollUp > 0) session.scrollTranscript(added);
-  }, [contentRows, maxScroll]);
+  }, [maxScroll]);
   // The mouse turns a screen position into a line and character with this.
   session.transcriptView = { top: VIEW_TOP, left: VIEW_LEFT, height: viewport.height, lines: lines.map((line) => line.text), gutters: lines.map((line) => line.gutter ?? 0), scrollTop };
 
