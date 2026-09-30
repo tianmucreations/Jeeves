@@ -4,16 +4,20 @@ import { startBackground, stopBackground, resetBackground } from '../src/tools/b
 import { runRunBash, killAllRunningCommands } from '../src/tools/runBash.js';
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Is a program with this in its command line running? The first letter is bracketed so the search does
+// not find its own command line (which happens on Linux).
 const alive = (marker: string) => {
   try {
-    return execSync(`pgrep -f "${marker}" || true`).toString().trim().length > 0;
+    const pattern = `[${marker[0]}]${marker.slice(1)}`;
+    return execSync(`pgrep -f "${pattern}" || true`).toString().trim().length > 0;
   } catch {
     return false;
   }
 };
 afterEach(() => resetBackground());
 
-describe('stopping commands properly (his own review, 30 Sept)', () => {
+// Stopping a whole group of programs is Mac and Linux behaviour (Windows uses taskkill); pgrep is theirs too.
+describe.skipIf(process.platform === 'win32')('stopping commands properly (his own review, 30 Sept)', () => {
   it('a command that ignores the polite stop is forced to end, and so is what it started', async () => {
     const marker = `jvtest${Date.now()}`;
     startBackground(`sh -c "trap '' TERM; sleep 60; echo ${marker}" & wait`);

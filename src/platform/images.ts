@@ -73,7 +73,7 @@ export async function readClipboardImage(): Promise<ImageAttachment | null> {
 
 // One dropped or typed address: quotes, a file:// start and backslash-escaped spaces (how
 // terminals write a dropped file) are tidied; a leading ~ is the home folder.
-function tidyAddress(raw: string): string {
+function tidyAddress(raw: string, windows: boolean): string {
   let text = raw.trim();
   if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith('"') && text.endsWith('"'))) text = text.slice(1, -1);
   if (text.startsWith('file://')) {
@@ -83,18 +83,29 @@ function tidyAddress(raw: string): string {
       text = text.slice(7);
     }
   }
-  text = text.replace(/\\(.)/g, '$1');
+  // file:///C:/Users/Me/a.png -> C:\Users\Me\a.png
+  if (windows && /^\/[A-Za-z]:/.test(text)) text = text.slice(1).replace(/\//g, '\\');
+  // Escaped spaces are how a Mac or Linux terminal writes a dropped file; on Windows the backslash is
+  // the folder separator (C:\Users\Me\shot.png) and must be left alone.
+  if (!windows) text = text.replace(/\\(.)/g, '$1');
   if (text === '~' || text.startsWith('~/')) text = path.join(homedir(), text.slice(1));
   return text;
+}
+
+// The addresses that could be in some text, tidied, before anyone checks they exist. Windows writes a
+// dropped file as "C:\My Files\a.png" in quotes, or without quotes when there are no spaces.
+export function addressesIn(text: string, windows = process.platform === 'win32'): string[] {
+  const parts = windows
+    ? (text.match(/"[^"]+"|'[^']+'|[A-Za-z]:\\[^\s"']+|\\\\[^\s"']+|file:\/\/[^\s"']+/g) ?? [])
+    : (text.match(/(?:\\.|[^\s'"\\]|'[^']*'|"[^"]*")+/g) ?? []);
+  return parts.map((part) => tidyAddress(part, windows));
 }
 
 // The addresses in some text that are pictures on this computer: a dropped file is one address;
 // several dropped together come space-separated with escaped spaces.
 export function imagePathsIn(text: string): string[] {
-  const parts = text.match(/(?:\\.|[^\s'"\\]|'[^']*'|"[^"]*")+/g) ?? [];
   const found: string[] = [];
-  for (const part of parts) {
-    const candidate = tidyAddress(part);
+  for (const candidate of addressesIn(text)) {
     if (!TYPES[path.extname(candidate).toLowerCase()]) continue;
     if (!path.isAbsolute(candidate)) continue;
     if (existsSync(candidate)) found.push(candidate);

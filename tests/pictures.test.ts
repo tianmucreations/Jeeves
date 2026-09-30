@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { imagePathsIn, loadImageFile, MAX_IMAGE_BYTES } from '../src/platform/images.js';
+import { imagePathsIn, addressesIn, loadImageFile, MAX_IMAGE_BYTES } from '../src/platform/images.js';
 import { buildTurnMessages } from '../src/agent/context.js';
 import { clearOldImages, visionChoice } from '../src/agent/vision.js';
 import { normalizeModels } from '../src/models/registry.js';
@@ -22,14 +22,23 @@ beforeAll(async () => {
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 describe('pictures in a message (OpenCode / Claude Code)', () => {
-  it('finds picture files in typed or dropped text - quotes, file:// and escaped spaces included', () => {
+  it('finds picture files in typed or dropped text - quotes, file:// and (on Mac and Linux) escaped spaces', () => {
     const shot = path.join(dir, 'shot.png');
-    expect(imagePathsIn(`what is in ${shot} please`)).toEqual([shot]);
+    expect(imagePathsIn(`what is in ${process.platform === 'win32' ? `"${shot}"` : shot} please`)).toEqual([shot]);
     expect(imagePathsIn(`'${shot}'`)).toEqual([shot]);
-    expect(imagePathsIn(`file://${shot}`)).toEqual([shot]);
-    expect(imagePathsIn(path.join(dir, 'my\\ photo.jpg').replace(dir, dir.replace(/ /g, '\\ ')))).toEqual([path.join(dir, 'my photo.jpg')]);
+    expect(imagePathsIn(`file://${process.platform === 'win32' ? '/' + shot.replace(/\\/g, '/') : shot}`)).toEqual([shot]);
+    const spaced = path.join(dir, 'my photo.jpg');
+    // A Mac or Linux terminal writes a dropped file with escaped spaces; Windows puts the address in quotes.
+    expect(imagePathsIn(process.platform === 'win32' ? `"${spaced}"` : spaced.replace(/ /g, '\\ '))).toEqual([spaced]);
     expect(imagePathsIn(`${path.join(dir, 'notes.txt')} and ${path.join(dir, 'missing.png')}`)).toEqual([]);
     expect(imagePathsIn('no pictures here, just words like image.png')).toEqual([]);
+  });
+  it('reads both ways of writing an address on every computer (checked without needing the files)', () => {
+    // Windows: backslashes are the folder separator and stay; quotes hold a name with spaces.
+    expect(addressesIn('look at "C:\\My Files\\shot one.png" and C:\\pics\\b.jpg', true)).toEqual(['C:\\My Files\\shot one.png', 'C:\\pics\\b.jpg']);
+    expect(addressesIn('file:///C:/Users/Me/a.png', true)).toEqual(['C:\\Users\\Me\\a.png']);
+    // Mac and Linux: a backslash escapes the space after it.
+    expect(addressesIn('/Users/me/my\\ photo.png', false)).toEqual(['/Users/me/my photo.png']);
   });
   it('loads a picture as base64, and refuses one over 5 MB in plain words', async () => {
     const loaded = await loadImageFile(path.join(dir, 'shot.png'));
