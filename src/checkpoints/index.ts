@@ -2,7 +2,7 @@ import path from 'node:path';
 import { session } from '../state/session.js';
 import { settingsFolder } from '../platform/config.js';
 import { expandPath } from '../platform/paths.js';
-import { CheckpointStore } from './store.js';
+import { CheckpointStore, type Checkpoint, type UndoResult } from './store.js';
 
 // Ties backups to the conversation: one checkpoint per message, taken just before
 // the first thing Jeeves changes in answer to it (after permission, before the change),
@@ -49,25 +49,56 @@ export interface UndoOutcome {
   historyNote: string | null;
 }
 
+// What was done, in the plain words shown after going back.
+function describeRestore(checkpoint: Checkpoint, result: UndoResult, verb: string): UndoOutcome {
+  const parts: string[] = [];
+  if (result.restored.length > 0) parts.push(`put back ${plural(result.restored.length, 'file')} (${listNames(result.restored)})`);
+  if (result.removed.length > 0) parts.push(`removed ${plural(result.removed.length, 'file')} added since (${listNames(result.removed)})`);
+  const what = parts.length > 0 ? parts.join(', and ') : 'nothing needed changing';
+  const label = checkpoint.label.length > 60 ? checkpoint.label.slice(0, 59) + '…' : checkpoint.label;
+  let message = `${verb}: the folder is back to how it was before "${label}" - ${what}.`;
+  if (result.failed.length > 0) message += ` ${plural(result.failed.length, 'file')} could not be put back: ${listNames(result.failed)}.`;
+  if (checkpoint.skipped.length > 0) message += ' Some things were never backed up, so they were left as they are.';
+  return {
+    message,
+    historyNote: `[The person put the project folder back to how it was before their message "${checkpoint.label}". Any changes made after that are gone - check files again before relying on earlier results.]`,
+  };
+}
+
 export async function undoLastChange(): Promise<UndoOutcome> {
   const s = store();
   const checkpoint = await s.latestUndoable();
   if (!checkpoint) return { message: "There's nothing to undo in this project folder yet.", historyNote: null };
   session.setBusyNote('undoing…');
   try {
-    const result = await s.restore(checkpoint);
-    const parts: string[] = [];
-    if (result.restored.length > 0) parts.push(`put back ${plural(result.restored.length, 'file')} (${listNames(result.restored)})`);
-    if (result.removed.length > 0) parts.push(`removed ${plural(result.removed.length, 'file')} added since (${listNames(result.removed)})`);
-    const what = parts.length > 0 ? parts.join(', and ') : 'nothing needed changing';
-    const label = checkpoint.label.length > 60 ? checkpoint.label.slice(0, 59) + '…' : checkpoint.label;
-    let message = `Undone: the folder is back to how it was before "${label}" - ${what}.`;
-    if (result.failed.length > 0) message += ` ${plural(result.failed.length, 'file')} could not be put back: ${listNames(result.failed)}.`;
-    if (checkpoint.skipped.length > 0) message += ' Some things were never backed up, so they were left as they are.';
-    return {
-      message,
-      historyNote: `[The person used /undo. The project folder was put back to how it was before their message "${checkpoint.label}". Any changes made after that are gone - check files again before relying on earlier results.]`,
-    };
+    return describeRestore(checkpoint, await s.restore(checkpoint), 'Undone');
+  } finally {
+    session.setBusyNote(null);
+  }
+}
+
+// The points the folder can be put back to: before each message in which Jeeves changed something.
+export interface RewindPoint {
+  id: string;
+  label: string;
+  createdAt: number;
+}
+
+export async function rewindPoints(): Promise<RewindPoint[]> {
+  const all = await store().list();
+  return all
+    .filter((checkpoint) => checkpoint.kind === 'turn')
+    .map((checkpoint) => ({ id: checkpoint.id, label: checkpoint.label, createdAt: checkpoint.createdAt }))
+    .reverse();
+}
+
+export async function rewindTo(id: string): Promise<UndoOutcome> {
+  const s = store();
+  const checkpoint = (await s.list()).find((candidate) => candidate.id === id && candidate.kind === 'turn');
+  if (!checkpoint) return { message: 'That point is no longer there - choose another.', historyNote: null };
+  session.setBusyNote('going back…');
+  try {
+    return describeRestore(checkpoint, await s.restoreTo(checkpoint), 'Gone back');
   } finally {
     session.setBusyNote(null);
   }

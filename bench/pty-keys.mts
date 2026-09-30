@@ -1,7 +1,7 @@
 // Ordinary keys still work with the mouse filter in front of them.
 import { Rig } from './pty-rig.mjs';
 const r = new Rig();
-await r.until((t) => t.includes('Just chat - no project'), 15000);
+await r.until((t) => t.includes('Just chat - no project folder'), 15000);
 r.send('\r');
 await r.until((t) => t.includes('Settings'), 15000, 'conversation');
 await r.wait(1200);

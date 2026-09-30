@@ -1,3 +1,4 @@
+import { startNewConversation } from '../platform/conversations.js';
 import { session } from '../state/session.js';
 import { resetStickySession } from '../providers/openrouter.js';
 import { resetResearchGate } from '../agent/research-gate.js';
@@ -8,8 +9,12 @@ import { resetDoomLoop } from '../agent/doom-loop.js';
 
 // Starts fresh: wipes the screen and the conversation the model remembers.
 export function clearConversation(): void {
+  // The earlier conversation stays saved; the next message starts a new one.
+  startNewConversation();
   session.clearTranscript();
   session.setHistory([]);
+  session.setTodos([]);
+  session.setPlanMode(false);
   session.setLastReasoning('');
   resetStickySession();
   resetResearchGate();

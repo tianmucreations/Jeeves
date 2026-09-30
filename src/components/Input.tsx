@@ -5,6 +5,8 @@ import { runTurn, stopTurn } from '../agent/loop.js';
 import { copySelection } from '../ink/selection.js';
 import { pressCtrlCToQuit } from '../ink/quit.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
+import { readClipboardImage, pickPictureFile, imagePathsIn, loadImageFile, tooBig, type ImageAttachment } from '../platform/images.js';
+import { answerOption, answerQuestion } from '../agent/question.js';
 import { session, useSession } from '../state/session.js';
 import { getInputHistory, pushInputHistory } from '../platform/config.js';
 import { isMouseSequence, handleMouseInput, subscribeMouse } from '../ink/mouse.js';
@@ -18,11 +20,19 @@ export function inputRowsFor(text: string, width: number): number {
 }
 
 // Sends a message, then any sent while Jeeves was busy, one after another.
-async function sendAndDrain(text: string): Promise<void> {
-  await runTurn(text);
-  for (let next = session.takeQueued(); next !== undefined; next = session.takeQueued()) {
-    await runTurn(next);
+async function sendAndDrain(text: string, images: ImageAttachment[] = []): Promise<void> {
+  await runTurn(text, images);
+  for (let next = session.takeNext(); next !== undefined; next = session.takeNext()) {
+    await runTurn(next.text, next.images);
   }
+}
+
+// The pictures a message actually uses: those whose [Image N] marker is still in the text
+// (deleting the marker leaves the picture out).
+function picturesUsed(text: string): ImageAttachment[] {
+  const used = new Set<number>();
+  for (const match of text.matchAll(/\[Image (\d+)\]/g)) used.add(Number(match[1]) - 1);
+  return [...used].filter((index) => session.attachments[index]).sort((a, b) => a - b).map((index) => session.attachments[index]);
 }
 
 export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; width?: number }) {
@@ -93,6 +103,28 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     const added = Array.from(text);
     setValue([...all.slice(0, at), ...added, ...all.slice(at)].join(''), cursorRef.current === null ? null : at + added.length);
   };
+  // A picture joins the message: it shows as [Image N] where the cursor is.
+  const attachPicture = (image: ImageAttachment) => {
+    if (tooBig(image)) {
+      session.addNotice(`${image.name} is over the 5 MB a picture can be. Shrink it or take a smaller screenshot.`);
+      return;
+    }
+    const number = session.attachments.length + 1;
+    session.setAttachments([...session.attachments, image]);
+    insert(`[Image ${number}] `);
+    session.showToast('Picture added');
+  };
+  // The Picture button: the computer's own "choose a picture" window opens (never a
+  // surprise picture from the clipboard - that is what pasting is for).
+  session.pictureButton = () => {
+    void (async () => {
+      const file = await pickPictureFile();
+      if (!file) return;
+      const loaded = await loadImageFile(file);
+      if (loaded.ok) attachPicture(loaded.image);
+      else session.addNotice(loaded.reason);
+    })();
+  };
   // Clicking in the typing box puts the cursor there.
   session.inputClick = (col: number, row: number) => {
     const rows = windowRows ?? 24;
@@ -154,7 +186,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   useInput((input, key) => {
     // (Mouse reports no longer arrive here - see subscribeMouse below.)
     if (isMouseSequence(input)) return;
-    if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen) return;
+    if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.spendingOpen) return;
     // Ctrl+C, as Claude Code: copy a selection, else clear the typing, else stop the
     // job, else quit only when pressed twice. It used to quit at once, losing the
     // conversation - and Windows and Linux people press Ctrl+C to copy (audit, 19 Sept).
@@ -178,6 +210,17 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     }
     // Any key clears a selection, as in Claude Code.
     if (session.selection) session.setSelection(null);
+    // A question with choices is waiting: a number picks a choice, the arrows move the
+    // highlight and Enter takes it (all while nothing is typed); typed words are
+    // an answer of their own and go in at Enter below.
+    if (session.question && !valueRef.current) {
+      const count = session.question.options.length;
+      const highlight = session.question.highlight;
+      if (/^[1-9]$/.test(input) && answerOption(Number(input) - 1)) return;
+      if (key.upArrow) return void session.setQuestionHighlight((highlight - 1 + count) % count);
+      if (key.downArrow) return void session.setQuestionHighlight((highlight + 1) % count);
+      if (key.return) return void answerOption(highlight);
+    }
     if (s.approvalPending) {
       // Two ways to answer, both landing on the same result (as OpenCode's own
       // row of buttons): the letter shortcuts, or arrow keys/Tab to move the
@@ -296,12 +339,19 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       sentHistory.current = getInputHistory();
       historyNav.current = { index: null, draft: '' };
       s.followTranscript();
+      // Words typed while a question waits are the answer.
+      if (session.question) {
+        answerQuestion(text);
+        return;
+      }
+      const pictures = picturesUsed(text);
+      session.setAttachments([]);
       // /exit is honoured even mid-turn so a wedged request can never trap the user.
       if (text === '/exit' || s.status !== 'working') {
-        void sendAndDrain(text);
+        void sendAndDrain(text, pictures);
       } else {
         // Busy: the message waits its turn and is sent as soon as this job finishes.
-        session.queueMessage(text);
+        session.queueMessage(text, pictures);
         session.addNotice(`Noted - I'll read this as soon as I've finished: "${text.length > 80 ? text.slice(0, 79) + '…' : text}"`);
       }
       return;
@@ -324,9 +374,30 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // Pasted text arrives whole (bracketed paste), keeps its line breaks, and never
   // sends by itself - only Enter does.
   usePaste((text) => {
-    if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen || s.approvalPending) return;
+    if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.spendingOpen || s.approvalPending) return;
     s.followTranscript();
-    insert(cleanPaste(text));
+    const pasted = cleanPaste(text);
+    // Nothing came as text: it may be a screenshot on the clipboard (Cmd+V in a Mac
+    // terminal sends an empty paste for one).
+    if (!pasted.trim()) {
+      void readClipboardImage().then((image) => {
+        if (image) attachPicture(image);
+      });
+      return;
+    }
+    // A dropped picture file arrives as its address: it becomes a picture, not typed words.
+    const files = imagePathsIn(pasted);
+    if (files.length > 0 && pasted.trim().split(/\s+/).length <= files.length * 4) {
+      void (async () => {
+        for (const file of files) {
+          const loaded = await loadImageFile(file);
+          if (loaded.ok) attachPicture(loaded.image);
+          else session.addNotice(loaded.reason);
+        }
+      })();
+      return;
+    }
+    insert(pasted);
   });
 
   if (s.approvalPending) {

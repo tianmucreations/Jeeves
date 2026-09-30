@@ -14,6 +14,12 @@ import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
 import { SettingsView } from './components/SettingsView.js';
+import { todoLines, todosUnfinished } from './tools/todoList.js';
+import { questionPanelLines, answerOption } from './agent/question.js';
+import { ChatsView } from './components/ChatsView.js';
+import { MemoryView } from './components/MemoryView.js';
+import { RewindView } from './components/RewindView.js';
+import { SpendingView } from './components/SpendingView.js';
 import { ProjectPicker } from './components/ProjectPicker.js';
 import { AddressPrompt } from './components/AddressPrompt.js';
 import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './ink/mouse.js';
@@ -47,7 +53,29 @@ export function App() {
   // The input box grows with the message (up to MAX_INPUT_ROWS); the transcript gives
   // up the rows. A hint or question in the input row is always one row.
   const inputRows = s.approvalPending || s.transcriptScrollUp > 0 ? 1 : inputRowsFor(s.inputText, inner - 2);
-  const midHeight = Math.max(1, rows - 6 - inputRows);
+  // What sits between the conversation and the typing box: a question with choices
+  // waiting for the person, else the job's checklist while steps are left. The
+  // conversation gives up its rows (and one more for the line above).
+  const panel: { text: string; kind: 'question' | 'choice' | 'hint' | 'todo'; option?: number }[] = s.question
+    ? questionPanelLines(s.question, inner - 4).map((line, index, all) => ({
+        text: line.text,
+        kind: line.option !== undefined ? ('choice' as const) : index === all.length - 1 ? ('hint' as const) : ('question' as const),
+        option: line.option,
+      }))
+    : todosUnfinished(s.todos) && !s.approvalPending
+      ? todoLines(s.todos, Math.min(6, Math.max(0, rows - 14))).map((text) => ({ text, kind: 'todo' as const }))
+      : [];
+  const midHeight = Math.max(1, rows - 6 - inputRows - (panel.length > 0 ? panel.length + 1 : 0));
+  // A click on one of the choices: the panel starts on the row after the separator
+  // under the conversation (border 1, header 1, conversation, separator).
+  session.questionClick = (col: number, row: number) => {
+    if (!session.question) return false;
+    const first = 4 + midHeight;
+    const line = panel[row - first];
+    if (col < 2 || col > inner + 1 || line?.option === undefined) return false;
+    answerOption(line.option);
+    return true;
+  };
   const inputSideLeft = Array.from({ length: inputRows }, () => '│ ').join('\n');
   const inputSideRight = Array.from({ length: inputRows }, () => ' │').join('\n');
   const side = '│\n'.repeat(midHeight - 1) + '│';
@@ -83,10 +111,10 @@ export function App() {
   // it goes back to the terminal, so its own selecting and Cmd+C copy work: a web
   // address such as where to get a key can be copied (owner, 19 Sept: "I still
   // can't copy things").
-  const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.settingsOpen || s.addressOpen || s.launchStage !== 'ready');
+  const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.spendingOpen || s.settingsOpen || s.addressOpen || s.launchStage !== 'ready');
   // Settings has nothing to copy, so it keeps the mouse too: the wheel or trackpad
   // scrolls its list and a click chooses (owner, 23 Sept).
-  const wantsMouse = onConversation || (s.settingsOpen && !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen));
+  const wantsMouse = onConversation || ((s.settingsOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen) && !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen));
   // On the setup screens Ctrl+C is only for quitting - still twice, never at once.
   // (The conversation screen's typing box handles its own.)
   useInput((input, key) => {
@@ -112,13 +140,21 @@ export function App() {
           ? 'picker'
           : s.helpOpen
             ? 'help'
-            : s.settingsOpen
-              ? 'settings'
-              : s.addressOpen || s.launchStage === 'address'
-                ? 'address'
-                : s.launchStage === 'project'
-                  ? 'project'
-                  : 'conversation';
+            : s.chatsOpen
+              ? 'chats'
+              : s.memoryOpen
+                ? 'memory'
+                : s.rewindOpen
+                  ? 'rewind'
+                  : s.spendingOpen
+                    ? 'spending'
+                    : s.settingsOpen
+                ? 'settings'
+                : s.addressOpen || s.launchStage === 'address'
+                  ? 'address'
+                  : s.launchStage === 'project'
+                    ? 'project'
+                    : 'conversation';
   const firstScreen = useRef(true);
   useInsertionEffect(() => {
     if (firstScreen.current) {
@@ -164,6 +200,18 @@ export function App() {
   if (s.helpOpen) {
     return <HelpView rows={rows} />;
   }
+  if (s.chatsOpen) {
+    return <ChatsView rows={rows} />;
+  }
+  if (s.memoryOpen) {
+    return <MemoryView rows={rows} />;
+  }
+  if (s.rewindOpen) {
+    return <RewindView rows={rows} />;
+  }
+  if (s.spendingOpen) {
+    return <SpendingView rows={rows} />;
+  }
   if (s.settingsOpen) {
     return <SettingsView rows={rows} />;
   }
@@ -195,6 +243,31 @@ export function App() {
           <Text dimColor>{side}</Text>
         </Box>
       </Box>
+      {panel.length > 0 ? (
+        <>
+          <Text dimColor>├{separator}┤</Text>
+          {panel.map((line, index) => {
+            const chosen = line.kind === 'choice' && line.option === s.question?.highlight;
+            return (
+              <Box key={index} height={1}>
+                <Text dimColor>│</Text>
+                <Box width={inner} paddingLeft={1} paddingRight={1}>
+                  <Text
+                    wrap="truncate-end"
+                    bold={line.kind === 'question'}
+                    inverse={chosen}
+                    color={line.kind === 'todo' && line.text.startsWith('●') ? 'yellow' : line.kind === 'choice' ? 'yellow' : undefined}
+                    dimColor={line.kind === 'hint' || (line.kind === 'todo' && (line.text.startsWith('✓') || line.text.startsWith('✗')))}
+                  >
+                    {line.text}
+                  </Text>
+                </Box>
+                <Text dimColor>│</Text>
+              </Box>
+            );
+          })}
+        </>
+      ) : null}
       <Text dimColor>├{separator}┤</Text>
       <Box height={inputRows}>
         <Text dimColor>{inputSideLeft}</Text>

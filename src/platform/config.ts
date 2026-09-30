@@ -33,7 +33,9 @@ interface JeevesConfig {
 // (default model, favourites, recents, verbose flag). API keys are NEVER stored here (spec 5.3).
 // Tests run against their own settings file so they never touch - or race on - the real one.
 const config = new Conf<JeevesConfig>({
-  projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
+  // Each parallel test worker gets its own file (they used to trample one shared file, so a
+  // saved value could vanish mid-test); the practice runs of bench/ keep the plain name.
+  projectName: process.env.NODE_ENV === 'test' ? `jeeves-tests${process.env.VITEST_POOL_ID ? `-w${process.env.VITEST_POOL_ID}` : ''}` : 'jeeves',
 });
 
 // The folder Jeeves keeps its settings in (chosen by the conf library for each
@@ -199,12 +201,12 @@ export function clearAddress(): void {
   config.delete('address');
 }
 // The trimmed models.dev catalogue for direct connections (prices and abilities).
-export function getDirectCatalogue(): { catalogue: unknown; fetchedAt: number } | null {
+export function getDirectCatalogue(): { catalogue: unknown; providers?: unknown; fetchedAt: number } | null {
   return config.get('directCatalogue') ?? null;
 }
 
-export function setDirectCatalogue(catalogue: unknown, fetchedAt: number): void {
-  config.set('directCatalogue', { catalogue, fetchedAt });
+export function setDirectCatalogue(catalogue: unknown, fetchedAt: number, providers?: unknown): void {
+  config.set('directCatalogue', { catalogue, providers, fetchedAt });
 }
 
 // The address of the "any compatible service" the person added (its key is in the keychain).

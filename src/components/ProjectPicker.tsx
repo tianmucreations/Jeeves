@@ -83,7 +83,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
       // First, for anyone who only wants to ask something: no project needed.
       const out: Item[] = [{ kind: 'chat' }];
       if (recents.length > 0) {
-        out.push({ kind: 'header', label: 'Recent projects' });
+        out.push({ kind: 'header', label: 'Recent project folders' });
         for (const folder of recents) out.push({ kind: 'recent', folder });
       } else {
         out.push({ kind: 'header', label: 'No recent projects yet - pick Browse below' });
@@ -309,9 +309,9 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
     mode === 'list'
       ? session.switchingFolder
         ? 'Change folder - or Just chat'
-        : 'Just chat, or choose a project'
+        : 'Just chat, or choose a project folder'
       : mode === 'create-name'
-        ? 'Create a new project'
+        ? 'Make a new project folder'
         : mode === 'create-location'
           ? `Where should "${createName.trim()}" live?`
           : mode === 'create-confirm'
@@ -382,7 +382,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
             return (
               <Text key="chat" inverse={selected}>
                 <Text color="#c9a96a" bold>{' Just chat'}</Text>
-                <Text dimColor>{' - no project needed'}</Text>
+                <Text dimColor>{' - no project folder needed'}</Text>
               </Text>
             );
           }
@@ -396,7 +396,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
           if (item.kind === 'create') {
             return (
               <Text key="create" inverse={selected}>
-                {' Create a new project →'}
+                {' Make a new project folder →'}
               </Text>
             );
           }

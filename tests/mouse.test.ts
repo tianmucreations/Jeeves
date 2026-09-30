@@ -92,3 +92,20 @@ describe('double and triple click (26 Sept: "I just highlight it" - Claude Code 
     expect(session.selection).toEqual({ anchor: { line: 1, ch: 0 }, focus: { line: 1, ch: 15 } });
   });
 });
+
+describe('drag past the edge keeps scrolling (owner, 30 Sept: could not select a long text)', () => {
+  it('scrolls by itself while the pointer is held below the window, and stops on release', async () => {
+    const lines = Array.from({ length: 40 }, (_, i) => `line ${i}`);
+    session.transcriptScrollMax = 100;
+    session.transcriptScrollUp = 10;
+    session.transcriptView = { top: 3, left: 3, height: 5, lines, gutters: lines.map(() => 0), scrollTop: 10 };
+    handleMouseInput('\x1b[<0;5;4M'); // press in the window
+    handleMouseInput('\x1b[<32;5;20M'); // drag far below it
+    await new Promise((r) => setTimeout(r, 180));
+    expect(session.transcriptScrollUp).toBeLessThan(10);
+    handleMouseInput('\x1b[<0;5;20m');
+    const after = session.transcriptScrollUp;
+    await new Promise((r) => setTimeout(r, 120));
+    expect(session.transcriptScrollUp).toBe(after);
+  });
+});

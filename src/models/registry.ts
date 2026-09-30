@@ -11,6 +11,8 @@ export interface ModelInfo {
   provider: string;
   // Flat-plan providers (Z.ai) show this instead of a misleading per-token price.
   priceLabel?: string;
+  // Whether the model can look at pictures: true / false when the list says, absent when unknown.
+  acceptsImages?: boolean;
 }
 
 const MODELS_URL = 'https://openrouter.ai/api/v1/models';
@@ -43,6 +45,9 @@ export function normalizeModels(body: unknown): ModelInfo[] {
         ? entry.supported_parameters.filter((param): param is string => typeof param === 'string')
         : [],
       provider: id.includes('/') ? id.slice(0, id.indexOf('/')) : 'openrouter',
+      ...(Array.isArray((entry.architecture as { input_modalities?: unknown } | undefined)?.input_modalities)
+        ? { acceptsImages: ((entry.architecture as { input_modalities: unknown[] }).input_modalities).includes('image') }
+        : {}),
     });
   }
   return models;

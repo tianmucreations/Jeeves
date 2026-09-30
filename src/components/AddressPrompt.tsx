@@ -1,17 +1,39 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { session } from '../state/session.js';
 import { getAddress, setAddress } from '../platform/config.js';
-import { isMouseSequence } from '../ink/mouse.js';
+import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
+import { useMouseCapture } from '../ink/use-mouse-capture.js';
 import { cleanAddress, timeOfDayGreeting, ADDRESS_MAX } from '../platform/address.js';
 import { splitTypedBurst } from './input-layout.js';
 
 // The first-launch question, in Jeeves' own voice, asked once before the project
 // picker whenever no address is saved; /address reopens the same screen later.
+// Two buttons on the third row: click one, or type something else below.
+const SIR = ' Sir ';
+const MAAM = " Ma'am ";
+const BUTTON_ROW = 3;
+
 export function AddressPrompt({ rows }: { rows: number }) {
   const [value, setValue] = useState('');
   const [note, setNote] = useState('');
   const firstRun = session.launchStage === 'address';
+  useMouseCapture();
+
+  const choose = (title: string) => {
+    setAddress(title);
+    session.addressDone();
+    session.addNotice(`Very good - I shall address you as ${title}.`);
+  };
+  const onMouse = (report: string) => {
+    const event = parseMouseSequence(report);
+    if (!event || event.kind !== 'press' || event.button !== 0 || event.row !== BUTTON_ROW) return;
+    if (event.col >= 1 && event.col <= SIR.length) choose('Sir');
+    else if (event.col >= SIR.length + 3 && event.col < SIR.length + 3 + MAAM.length) choose("Ma'am");
+  };
+  const onMouseRef = useRef(onMouse);
+  onMouseRef.current = onMouse;
+  useEffect(() => subscribeMouse((report) => onMouseRef.current(report)), []);
 
   useInput((input, key) => {
     if (isMouseSequence(input)) return;
@@ -45,15 +67,21 @@ export function AddressPrompt({ rows }: { rows: number }) {
   return (
     <Box flexDirection="column" height={rows}>
       <Text dimColor>{timeOfDayGreeting()}. Before we begin — how shall I address you? Sir, Ma'am, or something else?</Text>
+      <Text> </Text>
+      <Text>
+        <Text color="yellow" inverse>{SIR}</Text>
+        {'  '}
+        <Text color="yellow" inverse>{MAAM}</Text>
+      </Text>
       <Box flexGrow={1} justifyContent="center" flexDirection="column" minHeight={1}>
         <Text>
-          <Text dimColor>Call me: </Text>
+          <Text dimColor>or type another name: </Text>
           <Text>{value}</Text>
           <Text inverse> </Text>
         </Text>
       </Box>
       {note ? <Text color="yellow">{note}</Text> : null}
-      {firstRun ? <Text dimColor>type Sir, Ma'am or a name · Enter save</Text> : <Text dimColor>type a new title · Enter save · unchanged keeps the current one</Text>}
+      {firstRun ? <Text dimColor>click one, or type a name and press Enter</Text> : <Text dimColor>type a new title · Enter save · unchanged keeps the current one</Text>}
     </Box>
   );
 }

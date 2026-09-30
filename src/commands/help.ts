@@ -1,23 +1,17 @@
 import { WORD_JUMP_KEYS } from '../platform/wording.js';
+import { COMMAND_TABLE } from './registry.js';
 
 export interface HelpEntry {
   command: string;
   description: string;
+  // What the Settings list calls it: plain words, never the typed command.
+  label?: string;
 }
 
-export const COMMANDS: HelpEntry[] = [
-  { command: '/settings', description: 'everything in one place - folders, AI service, keys, and more (or click Settings at the bottom)' },
-  { command: '/help', description: 'show this list' },
-  { command: '/model', description: 'choose the AI service and model' },
-  { command: '/keys', description: 'connect an AI service, or remove one' },
-  { command: '/folder', description: 'work in a different folder, or just chat' },
-  { command: '/undo', description: "put the folder back to how it was before Jeeves's last change" },
-  { command: '/ask', description: 'ask before every change again (after "always allow")' },
-  { command: '/clear', description: 'start a fresh conversation' },
-  { command: '/address', description: 'change how Jeeves addresses you' },
-  { command: '/verbose', description: 'also show each step Jeeves takes, and the technical details (for curious people)' },
-  { command: '/exit', description: 'quit' },
-];
+// Derived from the one list of commands (registry.ts).
+export const COMMANDS: (HelpEntry & { place?: 'conversation' | 'more'; window?: 'settings' | 'help' | 'folder' | 'exit' })[] = COMMAND_TABLE.map(
+  ({ command, label, description, place, window }) => ({ command, label, description, place, window })
+);
 
 export const KEY_BINDINGS: HelpEntry[] = [
   { command: 'Enter', description: 'send your message, or choose in a list' },

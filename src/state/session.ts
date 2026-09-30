@@ -1,3 +1,4 @@
+import type { ImageAttachment } from '../platform/images.js';
 import { useSyncExternalStore } from 'react';
 import type { ModelMessage } from 'ai';
 import type { ModelInfo } from '../models/registry.js';
@@ -48,6 +49,10 @@ class SessionStore {
   keysOpen = false;
   wizardActive = false;
   helpOpen = false;
+  chatsOpen = false;
+  memoryOpen = false;
+  rewindOpen = false;
+  spendingOpen = false;
   settingsOpen = false;
   exitRequested = false;
   launchStage: 'address' | 'project' | 'ready' = 'address';
@@ -124,13 +129,17 @@ class SessionStore {
   inputClick: ((col: number, row: number) => void) | null = null;
   approvalClick: ((col: number, row: number) => void) | null = null;
   // Set by the info bar: opens Settings when its button is clicked; true if the click landed on it.
+  // A click on a choice of the question panel; true when it landed on one.
+  // The Picture button in the info bar: registered by the typing box.
+  pictureButton: (() => void) | null = null;
+  questionClick: ((col: number, row: number) => boolean) | null = null;
   footerClick: ((col: number, row: number) => boolean) | null = null;
   // Set by the typing box: scrolls a message taller than the box when the wheel
   // turns over it (the conversation scrolls everywhere else); true if it did.
   inputWheel: ((row: number, up: boolean) => boolean) | null = null;
   // Where the model list opens when Settings sends the person there: straight into
   // one service's models (all of them with full), or the daily limit. Read once.
-  pickerStart: { provider?: string; full?: boolean; step?: 'limit'; weekly?: boolean } | null = null;
+  pickerStart: { provider?: string; full?: boolean; step?: 'limit' | 'more'; weekly?: boolean } | null = null;
   // Where the folder list opens when Settings sends the person there. Read once.
   folderPickerStart: 'list' | 'browse' | 'create' = 'list';
   transcriptView: { top: number; left: number; height: number; lines: string[]; gutters?: number[]; scrollTop: number } | null = null;
@@ -138,6 +147,18 @@ class SessionStore {
   inputText = '';
   // Messages sent while Jeeves was busy, in order; each is sent when he finishes.
   queued: string[] = [];
+  // Pictures that go with each queued message (same order).
+  queuedImages: ImageAttachment[][] = [];
+  // Pictures attached to the message being typed (each shown as [Image N] in the text).
+  attachments: ImageAttachment[] = [];
+  // Commands left running in the background (tools/background.ts), for the bottom bar.
+  // The job's checklist (tools/todoList.ts), shown above the typing box while steps are left.
+  // Plan first: only look around until the person has approved a plan (agent/plan.ts).
+  planMode = false;
+  // A question with choices waiting for the person (agent/question.ts).
+  question: { question: string; options: { label: string; description?: string }[]; highlight: number } | null = null;
+  todos: { content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled' }[] = [];
+  backgroundTasks: { id: number; plain: string; startedAt: number }[] = [];
 
   private turnEvents: { t: number; tokens: number }[] = [];
 
@@ -189,16 +210,56 @@ class SessionStore {
     this.emit();
   }
 
-  queueMessage(text: string): void {
+  setPlanMode(on: boolean): void {
+    this.planMode = on;
+    this.emit();
+  }
+
+  setQuestion(question: SessionStore['question']): void {
+    this.question = question;
+    this.emit();
+  }
+
+  setQuestionHighlight(highlight: number): void {
+    if (!this.question) return;
+    this.question = { ...this.question, highlight };
+    this.emit();
+  }
+
+  setTodos(todos: SessionStore['todos']): void {
+    this.todos = todos;
+    this.emit();
+  }
+
+  setBackgroundTasks(tasks: SessionStore['backgroundTasks']): void {
+    this.backgroundTasks = tasks;
+    this.emit();
+  }
+
+  queueMessage(text: string, images: ImageAttachment[] = []): void {
     this.queued = [...this.queued, text];
+    this.queuedImages = [...this.queuedImages, images];
     this.emit();
   }
 
   takeQueued(): string | undefined {
-    const [next, ...rest] = this.queued;
+    return this.takeNext()?.text;
+  }
+
+  // The next waiting message with its pictures.
+  takeNext(): { text: string; images: ImageAttachment[] } | undefined {
+    if (this.queued.length === 0) return undefined;
+    const [text, ...rest] = this.queued;
+    const [images = [], ...restImages] = this.queuedImages;
     this.queued = rest;
+    this.queuedImages = restImages;
     this.emit();
-    return next;
+    return { text, images };
+  }
+
+  setAttachments(attachments: ImageAttachment[]): void {
+    this.attachments = attachments;
+    this.emit();
   }
 
   setStatus(status: Status): void {
@@ -439,6 +500,46 @@ class SessionStore {
     this.emit();
   }
 
+  openSpending(): void {
+    this.spendingOpen = true;
+    this.emit();
+  }
+
+  closeSpending(): void {
+    this.spendingOpen = false;
+    this.emit();
+  }
+
+  openRewind(): void {
+    this.rewindOpen = true;
+    this.emit();
+  }
+
+  closeRewind(): void {
+    this.rewindOpen = false;
+    this.emit();
+  }
+
+  openMemory(): void {
+    this.memoryOpen = true;
+    this.emit();
+  }
+
+  closeMemory(): void {
+    this.memoryOpen = false;
+    this.emit();
+  }
+
+  openChats(): void {
+    this.chatsOpen = true;
+    this.emit();
+  }
+
+  closeChats(): void {
+    this.chatsOpen = false;
+    this.emit();
+  }
+
   openSettings(): void {
     this.settingsOpen = true;
     this.emit();
@@ -451,6 +552,18 @@ class SessionStore {
 
   requestExit(): void {
     this.exitRequested = true;
+    this.emit();
+  }
+
+  // A saved conversation put back (platform/conversations.ts). A step that was still
+  // running when it was saved is shown as finished, since nothing is running now.
+  restoreConversation(transcript: TranscriptEntry[], history: ModelMessage[]): void {
+    this.transcript = transcript.map((entry) =>
+      entry.kind === 'tool' && (entry.data.state === 'running' || entry.data.state === 'awaiting') ? { ...entry, data: { ...entry.data, state: 'done' as const, detail: undefined } } : entry
+    );
+    this.nextId = transcript.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
+    this.history = history;
+    this.transcriptScrollUp = 0;
     this.emit();
   }
 

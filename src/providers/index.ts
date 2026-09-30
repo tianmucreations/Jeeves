@@ -6,8 +6,9 @@ import { createOllamaProvider } from './ollama.js';
 import { createZaiProvider } from './zai.js';
 import { fetchZaiQuota } from './zai-quota.js';
 import { createDirectProvider, createCustomProvider } from './direct.js';
-import { DIRECT_SERVICES, CUSTOM_SERVICE_ID, directService, isDirectService, serviceNameFor, type DirectServiceId } from './direct-services.js';
-import { checkKey, checkCustomService, forgetLiveList, loadCatalogue } from './catalogue.js';
+import { registerChatGptStore, parseTokens, type ChatGptTokens } from './chatgpt.js';
+import { compatibleServices, DIRECT_SERVICES, CUSTOM_SERVICE_ID, directService, isDirectService, serviceNameFor, type DirectServiceId } from './direct-services.js';
+import { checkKey, checkCustomService, forgetLiveList, loadCatalogue, registerSavedProviders } from './catalogue.js';
 import { getCustomService, setCustomService, getEstimatedSpend } from '../platform/config.js';
 import { localDate } from '../state/today-spend.js';
 import { session } from '../state/session.js';
@@ -39,7 +40,7 @@ export const PROVIDER_ROWS = [
   { id: 'openrouter', label: 'OpenRouter', description: 'one key unlocks 400+ models - recommended' },
   { id: 'zai', label: 'Z.ai', description: 'GLM Coding Plan - $18/month flat - best for heavy daily use' },
   { id: 'anthropic', label: 'Anthropic', description: 'Claude, with your own Anthropic key' },
-  { id: 'openai', label: 'OpenAI', description: 'GPT, with your own OpenAI key' },
+  { id: 'openai', label: 'OpenAI', description: 'GPT models' },
   { id: 'google', label: 'Google', description: 'Gemini, with your own Google AI Studio key' },
   { id: 'xai', label: 'xAI (Grok)', description: 'Grok, with your own xAI key' },
   { id: 'groq', label: 'Groq', description: 'fast open models, with your own Groq key' },
@@ -58,8 +59,27 @@ export function hasCredentialsFor(providerId: string): boolean {
   if (providerId === 'zai') return zaiKey !== null;
   if (providerId === 'ollama') return true;
   if (providerId === CUSTOM_SERVICE_ID) return serviceKeys.has(CUSTOM_SERVICE_ID) && getCustomService() !== null;
+  // OpenAI is one entry in the lists, connected either by an API key or by signing in with a
+  // ChatGPT plan (as OpenCode lists it).
+  if (providerId === 'openai') return serviceKeys.has('openai') || serviceKeys.has('chatgpt');
   if (isDirectService(providerId)) return serviceKeys.has(providerId);
   return false;
+}
+
+// What OpenAI's entry really runs on: the ChatGPT plan when signed in with it (the plan is what
+// the person pays for), else the API key; null when neither.
+export function openaiRoute(): 'chatgpt' | 'openai' | null {
+  return serviceKeys.has('chatgpt') ? 'chatgpt' : serviceKeys.has('openai') ? 'openai' : null;
+}
+
+// A list row's id turned into the service that actually answers.
+export function serviceFor(rowId: string): string {
+  return rowId === 'openai' ? (openaiRoute() ?? 'openai') : rowId;
+}
+
+// The row a running service belongs to in the lists (the ChatGPT plan is OpenAI's row).
+export function rowFor(serviceId: string): string {
+  return serviceId === 'chatgpt' ? 'openai' : serviceId;
 }
 
 // Uses a key for this session only, without saving it (the bench and tests; never the keychain).
@@ -95,6 +115,25 @@ export async function storeDirectKey(serviceId: DirectServiceId, key: string): P
   return check.ok ? 'saved' : 'saved-unchecked';
 }
 
+// "Sign in with ChatGPT": the tokens are kept like any other credential, as one piece of text
+// in the key store, and renewed (and re-saved) by chatgpt.ts as they run out.
+export async function storeChatGptTokens(tokens: ChatGptTokens): Promise<boolean> {
+  const json = JSON.stringify(tokens);
+  if (!(await setKey('chatgpt', json))) return false;
+  serviceKeys.set('chatgpt', json);
+  forgetLiveList('chatgpt');
+  return true;
+}
+
+registerChatGptStore({
+  get: () => parseTokens(serviceKeys.get('chatgpt')),
+  set: async (tokens) => {
+    const json = JSON.stringify(tokens);
+    serviceKeys.set('chatgpt', json);
+    await setKey('chatgpt', json);
+  },
+});
+
 export async function removeServiceKey(serviceId: string): Promise<void> {
   await deleteKey(serviceId);
   serviceKeys.delete(serviceId);
@@ -128,7 +167,10 @@ export function hasCredentials(): boolean {
 let keysLoading: Promise<void> | null = null;
 
 export function initKeys(): Promise<void> {
-  keysLoading ??= readKeys();
+  keysLoading ??= readKeys().then(() => {
+    // The full provider list arrives in the background (a day's copy is kept).
+    if (!process.env.VITEST) void loadCatalogue().catch(() => {});
+  });
   return keysLoading;
 }
 
@@ -139,7 +181,8 @@ export function keysRead(): Promise<void> {
 
 async function readKeys(): Promise<void> {
   // Read together, so startup is not held up by one keychain read after another.
-  const ids = [...DIRECT_SERVICES.map((service) => service.id), CUSTOM_SERVICE_ID];
+  registerSavedProviders();
+  const ids = [...DIRECT_SERVICES.map((service) => service.id), ...compatibleServices().map((service) => service.id), CUSTOM_SERVICE_ID];
   const serviceStored = await Promise.all(ids.map((id) => getKey(id)));
   ids.forEach((id, index) => {
     const key = serviceStored[index];
@@ -162,7 +205,7 @@ async function readKeys(): Promise<void> {
       removeEnvFile();
       session.addNotice(`Your key was moved from a local file into ${KEY_STORE}, and the file was removed.`);
     } else {
-      session.addNotice(`${KEY_STORE_SUBJECT} was not reachable, so the key is being read from a local file for now. Type /keys to store it securely.`);
+      session.addNotice(`${KEY_STORE_SUBJECT} was not reachable, so the key is being read from a local file for now. Click Settings, then Manage keys to store it securely.`);
     }
     resolvedKey = envKey;
     keySource = moved ? 'keychain' : 'env';
@@ -230,25 +273,25 @@ export function getActiveProvider(): Provider {
   }
   if (session.providerId === 'zai') {
     if (!zaiKey) {
-      throw new Error('No Z.ai key yet. Add one with /keys.');
+      throw new Error('No Z.ai key yet. Add one under Settings, then Manage keys.');
     }
     return createZaiProvider(zaiKey);
   }
   if (session.providerId === CUSTOM_SERVICE_ID) {
     const saved = getCustomService();
     const key = serviceKeys.get(CUSTOM_SERVICE_ID);
-    if (!saved || !key) throw new Error('No key yet for the other service. Add one with /model.');
+    if (!saved || !key) throw new Error('No key yet for the other service. Add one under Settings.');
     return createCustomProvider(saved.baseURL, key);
   }
   if (isDirectService(session.providerId)) {
     const key = serviceKeys.get(session.providerId);
-    if (!key) throw new Error(`No ${directService(session.providerId)!.label} key yet. Add one with /keys.`);
+    if (!key) throw new Error(`No ${directService(session.providerId)!.label} key yet. Add one under Settings, then Manage keys.`);
     // Prices for the cost estimate; loads once, and never fails.
     void loadCatalogue();
     return createDirectProvider(session.providerId, key);
   }
   if (!resolvedKey) {
-    throw new Error('No OpenRouter API key yet. Add one with /keys.');
+    throw new Error('No OpenRouter API key yet. Add one under Settings, then Manage keys.');
   }
   if (!active) {
     active = createOpenRouterProvider(resolvedKey);

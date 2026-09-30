@@ -232,6 +232,7 @@ body.welcoming .brand { visibility: hidden; }
 #model:hover { color: var(--gold-light); }
 .seg.yellow { color: var(--amber); }
 .seg.red { color: var(--red); }
+.seg.cyan { color: #6fc7cf; }
 .sep { color: var(--silver-faint); padding: 0 6px; }
 
 .scroller::-webkit-scrollbar, #input::-webkit-scrollbar { width: 8px; }
@@ -310,3 +311,26 @@ body.welcoming .brand { visibility: hidden; }
 .toast { position: fixed; top: 104px; right: 24px; z-index: 50; padding: 10px 16px; background: var(--band); color: #ffffff; border-left: 3px solid var(--gold); border-radius: 6px; font-size: 14px; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
 .toast[hidden] { display: none; }
 .toast.error { border-left-color: var(--red); }
+
+#more-search { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
+.services.more { max-height: 220px; overflow-y: auto; }
+
+/* The job's checklist above the typing box, as the terminal's. */
+.todos { border: 1px solid #2a2b2e; border-radius: 14px; padding: 10px 14px; margin-bottom: 10px; font-size: 14px; }
+.todos div { padding: 2px 0; color: var(--silver); }
+.todos .now { color: var(--amber); }
+.todos .done { color: var(--silver-dim); }
+
+/* Pictures waiting to go with the next message. */
+.pics { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.pic { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #2a2b2e; border-radius: 10px; padding: 4px 8px 4px 4px; font-size: 13px; color: var(--silver); }
+.pic img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; }
+.pic button { background: none; border: none; color: var(--silver-dim); font-size: 16px; cursor: pointer; }
+.pic button:hover { color: var(--silver-bright); }
+
+.attach { background: none; border: 1px solid #2a2b2e; border-radius: 999px; color: var(--silver); font-size: 13px; padding: 6px 12px; margin-right: 8px; cursor: pointer; }
+.attach:hover { color: var(--silver-bright); border-color: #5a5d63; }
+
+.spending dt { color: var(--silver); padding-top: 4px; }
+.spending dt.spend-head { color: var(--silver-bright); font-weight: 600; padding-top: 12px; }
+.spending dd { margin: 0 0 2px 0; color: var(--silver-dim); }

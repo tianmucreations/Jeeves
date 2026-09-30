@@ -1,8 +1,8 @@
 import { COMMANDS } from './help.js';
-import { cleanModelName, compactPrice, resolveCurated, type ModelInfo } from '../models/registry.js';
+import { cleanModelName, type ModelInfo } from '../models/registry.js';
 import { isToolCapable } from '../models/filter.js';
 import { isModelUnreliable } from '../agent/model-health.js';
-
+import { AUTO_MODEL_ID } from '../agent/auto-ids.js';
 // One screen with everything in it, every choice listed out (owner, 23 Sept: "all
 // the folders including browse and new project... the providers, same thing, then
 // models and so on, command information down last"), in sections with a blank line
@@ -18,6 +18,13 @@ export type SettingsAction =
   | { type: 'service'; provider: string }
   | { type: 'model'; provider: string; model: ModelInfo }
   | { type: 'all-models'; provider: string }
+  | { type: 'more-providers' }
+  | { type: 'ai' }
+  | { type: 'folders' }
+  | { type: 'chats' }
+  | { type: 'memory' }
+  | { type: 'rewind' }
+  | { type: 'spending' }
   | { type: 'limit' }
   | { type: 'limit-weekly' };
 
@@ -43,6 +50,22 @@ export interface SettingsContext {
   folderPath: (folder: string) => string;
 }
 
+// How each service connects, in plain words (OpenCode's "(API key)" tags): a key you
+// paste in that is billed by use, or a flat monthly plan's key. Signing in with a
+// ChatGPT or Copilot subscription is not offered yet.
+export const HOW_IT_CONNECTS: Record<string, string> = {
+  openrouter: 'API key, pay as you go',
+  zai: 'plan key, flat monthly',
+  anthropic: 'API key only',
+  openai: 'ChatGPT Plus/Pro plan or API key',
+  google: 'API key',
+  xai: 'API key',
+  groq: 'API key',
+  mistral: 'API key',
+  custom: 'address + key',
+  ollama: 'no key',
+};
+
 export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   const rows: SettingsRow[] = [];
   const section = (title: string) => {
@@ -52,48 +75,27 @@ export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   const item = (label: string, hint: string, action: SettingsAction, current = false) =>
     rows.push({ kind: 'item', label, hint, action, current });
 
-  section('FOLDERS');
-  item('Just chat', 'no project needed', { type: 'chat' }, ctx.folder === ctx.chatFolder);
-  for (const folder of ctx.recentProjects) {
-    item(ctx.folderName(folder), ctx.folderPath(folder), { type: 'folder', folder }, folder === ctx.folder);
+  // First, where it is seen without scrolling: carrying on an earlier chat, or starting fresh.
+  section('CONVERSATION');
+  item('Earlier conversations →', 'carry on where you stopped', { type: 'chats' });
+  item('What I remember →', 'the notes I keep about you and this folder', { type: 'memory' });
+  for (const entry of COMMANDS) {
+    if (entry.place === 'conversation') item(entry.label ?? entry.command, entry.description, { type: 'command', command: entry.command });
   }
-  item('Browse for a folder →', '', { type: 'browse' });
-  item('Create a new project →', '', { type: 'create' });
+  item('Go back to an earlier point →', 'put the folder back to before one of my changes', { type: 'rewind' });
 
-  section('PROVIDER');
-  for (const service of ctx.services) {
-    const state = service.id === ctx.providerId ? 'in use' : ctx.connected(service.id) ? 'connected' : '';
-    item(service.label, state ? `${state} - ${service.description}` : service.description, { type: 'service', provider: service.id }, service.id === ctx.providerId);
-  }
-
-  section(`MODELS - ${ctx.providerLabel} (in use - pick a plan above for others)`);
-  // Only models that can do tasks, and not one that has just failed twice running:
-  // Jeeves only offers what is proven to work.
-  const usable = (model: ModelInfo) => isToolCapable(model) && !isModelUnreliable(model.id);
-  const listed = new Set<string>();
-  const add = (model: ModelInfo, hint: string) => {
-    if (listed.has(model.id) || !usable(model)) return;
-    listed.add(model.id);
-    item(cleanModelName(model.name), hint, { type: 'model', provider: ctx.providerId, model }, model.id === ctx.model);
-  };
-  if (ctx.providerId === 'openrouter') {
-    for (const pick of resolveCurated(ctx.models)) add(pick.model, pick.blurb);
-  }
-  const byId = new Map(ctx.models.map((model) => [model.id, model]));
-  // The one in use, then favourites and recent ones, then (a short list like Z.ai's) the rest.
-  for (const id of [ctx.model, ...ctx.favorites, ...ctx.recents]) {
-    const model = byId.get(id);
-    if (model) add(model, compactPrice(model.promptPrice, model.completionPrice, model.priceLabel));
-  }
-  if (ctx.providerId !== 'openrouter') {
-    for (const model of ctx.models) add(model, compactPrice(model.promptPrice, model.completionPrice, model.priceLabel));
-  }
-  item(ctx.providerId === 'openrouter' ? 'All models →' : `Choose a ${ctx.providerLabel} model →`, ctx.providerId === 'openrouter' ? 'search every model, including free ones' : '', {
-    type: 'all-models',
-    provider: ctx.providerId,
-  });
+  // The AI and the folder are each ONE row that opens the full list - every company, then its models,
+  // then how to connect (the model list), and every folder (the folder list) - as OpenCode keeps a
+  // provider list and a model list of their own. They were listed here in full (about forty rows) and
+  // buried everything below them; the lists themselves are unchanged.
+  section('AI AND FOLDER');
+  const inUse = ctx.models.find((model) => model.id === ctx.model);
+  const modelName = ctx.model === AUTO_MODEL_ID ? 'Auto' : inUse ? cleanModelName(inUse.name) : ctx.model;
+  item('AI provider and model →', `now ${ctx.providerLabel} - ${modelName}`, { type: 'ai' });
+  item('Project folder →', ctx.folder === ctx.chatFolder ? 'now just chatting' : `now ${ctx.folderName(ctx.folder)}`, { type: 'folders' });
 
   section('KEYS & SPENDING');
+  item("What I've spent →", 'today, this week and what is left', { type: 'spending' });
   item('Manage keys', 'connect an AI service, or remove one', { type: 'command', command: '/keys' });
   item('Daily spending limit', 'the most Jeeves may spend in a day', { type: 'limit' });
   item('Weekly spending limit', 'the most Jeeves may spend in a week', { type: 'limit-weekly' });
@@ -101,10 +103,10 @@ export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   section('YOU');
   item('How I address you', "Sir, Ma'am, or a name", { type: 'command', command: '/address' });
 
-  section('COMMANDS - type these any time, or choose one here');
+  section('MORE');
   for (const entry of COMMANDS) {
-    if (entry.command === '/settings') continue;
-    item(entry.command, entry.description, { type: 'command', command: entry.command });
+    if (entry.place !== 'more') continue;
+    item(entry.label ?? entry.command, entry.description, { type: 'command', command: entry.command });
   }
   return rows;
 }
