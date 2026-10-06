@@ -1,5 +1,6 @@
 import { session } from '../state/session.js';
 import { plainError } from './errors.js';
+import { turns } from '../core/turn-machine.js';
 
 // OpenCode's retry policy (session/retry.ts), Jeeves-sized: a request that fails
 // for a temporary reason - asked to slow down, a bad server, a dropped connection
@@ -22,11 +23,17 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
       resolve();
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
+    // The listener is taken back off when the timer wins, so a long conversation
+    // never accumulates one stray listener per retry on the job's signal.
+    const onAbort = () => {
       clearTimeout(timer);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -66,6 +73,8 @@ export async function withRateLimitRetry<T>(
       if (!RETRYABLE_KINDS.has(plain.kind)) throw error;
       const delay = retryAfterMs(error) ?? backoffMs(attempt + 1);
       const reason = plain.kind === 'rate-limit' ? 'asked to slow down' : 'the service stumbled';
+      // The machine notes the fine state: this job is recovering, not stuck.
+      turns.recover();
       session.setBusyNote(`retrying in ${Math.max(1, Math.round(delay / 1000))}s (try ${attempt + 2} of ${MAX_ATTEMPTS}) - ${reason}…`);
       onRetry?.();
       await wait(delay, signal);

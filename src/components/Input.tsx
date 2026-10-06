@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import stringWidth from 'string-width';
-import { Box, Text, useInput, usePaste, useWindowSize } from 'ink';
+import { Box, Text, useInput, usePaste, useWindowSize } from '../vendor/ink/index.js';
 import { runTurn, stopTurn } from '../agent/loop.js';
-import { copySelection } from '../ink/selection.js';
 import { pressCtrlCToQuit } from '../ink/quit.js';
 import { answerApproval, currentApprovalTrustable } from '../agent/permissions.js';
 import { readClipboardImage, pickPictureFile, imagePathsIn, loadImageFile, tooBig, type ImageAttachment } from '../platform/images.js';
 import { answerOption, answerQuestion } from '../agent/question.js';
 import { session, useSession } from '../state/session.js';
 import { getInputHistory, pushInputHistory } from '../platform/config.js';
-import { isMouseSequence, handleMouseInput, subscribeMouse } from '../ink/mouse.js';
+import { isMouseSequence, subscribeMouse, handleMouseInput } from '../ink/mouse.js';
 import { approvalButtons, approvalButtonAt } from '../ink/approval-buttons.js';
 import { inputLayout, splitTypedBurst, cleanPaste, scrollToShowCursor, previousWordStart, nextWordEnd } from './input-layout.js';
 
@@ -35,7 +34,7 @@ function picturesUsed(text: string): ImageAttachment[] {
   return [...used].filter((index) => session.attachments[index]).sort((a, b) => a - b).map((index) => session.attachments[index]);
 }
 
-export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; width?: number }) {
+export function Input({ width = 76 }: { width?: number }) {
   // The text lives in a ref as well as state: the keystroke handler reads and
   // writes the ref, so two keys arriving before React re-renders never build on
   // a stale value.
@@ -58,7 +57,9 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // OpenCode's input history: what has been sent, so Up at the start of the box
   // walks back through previous messages. index null = not navigating (and draft
   // holds what was being typed, brought back by Down past the newest).
-  const sentHistory = useRef(getInputHistory());
+  // Read once (a plain useRef(getInputHistory()) would read the settings file on every draw).
+  const sentHistory = useRef<string[]>(null as unknown as string[]);
+  if (sentHistory.current === null) sentHistory.current = getInputHistory();
   const historyNav = useRef<{ index: number | null; draft: string }>({ index: null, draft: '' });
   // Which button is highlighted for arrow-key + Enter use (Left/Right/Tab move
   // it, Enter confirms - a mouse click still answers directly, same as
@@ -73,7 +74,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   const layout = inputLayout(valueRef.current, width, MAX_INPUT_ROWS, draftUpRef.current, cursorRef.current);
   // The real cursor only at the end of the message; inside it, the highlighted
   // character is the cursor.
-  const showingText = !s.approvalPending && s.transcriptScrollUp === 0 && layout.scrollUp === 0 && cursorRef.current === null;
+  const showingText = !s.approvalPending && layout.scrollUp === 0 && cursorRef.current === null;
   const scrollDraft = (up: number) => {
     draftUpRef.current = up;
     setDraftUp(up);
@@ -125,30 +126,31 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       else session.addNotice(loaded.reason);
     })();
   };
-  // Clicking in the typing box puts the cursor there.
+  // Clicking in the typing box puts the cursor there (mouse reporting is only
+  // on when there is something to click - a question or a screen - so this
+  // fires then; in plain conversation the terminal's own selection is active).
   session.inputClick = (col: number, row: number) => {
     const rows = windowRows ?? 24;
-    // The typing box's last row is third from the bottom (layout A: border,
-    // info bar and separator sit below it).
-    const first = rows - 3 - (layout.rows.length - 1);
+    // The typing rows sit directly above the info bar (no border since the
+    // conversation moved into the terminal's own scrollback).
+    const first = session.footerRow - 2 - (layout.rows.length - 1);
     const target = layout.rows[row - first];
     if (!valueRef.current || !target || target.hint || target.start === undefined) return;
-    let width = 0;
+    let textWidth = 0;
     let offset = 0;
     for (const ch of Array.from(target.text)) {
-      if (width >= col - 3) break;
-      width += stringWidth(ch);
+      if (textWidth >= col - 1) break;
+      textWidth += stringWidth(ch);
       offset += 1;
     }
     moveCursor(target.start + offset);
   };
   // The wheel over the typing box reads back through a message taller than it,
-  // one row per turn of the wheel, like the arrows (which move 3 rows).
+  // one row per turn of the wheel (wherever the mouse is live at all).
   session.inputWheel = (row: number, up: boolean) => {
-    if (s.approvalPending || s.transcriptScrollUp > 0 || layout.maxScrollUp === 0) return false;
-    const rows = windowRows ?? 24;
-    const first = rows - 3 - (layout.rows.length - 1);
-    if (row < first || row > rows - 3) return false;
+    if (s.approvalPending || layout.maxScrollUp === 0) return false;
+    const first = session.footerRow - 2 - (layout.rows.length - 1);
+    if (row < first || row > session.footerRow - 2) return false;
     const next = Math.min(draftUpRef.current, layout.maxScrollUp) + (up ? 1 : -1);
     scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
     return true;
@@ -169,47 +171,47 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // Clicking a button answers the question directly (OpenCode's row of buttons:
   // a click and the keyboard both land on the same answer). The question always
   // draws on the single bottom input row (app.tsx forces inputRows to 1 while a
-  // question is pending), so the row is fixed, not measured from typed text.
+  // question is pending), so the row is fixed: directly above the info bar.
   session.approvalClick = (col: number, row: number) => {
     if (!s.approvalPending) return;
     const rows = windowRows ?? 24;
-    // Same row math as the typing box above, for a single-row box (layout.rows.length 1).
-    if (row !== rows - 3) return;
-    const button = approvalButtonAt(currentApprovalButtons, col - 3);
+    if (row !== session.footerRow - 2) return;
+    const button = approvalButtonAt(currentApprovalButtons, col - 1);
     if (button) answerFromButton(button);
   };
 
-  // The wheel scrolls the conversation and clicks and drags select and copy; the
-  // mouse never reaches the text being typed.
+  // The mouse only reaches the typing box where reporting is on (a question or
+  // a screen is up); in plain conversation the terminal's own selection and
+  // scrolling are active, which is the point of the move to the scrollback.
   useEffect(() => subscribeMouse(handleMouseInput), []);
 
   useInput((input, key) => {
     // (Mouse reports no longer arrive here - see subscribeMouse below.)
     if (isMouseSequence(input)) return;
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.spendingOpen) return;
-    // Ctrl+C, as Claude Code: copy a selection, else clear the typing, else stop the
-    // job, else quit only when pressed twice. It used to quit at once, losing the
-    // conversation - and Windows and Linux people press Ctrl+C to copy (audit, 19 Sept).
+    // Ctrl+C, as Claude Code: clear the typing, else stop the job, else quit only
+    // when pressed twice. Selecting and copying is the terminal's own now (drag
+    // + Cmd+C), so Ctrl+C has nothing to copy.
     if (key.ctrl && input === 'c') {
-      if (session.selection) {
-        void copySelection();
-        session.setSelection(null);
-      } else if (valueRef.current) {
+      if (valueRef.current) {
         setValue('');
-      } else if (s.status === 'working' || s.approvalPending) {
+      } else if (s.busy()) {
         stopTurn();
       } else {
         pressCtrlCToQuit();
       }
       return;
     }
+    // Esc closes the background-tasks panel first (a panel is not a job).
+    if (key.escape && s.tasksOpen) {
+      s.setTasksOpen(false);
+      return;
+    }
     // Esc stops the job, as in Claude Code and the window's Stop button.
-    if (key.escape && (s.status === 'working' || s.approvalPending)) {
+    if (key.escape && s.busy()) {
       stopTurn();
       return;
     }
-    // Any key clears a selection, as in Claude Code.
-    if (session.selection) session.setSelection(null);
     // A question with choices is waiting: a number picks a choice, the arrows move the
     // highlight and Enter takes it (all while nothing is typed); typed words are
     // an answer of their own and go in at Enter below.
@@ -255,15 +257,14 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       return;
     }
     // A message taller than the box: the arrows move through the message itself
-    // (as Claude Code's do when the input spans more than one line). Page Up/Down
-    // and the mouse wheel still scroll the conversation.
-    if ((key.upArrow || key.downArrow) && layout.maxScrollUp > 0 && s.transcriptScrollUp === 0) {
+    // (as Claude Code's do when the input spans more than one line).
+    if ((key.upArrow || key.downArrow) && layout.maxScrollUp > 0) {
       const next = Math.min(draftUpRef.current, layout.maxScrollUp) + (key.upArrow ? 3 : -3);
       scrollDraft(Math.max(0, Math.min(next, layout.maxScrollUp)));
       return;
     }
     // Moving the cursor within the message, as in Claude Code.
-    if (valueRef.current && s.transcriptScrollUp === 0) {
+    if (valueRef.current) {
       const here = cursorRef.current ?? chars().length;
       if (key.leftArrow && !key.meta && !key.ctrl) return moveCursor(Math.max(0, here - 1));
       if (key.rightArrow && !key.meta && !key.ctrl) return moveCursor(here + 1);
@@ -276,12 +277,12 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     // Up-arrow history, as Claude Code and OpenCode both do it: with the cursor
     // at the very start of the box (an empty box counts), Up walks back through
     // previous messages to resend or edit one; Down walks forward, and past the
-    // newest brings back what was being typed. Anywhere else - cursor inside the
-    // text - Up and Down scroll the conversation as they always have.
+    // newest brings back what was being typed. Anywhere else, Up and Down are
+    // the terminal's own business now (the conversation above scrolls natively).
     {
       const navigating = historyNav.current.index !== null;
       const atStart = navigating || cursorRef.current === 0 || !valueRef.current;
-      if (key.upArrow && atStart && sentHistory.current.length > 0 && s.transcriptScrollUp === 0 && layout.maxScrollUp === 0) {
+      if (key.upArrow && atStart && sentHistory.current.length > 0 && layout.maxScrollUp === 0) {
         const state = historyNav.current;
         if (state.index === null) {
           state.draft = valueRef.current;
@@ -304,29 +305,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
         return;
       }
     }
-    // The alternate screen has no native scrollback, so these keys scroll the
-    // transcript region itself (Claude Code's bindings): arrows move 3 rows,
-    // Page Up/Down a full page, End jumps back to the newest and re-follows.
-    if (key.upArrow) {
-      s.scrollTranscript(3);
-      return;
-    }
-    if (key.downArrow) {
-      s.scrollTranscript(-3);
-      return;
-    }
-    if (key.pageUp) {
-      s.scrollTranscript(scrollPage);
-      return;
-    }
-    if (key.pageDown) {
-      s.scrollTranscript(-scrollPage);
-      return;
-    }
-    if (key.end) {
-      s.followTranscript();
-      return;
-    }
     // A burst of typing that ends with Enter is typing plus Enter (see splitTypedBurst).
     const burst = key.return ? { typed: '', enter: true, rest: '' } : splitTypedBurst(input);
     if (burst.enter) {
@@ -338,7 +316,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       pushInputHistory(text);
       sentHistory.current = getInputHistory();
       historyNav.current = { index: null, draft: '' };
-      s.followTranscript();
       // Words typed while a question waits are the answer.
       if (session.question) {
         answerQuestion(text);
@@ -347,7 +324,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       const pictures = picturesUsed(text);
       session.setAttachments([]);
       // /exit is honoured even mid-turn so a wedged request can never trap the user.
-      if (text === '/exit' || s.status !== 'working') {
+      if (text === '/exit' || !s.busy()) {
         void sendAndDrain(text, pictures);
       } else {
         // Busy: the message waits its turn and is sent as soon as this job finishes.
@@ -357,7 +334,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       return;
     }
     if (key.backspace || key.delete) {
-      s.followTranscript();
       historyNav.current.index = null;
       // The character before the cursor goes (one whole character, never half of one).
       const all = chars();
@@ -367,7 +343,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       return;
     }
     if (!input || key.ctrl || key.meta) return;
-    s.followTranscript();
     insert(input);
   });
 
@@ -375,7 +350,6 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
   // sends by itself - only Enter does.
   usePaste((text) => {
     if (s.pickerOpen || s.keysOpen || s.wizardActive || s.helpOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.spendingOpen || s.approvalPending) return;
-    s.followTranscript();
     const pasted = cleanPaste(text);
     // Nothing came as text: it may be a screenshot on the clipboard (Cmd+V in a Mac
     // terminal sends an empty paste for one).
@@ -417,12 +391,8 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
     );
   }
 
-  // While the transcript is scrolled away from the newest, the prompt is replaced
-  // by Claude Code's reading-history hint; End (or any typing) returns to the live
-  // conversation.
-  if (s.transcriptScrollUp > 0) {
-    return <Text dimColor>reading history — press End to return</Text>;
-  }
+  // While the background-tasks panel is open, the typing row keeps typing - the
+  // panel closes with Esc, /tasks, or its own Stop buttons.
 
   // An empty box shows nothing but the cursor at the typing point - no hint
   // words for it to sit on (owner, 24 Sept). A single space keeps the row at

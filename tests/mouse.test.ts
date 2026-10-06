@@ -17,95 +17,48 @@ describe('SGR mouse parsing', () => {
     expect(down).toEqual({ kind: 'wheel', button: 1, col: 3, row: 2 });
   });
 
-  it('recognises presses, drags (for selecting) and releases', () => {
+  it('recognises presses, drags and releases', () => {
     expect(parseMouseSequence('\x1b[<0;5;5M')?.kind).toBe('press');
     expect(parseMouseSequence('\x1b[<0;5;5m')?.kind).toBe('release');
     expect(parseMouseSequence('\x1b[<32;5;5M')?.kind).toBe('drag');
     expect(parseMouseSequence('\x1b[<35;5;5M')).toBeNull();
   });
-
-  it('wheel events scroll the transcript three rows at a time, clamped at the newest', () => {
-    session.transcriptScrollUp = 0;
-    handleMouseInput('\x1b[<64;1;1M');
-    expect(session.transcriptScrollUp).toBe(3);
-    handleMouseInput('[<64;1;1M');
-    expect(session.transcriptScrollUp).toBe(6);
-    handleMouseInput('\x1b[<65;1;1M');
-    expect(session.transcriptScrollUp).toBe(3);
-    handleMouseInput('\x1b[<65;1;1M');
-    handleMouseInput('\x1b[<65;1;1M');
-    expect(session.transcriptScrollUp).toBe(0);
-  });
-
-  it('non-wheel events never scroll', () => {
-    session.transcriptScrollUp = 0;
-    handleMouseInput('\x1b[<0;1;1M');
-    handleMouseInput('\x1b[<0;1;1m');
-    expect(session.transcriptScrollUp).toBe(0);
-  });
 });
 
-describe('scroll clamping', () => {
-  it('wheel and keys never scroll past the oldest line', () => {
-    session.transcriptScrollUp = 0;
-    session.setTranscriptScrollMax(5);
-    handleMouseInput('\x1b[<64;1;1M');
-    handleMouseInput('\x1b[<64;1;1M');
-    handleMouseInput('\x1b[<64;1;1M');
-    expect(session.transcriptScrollUp).toBe(5);
-    handleMouseInput('\x1b[<65;1;1M');
-    expect(session.transcriptScrollUp).toBe(2);
-    session.setTranscriptScrollMax(1);
-    expect(session.transcriptScrollUp).toBe(1);
-    session.setTranscriptScrollMax(Number.POSITIVE_INFINITY);
-    session.transcriptScrollUp = 0;
-  });
-});
-
-describe('double and triple click (26 Sept: "I just highlight it" - Claude Code copies a word or line)', () => {
-  const setView = () => {
-    session.transcriptView = { top: 3, left: 3, height: 5, lines: ['Hello wonderful world.', 'second line here'], gutters: [0, 0], scrollTop: 0 };
-  };
-  // Column/row are 1-based; the newest line sits on the bottom row of the view (row 3 + 4 = 7).
-  const press = (col: number, row: number) => handleMouseInput(`\x1b[<0;${col};${row}M`);
-
-  it('picks the word under the pointer on the second quick click, without copying until release', async () => {
-    const { wordBoundsAt } = await import('../src/ink/selection.js');
-    expect(wordBoundsAt('Hello wonderful world.', 8)).toEqual([6, 15]);
-    expect(wordBoundsAt('Hello wonderful world.', 3)).toEqual([0, 5]);
-    expect(wordBoundsAt('see ~/Documents/x.txt now', 6)).toEqual([4, 21]);
-    expect(wordBoundsAt('a  b', 1)).toBeNull();
-    setView();
-    session.setSelection(null);
-    press(20, 6);
-    press(20, 6);
-    // Row 6 is the first of the two lines (bottom row 7 is the second); col 20 = char 17 of line 0: "world".
-    expect(session.selection).toEqual({ anchor: { line: 0, ch: 16 }, focus: { line: 0, ch: 21 } });  // the full stop counts as part of the word, as in Claude Code
+// THE NEW MOUSE ORDER (3 Oct): in the plain conversation there IS no app mouse
+// handling - reporting is off and the wheel, scrollbar and click-drag selection
+// belong to the terminal (that is what native scrolling is). The app only ever
+// sees reports where something of ours is clickable, so the routing is: a
+// question's choices, the info bar's buttons, the Allow buttons, the typing
+// box; and the wheel only ever reaches the typing box's own read-back.
+describe('click routing when the mouse is live', () => {
+  it('a question choice wins, then the info bar, then the Allow buttons, then the typing box', () => {
+    const calls: string[] = [];
+    session.questionClick = () => (calls.push('question'), true);
+    session.footerClick = () => (calls.push('footer'), true);
+    session.approvalClick = () => calls.push('approval');
+    session.inputClick = () => calls.push('input');
+    handleMouseInput('\x1b[<0;5;5M');
+    session.questionClick = null;
+    handleMouseInput('\x1b[<0;5;5M');
+    session.footerClick = null;
+    session.approvalPending = true;
+    handleMouseInput('\x1b[<0;5;5M');
+    session.approvalPending = false;
+    handleMouseInput('\x1b[<0;5;5M');
+    expect(calls).toEqual(['question', 'footer', 'approval', 'input']);
+    session.approvalClick = null;
+    session.inputClick = null;
   });
 
-  it('picks the whole line on the third quick click', () => {
-    setView();
-    session.setSelection(null);
-    press(10, 7);
-    press(10, 7);
-    press(10, 7);
-    expect(session.selection).toEqual({ anchor: { line: 1, ch: 0 }, focus: { line: 1, ch: 15 } });
-  });
-});
-
-describe('drag past the edge keeps scrolling (owner, 30 Sept: could not select a long text)', () => {
-  it('scrolls by itself while the pointer is held below the window, and stops on release', async () => {
-    const lines = Array.from({ length: 40 }, (_, i) => `line ${i}`);
-    session.transcriptScrollMax = 100;
-    session.transcriptScrollUp = 10;
-    session.transcriptView = { top: 3, left: 3, height: 5, lines, gutters: lines.map(() => 0), scrollTop: 10 };
-    handleMouseInput('\x1b[<0;5;4M'); // press in the window
-    handleMouseInput('\x1b[<32;5;20M'); // drag far below it
-    await new Promise((r) => setTimeout(r, 180));
-    expect(session.transcriptScrollUp).toBeLessThan(10);
-    handleMouseInput('\x1b[<0;5;20m');
-    const after = session.transcriptScrollUp;
-    await new Promise((r) => setTimeout(r, 120));
-    expect(session.transcriptScrollUp).toBe(after);
+  it('the wheel over the typing box goes to the box, and nowhere else - the conversation scrolls natively', () => {
+    let wheels: [number, boolean][] = [];
+    session.inputWheel = (row, up) => {
+      wheels.push([row, up]);
+    };
+    handleMouseInput('\x1b[<64;10;7M');
+    handleMouseInput('\x1b[<65;10;8M');
+    expect(wheels).toEqual([[7, true], [8, false]]);
+    session.inputWheel = null;
   });
 });

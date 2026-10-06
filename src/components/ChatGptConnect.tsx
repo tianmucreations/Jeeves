@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput } from '../vendor/ink/index.js';
 import { signInWithChatGpt, CHATGPT_WAITING_STEPS } from '../providers/chatgpt.js';
 import { storeChatGptTokens } from '../providers/index.js';
-import { isMouseSequence } from '../ink/mouse.js';
+import { ButtonRow, buttonAt } from './ButtonRow.js';
+import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
 import { KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
 // Signing in with a ChatGPT plan: one click, the browser opens, approve, come back. Nothing to
@@ -46,6 +47,29 @@ export function ChatGptConnect({ onDone, onBack }: { onDone: (message: string) =
     });
   }
 
+  const cancel = { label: 'Cancel', run: () => signingIn.current?.abort() };
+  const chooseButtons = [
+    { label: '← Back', run: onBack },
+    {
+      label: 'Sign in with ChatGPT',
+      run: () => {
+        setNote('');
+        signIn();
+      },
+    },
+  ];
+  // The Sign in button is on row 6 of the first screen (title, blank, two lines, blank, button).
+  const onMouse = (report: string) => {
+    const event = parseMouseSequence(report);
+    if (!event || event.kind !== 'press' || event.button !== 0) return;
+    // Waiting: Cancel is on row 2. Choosing: Sign in and Back share row 6.
+    if (step === 'waiting') return void (event.row === 2 && buttonAt([cancel], event.col)?.run());
+    if (event.row === 6) buttonAt(chooseButtons, event.col)?.run();
+  };
+  const onMouseRef = useRef(onMouse);
+  onMouseRef.current = onMouse;
+  useEffect(() => subscribeMouse((report) => onMouseRef.current(report)), []);
+
   useInput((input, key) => {
     if (isMouseSequence(input)) return;
     if (step === 'waiting') {
@@ -63,7 +87,7 @@ export function ChatGptConnect({ onDone, onBack }: { onDone: (message: string) =
     return (
       <Box flexDirection="column">
         <Text>Signing in with ChatGPT</Text>
-        <Text> </Text>
+        <ButtonRow buttons={[cancel]} />
         {CHATGPT_WAITING_STEPS.map((line) => (
           <Text key={line}>{line}</Text>
         ))}
@@ -74,8 +98,6 @@ export function ChatGptConnect({ onDone, onBack }: { onDone: (message: string) =
             <Text dimColor wrap="wrap">{address}</Text>
           </>
         ) : null}
-        <Text> </Text>
-        <Text dimColor>Esc to cancel</Text>
       </Box>
     );
   }
@@ -83,12 +105,13 @@ export function ChatGptConnect({ onDone, onBack }: { onDone: (message: string) =
     <Box flexDirection="column">
       <Text>Connect Jeeves to your ChatGPT plan</Text>
       <Text> </Text>
-      <Text dimColor wrap="wrap">Use the ChatGPT Plus or Pro plan you already pay for - no key to copy and no extra bill for each use. Your browser opens; log in and click to allow Jeeves, then come back.</Text>
+      <Text dimColor wrap="truncate-end">Use the ChatGPT Plus or Pro plan you already pay for - no key to copy, no extra bill.</Text>
+      <Text dimColor wrap="truncate-end">Your browser opens; log in and click to allow Jeeves, then come back.</Text>
       <Text> </Text>
-      <Text color="yellow" inverse>{' Sign in with ChatGPT '}</Text>
+      <ButtonRow buttons={chooseButtons} />
       {note ? <Text color="yellow">{note}</Text> : null}
       <Text> </Text>
-      <Text dimColor>Enter to sign in · Esc back</Text>
+      <Text dimColor>click a button, or press Enter</Text>
     </Box>
   );
 }

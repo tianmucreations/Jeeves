@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput } from '../vendor/ink/index.js';
 import { session } from '../state/session.js';
 import { ago, deleteConversation, listConversations, resumeConversation, type ConversationSummary } from '../platform/conversations.js';
 import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
@@ -22,7 +22,7 @@ export function ChatsView({ rows }: { rows: number }) {
 
   const open = (chat: ConversationSummary | undefined) => {
     if (!chat) return;
-    if (session.status === 'working' || session.approvalPending) {
+    if (session.busy()) {
       session.addNotice('An earlier conversation can be opened between tasks - try again when I have finished.');
       session.closeChats();
       return;

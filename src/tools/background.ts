@@ -68,6 +68,12 @@ export function stopBackground(id: number): boolean {
   return true;
 }
 
+// The person's Stop button in the tasks panel (/tasks): the same door the
+// backgroundTask tool opens for the model, for the human.
+export function stopBackgroundById(id: number): void {
+  if (stopBackground(id)) session.addNotice(`Stopped background task #${id}.`);
+}
+
 export function killBackgroundTasks(): void {
   for (const child of children.values()) terminate(child, { group: true });
   children.clear();

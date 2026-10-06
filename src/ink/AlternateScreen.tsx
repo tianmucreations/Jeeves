@@ -1,35 +1,34 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// DO NOT CHANGE THE HOOK. THE TAKEOVER MUST STAY INSIDE useInsertionEffect.
-// ─────────────────────────────────────────────────────────────────────────────
-// This component implements Claude Code's alternate-screen takeover (published
-// source: alejandrobalderas/claude-code-from-source, chapter 13). The
-// ENTER_ALT_SCREEN escape sequence must reach the terminal BEFORE the first
-// render frame is flushed. react-reconciler calls resetAfterCommit between the
-// mutation and layout commit phases, and Ink's resetAfterCommit triggers the
-// first onRender - the first frame write to the terminal.
+// THE TERMINAL HANDSHAKE — normal-buffer edition (3 Oct).
 //
-// useLayoutEffect and useEffect both run AFTER that first onRender. "Upgrade"
-// this to either hook and the first frame paints to the MAIN screen buffer,
-// producing a visible flash before the switch - and macOS Terminal.app then
-// archives that pre-app frame into its scrollback at the moment the app
-// switches, so the shell history stays reachable by scrolling forever. That is
-// the exact bug this file exists to prevent; it took days to diagnose and the
-// answer was published all along. Only useInsertionEffect fires before
-// resetAfterCommit. This is not a stylistic choice. Do not "improve" it.
+// Until today this component took over the whole window (the "alternate
+// screen"): Jeeves drew every row itself and the terminal's own scrollback was
+// unreachable — which is why he could never scroll back with his trackpad
+// while an answer printed, no matter how often it was "fixed". Claude Code
+// does NOT take the window: it prints finished text into the terminal's own
+// history and keeps only a small live block at the bottom. That is what
+// Jeeves does now, so this component is the normal-buffer handshake:
 //
-// The escape order is equally deliberate: 1049h (take over the window) → 2J
-// (clear the fresh alternate screen) → 3J (erase the scrollback the switch
-// archived) → H (home the cursor), in one write. Entering first means the main
-// screen is never wiped, so quitting restores the shell's own screen exactly.
-// Ink's built-in alternateScreen render option is NOT used: it is not needed
-// here and mixing the two mechanisms invites double switches.
+//   • the hardware cursor is hidden (Jeeves draws its own inside the frame)
+//     and restored on the way out;
+//   • mouse reporting starts OFF — in the plain conversation the wheel and
+//     the scrollbar belong to the TERMINAL (native scrolling, native
+//     select-and-copy); the app turns mouse reporting on only where there is
+//     something to click (a question, the Allow buttons, a list screen);
+//   • the exit paths (Ctrl+C, /exit, kill signals) always restore both, and
+//     always kill the commands the agent started.
+//
+// The old takeover had to run inside useInsertionEffect so the switch reached
+// the terminal before the first frame; the normal buffer has no such ordering
+// trap — a plain mount effect is enough. The export names are unchanged so
+// every exit path keeps calling the same functions.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useInsertionEffect } from 'react';
-import { Box, useWindowSize } from 'ink';
+import React, { useEffect } from 'react';
+import { Box } from '../vendor/ink/index.js';
 import { createRequire } from 'node:module';
 import { DEFAULT_CURSOR } from './cursor.js';
-import { ENABLE_MOUSE_TRACKING, DISABLE_MOUSE_TRACKING } from './mouse.js';
+import { DISABLE_MOUSE_TRACKING } from './mouse.js';
 import { killAllRunningCommands } from '../tools/runBash.js';
 
 type SignalExit = (
@@ -42,43 +41,32 @@ type SignalExit = (
 // dependency; declared ours.
 const onSignalExit = createRequire(import.meta.url)('signal-exit') as SignalExit;
 
-const ENTER_ALT_SCREEN = '\x1b[?1049h';
-const CLEAR_SCREEN = '\x1b[2J';
-const ERASE_SCROLLBACK = '\x1b[3J';
-const HOME_CURSOR = '\x1b[H';
-const LEAVE_ALT_SCREEN = '\x1b[?1049l';
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
 
-let altScreenActive = false;
 let cleanupRegistered = false;
 
 function write(data: string): void {
   try {
     process.stdout.write(data);
   } catch {
-    // A closed stream must never crash the takeover or the exit path.
+    // A closed stream must never crash the handshake or the exit path.
   }
 }
 
-// Claude Code's Ink fork exposes this on the render instance; stock Ink has no
-// such method, so the notification lives here: the flag that says the alternate
-// screen owns the terminal, consulted by every exit path below. Mouse tracking
-// is now genuinely on (wheel scrolling), so the flag reports it truthfully.
+// Kept for the callers that report the old takeover state; in the normal
+// buffer the app never owns the whole screen, so this only records the mouse
+// report state truthfully.
 export function setAltScreenActive(active: boolean, mouseTracking: boolean): void {
-  altScreenActive = active;
+  void active;
   void mouseTracking;
 }
 
-// Hands the terminal back. Safe to call from anywhere, any number of times.
-// The scrollback erase follows the switch back because macOS Terminal.app
-// archives the app's own frames into the scrollback at hand-back (measured),
-// mouse tracking is switched off so the terminal's own selection works again,
-// and the cursor shape returns to the shell default with the cursor back on.
+// Hands the terminal back exactly as the shell left it: mouse reports off (so
+// selection, Cmd+C and the scrollbar are the terminal's own again), the cursor
+// back to its default shape and visible. Safe from anywhere, any number of times.
 export function leaveAltScreen(): void {
-  if (!altScreenActive) return;
-  altScreenActive = false;
-  write(LEAVE_ALT_SCREEN + ERASE_SCROLLBACK + DISABLE_MOUSE_TRACKING + DEFAULT_CURSOR + SHOW_CURSOR);
+  write(DISABLE_MOUSE_TRACKING + DEFAULT_CURSOR + SHOW_CURSOR);
 }
 
 // The terminal must always be restored, and any command the agent is running
@@ -104,49 +92,16 @@ function registerCleanup(): void {
 }
 
 export function AlternateScreen({ children }: { children: React.ReactNode }) {
-  // useWindowSize (not useStdout) because it subscribes to the terminal's own
-  // 'resize' event and holds the size in React state - the only way this
-  // component re-renders when the window is dragged bigger or smaller. useStdout
-  // alone returns a snapshot that is never revisited, which is why the window
-  // used to freeze at whatever size it happened to be on the last unrelated
-  // re-render (Claude Code's own fork watches stdout.on('resize', ...) the same
-  // way, for the same reason).
-  const { rows: windowRows } = useWindowSize();
-
-  // Entered once, before the first frame, in Claude Code's order: take over
-  // the window first, then clear the fresh alternate screen, erase the
-  // scrollback the switch archived, home the cursor, and enable SGR mouse
-  // tracking so wheel events reach the app (the alternate screen has no native
-  // scrollback - wheel gestures scroll the transcript instead). Because the main
-  // screen is never wiped, the shell's own screen survives for a perfect
-  // restore on exit. The cursor is hidden for the same reason Ink's own mode
-  // hides it. Empty dependency array: this runs exactly once, on mount.
-  useInsertionEffect(() => {
-    write(ENTER_ALT_SCREEN + CLEAR_SCREEN + ERASE_SCROLLBACK + HOME_CURSOR + HIDE_CURSOR + ENABLE_MOUSE_TRACKING);
-    setAltScreenActive(true, true);
-    registerCleanup();
-  }, []);
-
-  // On unmount the terminal is handed back too (the app unmounts before the
-  // process exits on /exit and Ctrl+C).
   useEffect(() => {
+    write(HIDE_CURSOR);
+    registerCleanup();
+    // The unmount path restores the terminal too (the app unmounts before the
+    // process exits on /exit and Ctrl+C).
     return () => leaveAltScreen();
   }, []);
 
-  // Exactly the window's height, however small: a floor here (it was 8) drew more
-  // rows than a squashed window has, so the frame spilled over and the box's sides
-  // were cut off (owner, 23 Sept). App shows a one-line "make it bigger" note below
-  // its own minimum instead.
-  const rows = Math.max(windowRows ?? 24, 1);
-
-  // The ceiling: without a height constraint on this box, flexGrow below has no
-  // limit - the viewport would size to the content, scrolling would pin at 0, and
-  // Ink's screen buffer would size to the full content. This is what makes the
-  // slot layout work. The alternate screen has no native scrollback, so the app
-  // owns its scrolling within these rows.
-  return (
-    <Box height={rows} flexDirection="column">
-      {children}
-    </Box>
-  );
+  // In the normal buffer the app does not own the window, so the children are
+  // rendered as they come: finished text is flushed to the terminal's history
+  // by <Static>, and the small live block sits under it.
+  return <>{children}</>;
 }

@@ -6,9 +6,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 writeFileSync('/private/tmp/jv-pic test.png', PNG);
 rmSync('/private/tmp/jv-fake.log', { force: true });
 const r = new Rig(100, 32, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
-await r.until((t) => t.includes('Just chat - no project folder'), 15000);
-r.send('\r');
-await r.until((t) => t.includes('Settings'), 15000, 'conversation');
+await r.bootConversation();
 await r.wait(1200);
 r.send('what is in this? '); await r.wait(200);
 r.send('\x1b[200~/private/tmp/jv-pic\\ test.png\x1b[201~'); await r.wait(1500);

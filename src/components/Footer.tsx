@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text, useWindowSize } from 'ink';
+import { Box, Text, useWindowSize } from '../vendor/ink/index.js';
 import { session, useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
@@ -54,8 +54,10 @@ function quotaColor(pct: number): 'yellow' | 'red' | undefined {
 // The info bar says only what is worth a glance: which model is working (left),
 // and on the right what today has cost and what is left - or, for a flat-rate
 // plan, whether it has allowance. Warnings appear only when they matter.
+// The task note now names its own door (3 Oct): /tasks opens the panel where
+// each task can be seen and stopped - the old "ask me about it" was a dead end.
 export function backgroundNote(count: number): string {
-  return count === 1 ? '1 task running - ask me about it' : `${count} tasks running - ask me about them`;
+  return count === 1 ? '1 task running - /tasks to view it' : `${count} tasks running - /tasks to view them`;
 }
 
 export function footerSegments(info: FooterInfo): FooterSegment[] {
@@ -156,7 +158,7 @@ export function Footer({ width }: { width: number }) {
   const { rows: windowRows } = useWindowSize();
   // The info bar is the box's bottom content row.
   session.footerClick = (col: number, row: number) => {
-    if (row !== (windowRows ?? 24) - 1) return false;
+    if (row !== session.footerRow) return false;
     if (onPictureButton(col)) {
       // A question waiting on the buttons above is answered first, never hidden.
       if (!session.approvalPending) session.pictureButton?.();
@@ -191,9 +193,13 @@ export function Footer({ width }: { width: number }) {
 
   // Full width, explicitly: a row-direction Box shrink-wraps its children and
   // space-between collapses (the same Ink trap recorded 17 Sept).
+  // The status dot moved here from the old window header (3 Oct): green when a
+  // service is connected, amber when not - the one glanceable "am I ready".
+  const dot = hasCredentials() ? '#34c759' : '#c9a96a';
   return (
     <Box justifyContent="space-between" width={columns}>
       <Text>
+        <Text color={dot}>● </Text>
         <Text color="yellow" inverse>
           {SETTINGS_BUTTON}
         </Text>

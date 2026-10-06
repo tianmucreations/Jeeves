@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from '../vendor/ink/index.js';
 import { TrafficLight } from './TrafficLight.js';
 
 // The name in Tianmu Creations gold (tianmucreations.com's --gold), as in the desktop

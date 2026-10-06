@@ -1,5 +1,5 @@
 // Built-in list of the other AI companies (names and web addresses) from models.dev (MIT licence).
-// Taken 2026-09-30 by scripts/update-models-snapshot.ts - do not edit by hand.
+// Taken 2026-10-06 by scripts/update-models-snapshot.ts - do not edit by hand.
 import type { CompatibleProvider } from './direct-services.js';
 
 export const PROVIDERS_SNAPSHOT: CompatibleProvider[] = [
@@ -314,6 +314,12 @@ export const PROVIDERS_SNAPSHOT: CompatibleProvider[] = [
   "name": "EmpirioLabs AI",
   "baseURL": "https://api.empiriolabs.ai/v1",
   "keyPage": "docs.empiriolabs.ai"
+ },
+ {
+  "id": "engy",
+  "name": "engy",
+  "baseURL": "https://api.engy.ai/v1",
+  "keyPage": "engy.ai/pricing"
  },
  {
   "id": "evroc",

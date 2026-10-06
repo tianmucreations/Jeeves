@@ -2,6 +2,7 @@
 // Every step is the terminal Jeeves's own (ModelPicker.tsx applyModel, KeysManager.tsx
 // saveKey), called from the same engine, so both ways of using Jeeves behave alike.
 import { ipcMain } from 'electron';
+import path from 'node:path';
 
 export async function registerSettings(engine, onChange, notify = () => {}) {
   const { session } = await engine('state/session.js');
@@ -24,6 +25,7 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
   const { COMMANDS } = await engine('commands/help.js');
   const memory = await engine('platform/memory.js');
   const checkpoints = await engine('checkpoints/index.js');
+  const { chatFolder: chatFolderPath } = await engine('platform/chat-folder.js');
   const { spendingLines } = await engine('commands/spending.js');
   const { KEY_STORE, KEY_STORE_SUBJECT } = await engine('platform/wording.js');
 
@@ -76,7 +78,7 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
       providers.PROVIDER_ROWS.map(async (service) => ({
         ...service,
         ready: service.id === 'ollama' ? await isOllamaOnline().catch(() => false) : providers.hasCredentialsFor(service.id),
-        // The address-and-key setup for "Other service" stays in the terminal for now.
+        // The address-and-key setup for "Other provider" stays in the terminal for now.
         terminalOnly: service.id === CUSTOM_SERVICE_ID && !providers.hasCredentialsFor(service.id),
         // Where to get a key (checked 19 Sept: Z.ai's page answers, a made-up one is "not found").
         keyPage: isDirectService(service.id) ? `https://${directService(service.id).keyPage}` : service.id === 'zai' ? 'https://z.ai/manage-apikey/apikey-list' : service.id === 'openrouter' ? 'https://openrouter.ai/keys' : null,
@@ -92,7 +94,9 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
     })),
     keyStore: KEY_STORE,
     // The buttons under "More", from the one table of commands (the same as the terminal's Settings).
-    commands: COMMANDS.filter((entry) => entry.place).map(({ command, label, description }) => ({ command, label, description })),
+    commands: COMMANDS.filter((entry) => entry.place).map(({ command, label, description, place }) => ({ command, label, description, place })),
+    // Step 1: where Jeeves is working now.
+    folderName: process.cwd() === chatFolderPath() ? 'Just chatting' : path.basename(process.cwd()),
     current: { provider: providers.rowFor(session.providerId), model: session.model },
     dailyLimit: session.dailyLimit,
     address: config.getAddress(),

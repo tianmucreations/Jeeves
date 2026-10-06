@@ -27,8 +27,8 @@ describe('background tasks (Claude Code "1 shell", in plain words)', () => {
   });
   it('the bottom bar says so in plain words', () => {
     const base = { providerId: 'zai', allowance: null, tidying: false, busyNote: null, todaySpend: 0, creditRemaining: null, creditIsAccount: false, planResetAt: null, connected: true } as never;
-    expect(footerSegments({ ...(base as object), background: 1 } as never)[0].text).toBe('1 task running - ask me about it');
-    expect(footerSegments({ ...(base as object), background: 2 } as never)[0].text).toBe('2 tasks running - ask me about them');
+    expect(footerSegments({ ...(base as object), background: 1 } as never)[0].text).toBe('1 task running - /tasks to view it');
+    expect(footerSegments({ ...(base as object), background: 2 } as never)[0].text).toBe('2 tasks running - /tasks to view them');
   });
   it('stopping something that is not running says so', () => {
     expect(stopBackground(99)).toBe(false);

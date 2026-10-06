@@ -5,9 +5,7 @@
 // Needs a clipboard shim first: /private/tmp/jv-shim/pbcopy = `#!/bin/sh` + `cat > /private/tmp/jv-shim/clipboard.txt` (chmod +x). Seed first: npx tsx scripts/seed-test-env.ts.
 import { Rig } from './pty-rig.mjs';
 const r = new Rig(100, 32, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
-await r.until((t) => t.includes('Just chat - no project folder'), 15000);
-r.send('\r');
-await r.until((t) => t.includes('Settings'), 15000, 'conversation');
+await r.bootConversation();
 await r.wait(1200);
 r.send('Say something.'); await r.wait(300); r.send('\r');
 await r.until((t) => t.includes('Paragraph 8'), 60000, 'answer');

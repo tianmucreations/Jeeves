@@ -32,7 +32,7 @@ describe('system prompt', () => {
       'No wit, flourishes, metaphors or figures of speech - say the plain fact.',
       'Write for a person who has not seen your working.',
       'say what the thing actually is.',
-      'No preamble, no closing summary, no offer of further help, and never restate the request.',
+      'No preamble, no closing summary, no offer of further help, no restating the request.',
       'Never say "Let me...", "I\'ll now...", "Now let me...", or "First, I will..." before acting.',
       'A task is not finished until you say so in plain words; ending on an unfulfilled intention is not the same as finishing.',
       'always say plainly, in a sentence or two, that it is finished and what the outcome was - that is required, not optional.',

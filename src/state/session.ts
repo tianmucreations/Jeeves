@@ -3,8 +3,11 @@ import { useSyncExternalStore } from 'react';
 import type { ModelMessage } from 'ai';
 import type { ModelInfo } from '../models/registry.js';
 import { AUTO_MODEL_ID } from '../agent/auto-ids.js';
+import { turns, type TurnStatus } from '../core/turn-machine.js';
 
-export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
+// The four coarse words the window shows. The ONE definition now lives in the
+// turn machine; this re-export keeps every existing import working unchanged.
+export type Status = TurnStatus;
 
 export type ToolLineState = 'awaiting' | 'running' | 'done' | 'failed' | 'declined' | 'held';
 
@@ -22,6 +25,9 @@ export interface ToolLineData {
   // A finished look-around (read, list, search) leaves no line behind: the person
   // asked for an answer, not a diary of ticks (owner, 26 Sept). /verbose shows them.
   quiet?: boolean;
+  // A merged group's finished sentence, whole (the clutter fix, 3 Oct): seven
+  // "Changed 1 file" lines print as one "Changed 7 files".
+  mergedText?: string;
 }
 
 export type TranscriptEntry =
@@ -38,7 +44,11 @@ class SessionStore {
   model = AUTO_MODEL_ID;
   providerId = 'openrouter';
   providerName = 'OpenRouter';
-  status: Status = 'idle';
+  // The coarse status (idle / working / awaiting-approval / disconnected) lives
+  // in the turn machine; this getter keeps every existing reader working.
+  get status(): Status {
+    return turns.snapshotStatus();
+  }
   approvalPending = false;
   // Incremented each time a question arrives, so screens and the desktop can
   // tell a new question from the one before (a notification timer restarts).
@@ -98,11 +108,6 @@ class SessionStore {
   transcript: TranscriptEntry[] = [];
   history: ModelMessage[] = [];
   lastReasoning = '';
-  // Lines the transcript view is scrolled up from the bottom; 0 means "follow the newest".
-  transcriptScrollUp = 0;
-  // The furthest the transcript can scroll up (contentHeight - viewportHeight),
-  // reported by the Transcript from its live measurements.
-  transcriptScrollMax = Number.POSITIVE_INFINITY;
   // A short message that floats over the corner of the window and goes by itself
   // ("Copied to clipboard"), as OpenCode's toast does (ui/toast.tsx: top-right, over
   // the content, nothing moves). null when none is showing.
@@ -122,8 +127,7 @@ class SessionStore {
   // Text selected with the mouse in the conversation (Claude Code's in-app selection):
   // line and character positions within the drawn lines, so it stays on its words
   // while the view scrolls. null when nothing is selected.
-  selection: { anchor: { line: number; ch: number }; focus: { line: number; ch: number } } | null = null;
-  // What the conversation area shows, published by the Transcript each time it draws,
+  selection: { anchor: { line: number; ch: number }; focus: { line: number; ch: number } } | null = null;  // What the conversation area shows, published by the Transcript each time it draws,
   // so a mouse position can be turned into a line and character.
   // Set by the typing box: puts the cursor at a clicked screen position.
   inputClick: ((col: number, row: number) => void) | null = null;
@@ -133,16 +137,41 @@ class SessionStore {
   // The Picture button in the info bar: registered by the typing box.
   pictureButton: (() => void) | null = null;
   questionClick: ((col: number, row: number) => boolean) | null = null;
+  // A click on a Stop button in the background-tasks panel; true when it landed on one.
+  tasksClick: ((col: number, row: number) => boolean) | null = null;
+  // How many rows the live tail currently occupies (set by the LiveTail each
+  // frame, never emitted) - the click mappings need it to find their rows.
+  liveTailRows = 0;
+  // How many rows the printed history occupies on screen (set by the Feed;
+  // once it passes the window height the block pins to the bottom).
+  feedRows = 0;
+  // Set by the entry point: hands the terminal a clean, homed viewport when a
+  // full-height screen replaces the conversation.
+  screenReset: (() => void) | null = null;
   footerClick: ((col: number, row: number) => boolean) | null = null;
+  // WHERE THE LIVE BLOCK IS ON SCREEN. The window says how tall the block is and
+  // its own best guess of where it starts; the terminal's answer to "where is the
+  // cursor?" (ink/cursor-report.ts) is the truth and wins once it has come.
+  blockHeight = 0;
+  estimatedTop = 0;
+  cursorRow = 0;
+  // The row of the info bar (the buttons' click row); the typing area is two rows above it.
+  get footerRow(): number {
+    return this.cursorRow > 0 ? this.cursorRow - 1 : this.estimatedTop + this.blockHeight - 1;
+  }
+  // The row where the live block starts (everything above it is the terminal's own history).
+  get blockTop(): number {
+    return this.footerRow - this.blockHeight + 1;
+  }
   // Set by the typing box: scrolls a message taller than the box when the wheel
-  // turns over it (the conversation scrolls everywhere else); true if it did.
+  // turns over it (wherever mouse reporting is live); the conversation itself
+  // scrolls with the terminal's own wheel.
   inputWheel: ((row: number, up: boolean) => boolean) | null = null;
   // Where the model list opens when Settings sends the person there: straight into
   // one service's models (all of them with full), or the daily limit. Read once.
   pickerStart: { provider?: string; full?: boolean; step?: 'limit' | 'more'; weekly?: boolean } | null = null;
   // Where the folder list opens when Settings sends the person there. Read once.
   folderPickerStart: 'list' | 'browse' | 'create' = 'list';
-  transcriptView: { top: number; left: number; height: number; lines: string[]; gutters?: number[]; scrollTop: number } | null = null;
   // What is being typed in the input box (the window sizes the box to fit it).
   inputText = '';
   // Messages sent while Jeeves was busy, in order; each is sent when he finishes.
@@ -166,6 +195,12 @@ class SessionStore {
   private version = 0;
   private reasoningEntryId: number | null = null;
   private listeners = new Set<() => void>();
+
+  constructor() {
+    // The turn machine is the only authority on busy/quiet. When it changes the
+    // coarse status, the window is redrawn - the store itself no longer decides.
+    turns.onStatusChange(() => this.emit());
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -236,6 +271,17 @@ class SessionStore {
     this.emit();
   }
 
+  // The background-tasks panel above the typing box (the door behind the blue
+  // note in the info bar): open by /tasks or by clicking the note on screens
+  // where the mouse is live. Shows each task with its own Stop button.
+  tasksOpen = false;
+
+  setTasksOpen(open: boolean): void {
+    if (this.tasksOpen === open) return;
+    this.tasksOpen = open;
+    this.emit();
+  }
+
   queueMessage(text: string, images: ImageAttachment[] = []): void {
     this.queued = [...this.queued, text];
     this.queuedImages = [...this.queuedImages, images];
@@ -262,21 +308,35 @@ class SessionStore {
     this.emit();
   }
 
+  // One gate for "may this screen/command act now": a job is running, or a
+  // question is waiting. Eleven copies of this test existed, and one had already
+  // drifted (it forgot the question) - they all read this one now.
+  busy(): boolean {
+    return this.status === 'working' || this.approvalPending;
+  }
+
+  // The status is written only through the turn machine (core/turn-machine.ts):
+  // a job can no longer stamp idle over another job, and nothing can stamp
+  // working over an empty window - the two writes that caused the stuck-window
+  // and status-fight bugs.
   setStatus(status: Status): void {
-    this.status = status;
-    this.emit();
+    turns.request(status);
   }
 
   setActiveApproval(): void {
     this.approvalPending = true;
     this.approvalSerial += 1;
-    this.status = 'awaiting-approval';
+    // The machine remembers which job asked and what it was doing, so the
+    // answer returns the job EXACTLY to its own work.
+    turns.awaitApproval(turns.currentGeneration !== 0 ? turns.currentGeneration : null);
     this.emit();
   }
 
   clearActiveApproval(): void {
     this.approvalPending = false;
-    this.status = 'working';
+    // Back to the asking job's own work - or to idle when the job is already
+    // gone. The old hard-coded "working" here was the stuck-window bug.
+    turns.approvalAnswered();
     this.emit();
   }
 
@@ -394,7 +454,7 @@ class SessionStore {
   }
 
   openPicker(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The model picker opens between tasks.');
       return;
     }
@@ -408,7 +468,7 @@ class SessionStore {
   }
 
   openKeys(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The key screens open between tasks.');
       return;
     }
@@ -450,7 +510,7 @@ class SessionStore {
   switchingFolder = false;
 
   openFolderPicker(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The folder can be changed between tasks.');
       return;
     }
@@ -470,14 +530,13 @@ class SessionStore {
 
   addressDone(): void {
     this.addressOpen = false;
-    if (this.launchStage === 'address') {
-      this.launchStage = 'project';
-      this.emit();
-    }
+    if (this.launchStage === 'address') this.launchStage = 'project';
+    // Always redraw: closing the screen without saving (Esc / Back) changes nothing else.
+    this.emit();
   }
 
   openAddress(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The address change happens between tasks.');
       return;
     }
@@ -557,52 +616,30 @@ class SessionStore {
 
   // A saved conversation put back (platform/conversations.ts). A step that was still
   // running when it was saved is shown as finished, since nothing is running now.
+  // Bumped whenever the conversation is replaced (/clear, resume): the printed
+  // history feed remounts, because its append-only ledger belongs to one
+  // conversation only.
+  feedEpoch = 0;
+
+  // The whole printed history is written again (after a resize re-wraps it).
+  reprintHistory(): void {
+    this.feedEpoch += 1;
+    this.emit();
+  }
+
   restoreConversation(transcript: TranscriptEntry[], history: ModelMessage[]): void {
     this.transcript = transcript.map((entry) =>
       entry.kind === 'tool' && (entry.data.state === 'running' || entry.data.state === 'awaiting') ? { ...entry, data: { ...entry.data, state: 'done' as const, detail: undefined } } : entry
     );
     this.nextId = transcript.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
     this.history = history;
-    this.transcriptScrollUp = 0;
+    this.feedEpoch += 1;
     this.emit();
   }
 
   clearTranscript(): void {
     this.transcript = [];
-    this.transcriptScrollUp = 0;
-    this.emit();
-  }
-
-  // Internal scrolling for the alternate-screen era: the terminal's own scrollback is
-  // unavailable there, so the transcript region scrolls itself. Positive deltas go up
-  // (older); the count is clamped between zero (the newest) and the measured maximum
-  // (the oldest), so overshooting the top never leaves wheel or arrow presses to
-  // unwind before the view moves again.
-  scrollTranscript(delta: number): void {
-    if (delta === 0) return;
-    const next = Math.min(this.transcriptScrollMax, Math.max(0, this.transcriptScrollUp + delta));
-    if (next === this.transcriptScrollUp) return;
-    this.transcriptScrollUp = next;
-    this.emit();
-  }
-
-  setSelection(selection: SessionStore['selection']): void {
-    if (selection === null && this.selection === null) return;
-    this.selection = selection;
-    this.emit();
-  }
-
-  setTranscriptScrollMax(max: number): void {
-    this.transcriptScrollMax = Math.max(0, max);
-    if (this.transcriptScrollUp > this.transcriptScrollMax) {
-      this.transcriptScrollUp = this.transcriptScrollMax;
-      this.emit();
-    }
-  }
-
-  followTranscript(): void {
-    if (this.transcriptScrollUp === 0) return;
-    this.transcriptScrollUp = 0;
+    this.feedEpoch += 1;
     this.emit();
   }
 

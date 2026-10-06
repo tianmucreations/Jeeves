@@ -23,27 +23,52 @@ Do exactly the task. When you have what was asked for, stop and write a short pl
 // At most this many helpers work at once; more wait their turn (each one is a paid conversation).
 const MAX_AT_ONCE = 3;
 let working = 0;
-const waiting: (() => void)[] = [];
+// Each waiter carries its own stop signal, so "Stop" releases it instead of
+// leaving it queued forever (the old version leaked waiters on every stop).
+const waiting: { resolve: () => void; signal: AbortSignal | undefined; onAbort: (() => void) | null }[] = [];
 
-async function acquire(): Promise<void> {
+async function acquire(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw aborted();
   if (working < MAX_AT_ONCE) {
     working++;
     return;
   }
-  await new Promise<void>((resolve) => waiting.push(resolve));
+  await new Promise<void>((resolve, reject) => {
+    const entry = { resolve, signal, onAbort: null as (() => void) | null };
+    if (signal) {
+      entry.onAbort = () => {
+        const index = waiting.indexOf(entry);
+        if (index >= 0) waiting.splice(index, 1);
+        reject(aborted());
+      };
+      signal.addEventListener('abort', entry.onAbort, { once: true });
+    }
+    waiting.push(entry);
+  });
+}
+
+function aborted(): Error {
+  // Named as the SDK names its own, so the plain-English "stopped" path stays the same.
+  const error = new Error('This helper was stopped.');
+  error.name = 'AbortError';
+  return error;
 }
 
 function release(): void {
   const next = waiting.shift();
-  if (next) next();
-  else working--;
+  if (next) {
+    if (next.onAbort && next.signal) next.signal.removeEventListener('abort', next.onAbort);
+    next.resolve();
+  } else {
+    working--;
+  }
 }
 
 export async function runHelper(
   input: z.output<typeof helperSchema>,
   deps: { tools: ToolSet; signal?: AbortSignal; provider?: Provider; modelId?: string }
 ): Promise<string> {
-  await acquire();
+  await acquire(deps.signal);
   try {
     const provider = deps.provider ?? getActiveProvider();
     const modelId = deps.modelId ?? workingModelId(session.model);

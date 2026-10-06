@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput } from '../vendor/ink/index.js';
 import { session } from '../state/session.js';
 import { spendingLines } from '../commands/spending.js';
 

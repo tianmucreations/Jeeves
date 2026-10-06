@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput } from '../vendor/ink/index.js';
 import { session } from '../state/session.js';
 import { rewindPoints, rewindTo, type RewindPoint } from '../checkpoints/index.js';
 import { ago } from '../platform/conversations.js';
@@ -25,7 +25,7 @@ export function RewindView({ rows }: { rows: number }) {
   const goBack = () => {
     const point = list[at];
     if (!point) return;
-    if (session.status === 'working' || session.approvalPending) {
+    if (session.busy()) {
       session.addNotice('Going back works between tasks - try again when I have finished.');
       session.closeRewind();
       return;

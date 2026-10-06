@@ -133,7 +133,7 @@
       if (!words.every((word) => `${service.label} ${service.id}`.toLowerCase().includes(word))) continue;
       const row = el('button', { className: `service${service.id === selected ? ' selected' : ''}` },
         el('span', { textContent: service.label }),
-        el('small', { textContent: service.ready ? (service.id === data.current.provider ? 'in use' : 'ready') : 'add a key', className: service.ready ? 'ready' : '' }));
+        el('small', { textContent: service.ready ? (service.id === data.current.provider ? 'in use' : 'ready') : 'connect', className: service.ready ? 'ready' : '' }));
       row.addEventListener('click', () => {
         selected = service.id;
         renderServices();
@@ -148,7 +148,7 @@
     renderMore();
     servicesEl.textContent = '';
     for (const service of data.services) {
-      const status = service.ready ? (service.id === data.current.provider ? 'in use' : 'ready') : service.id === 'ollama' ? 'not running' : 'add a key';
+      const status = service.ready ? (service.id === data.current.provider ? 'in use' : 'ready') : service.id === 'ollama' ? 'not running' : 'connect';
       const row = el('button', { className: `service${service.id === selected ? ' selected' : ''}`, title: service.description },
         el('span', { textContent: service.label }),
         el('small', { textContent: status, className: service.ready ? 'ready' : '' }));
@@ -197,6 +197,7 @@
       return;
     }
 
+    detail.append(el('h3', { textContent: '3. Model' }));
     const note = el('p', { className: 'note', id: 'model-note' });
     detail.append(note);
     const loading = el('p', { className: 'muted', textContent: 'Loading the models…' });
@@ -353,17 +354,25 @@
   $('close-settings').addEventListener('click', close);
   // The commands as plain buttons (from the one table of commands), so nobody has to know them.
   function renderCommands() {
-    const box = $('commands');
-    box.textContent = '';
+    // Two places, as the terminal's Settings has them: Conversations, and More.
+    const boxes = { conversation: $('commands-conversation'), more: $('commands') };
+    boxes.conversation.textContent = '';
+    boxes.more.textContent = '';
     for (const entry of data.commands ?? []) {
       const button = el('button', { className: 'service' }, el('span', { textContent: entry.label }), el('small', { textContent: entry.description }));
       button.addEventListener('click', () => {
         close();
         window.jeeves.send(entry.command);
       });
-      box.append(button);
+      (boxes[entry.place] ?? boxes.more).append(button);
     }
+    // Step 1: the folder Jeeves is working in; clicking it goes to the folder choice.
+    $('folder-step-name').textContent = data.folderName ?? 'Just chatting';
   }
+  $('folder-step').addEventListener('click', () => {
+    close();
+    window.jeeves.changeFolder();
+  });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !panel.hidden) {
       event.stopImmediatePropagation();

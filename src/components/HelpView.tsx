@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput } from '../vendor/ink/index.js';
 import { useSession } from '../state/session.js';
 
 // Plain-English help: what Jeeves does and where the buttons are. No typed commands -

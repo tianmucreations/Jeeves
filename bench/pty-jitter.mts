@@ -1,32 +1,38 @@
-// Scroll back while Jeeves is still writing, then watch every screen change for
-// the rest of the answer: a steady view is ONE picture (only the bottom bar's
-// "reading history" and the top rows never move). Counts distinct pictures.
+// STREAM STABILITY IN THE NATIVE-SCROLL WORLD (3 Oct). The old jitter test
+// drove the in-app scroller with wheel events; scrolling is the TERMINAL's own
+// now, so what must hold instead is: the answer streams into a SMALL live tail
+// (never a full-screen frame), the finished lines settle into history exactly
+// once (no duplicates), and nothing is lost between the two.
 import { Rig } from './pty-rig.mjs';
-const r = new Rig(100, 32, { ...(process.env.JEEVES_ZAI_BASE_URL ? { JEEVES_ZAI_BASE_URL: process.env.JEEVES_ZAI_BASE_URL } : {}), ...(process.env.HEARTBEAT ? { NODE_OPTIONS: `--require ${process.env.HEARTBEAT}` } : {}) });
-await r.until((t) => t.includes('Just chat - no project folder'), 15000);
-r.send('\r');
-await r.until((t) => t.includes('Settings'), 15000, 'conversation');
-await r.wait(1200);
-r.send('Write about 900 words on the history of Spain, in many short paragraphs.'); await r.wait(300); r.send('\r');
-await r.until((t) => t.includes('▎') , 60000, 'answer starts');
-await r.until(() => r.screen()[2].replace(/[│ ]/g, '').length > 0, 60000, 'screen full');
-await r.wait(6000); // let the answer grow well past one screen before reading back
-// a trackpad-style burst: 6 wheel notches in quick succession
-const tWheel = Date.now();
-for (let i = 0; i < 6; i++) { r.mouse('up', 50, 10); await r.wait(15); }
-await r.until((t) => t.includes('reading history'), 20000, 'the wheel to take effect').catch(() => {});
-console.log('wheel -> page moved (ms):', Date.now() - tWheel);
-await r.wait(400);
-console.log('input row after the burst:', JSON.stringify(r.screen()[28].trim()));
-const pictures = new Map<string, number>();
-const t0 = Date.now();
-let last = '';
-while (Date.now() - t0 < 12000) {
-  const pic = r.screen().slice(2, 27).join('\n');
-  if (pic !== last) { pictures.set(pic, (pictures.get(pic) ?? 0) + 1); last = pic; }
-  await r.wait(10);
-}
-const all = [...pictures.keys()];
-for (let i = 1; i < Math.min(all.length, 5); i++) { const a = all[i-1].split('\n'), b = all[i].split('\n'); console.log(`--- change ${i}:`); a.forEach((l, k) => { if (l !== b[k]) console.log(`  row ${k+2}:\n    was ${JSON.stringify(l.slice(0,60))}\n    now ${JSON.stringify(b[k].slice(0,60))}`); }); }
-console.log('distinct pictures while the answer kept growing:', pictures.size, '(1 = perfectly steady)');
-r.kill(); await r.wait(800); process.exit(0);
+const r = new Rig(100, 32, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
+await r.bootConversation();
+r.send('Write about 900 words on the history of Spain, in many short paragraphs.');
+await r.wait(300); r.send('\r');
+await r.until((t) => t.includes('Paragraph'), 60000, 'answer streams');
+// Mid-stream: the live tail must stay a small block (a few rows + box + bar),
+// never the whole screen, and no answer line may appear twice.
+const mid = r.screen();
+const tailRows = mid.filter((l) => l.trim().length > 0).length;
+const dupesMid = mid.some((l, i) => l.includes('▎') && l.length > 30 && mid.indexOf(l) !== i);
+console.log(`mid-stream: non-empty rows=${tailRows} (small tail expected) duplicated-answer-lines=${dupesMid}`);
+// THE test: when the job ends, the WHOLE answer must land in the terminal's
+// history (the turn is over - nothing waits for a next message). The fake
+// answer ends at "Chapter 10".
+await r.until(() => r.historyText().includes('Chapter 10'), 120000, 'the finished answer settling into history');
+await r.wait(800);
+const history = r.historyText();
+const dupesHistory = history.split('\n').some((l, i) => l.includes('▎') && l.length > 30 && history.indexOf(l) !== i && history.indexOf(l, i) === -1 && history.split('\n').indexOf(l) !== i);
+// The fake filler repeats its own sentence, so the same words CAN legitimately
+// appear twice far apart - corruption shows as ADJACENT identical rows (a
+// mis-erased frame leaves the same row twice, side by side).
+const cleanDupes = (() => {
+  const lines = history.split('\n').map((l) => l.replace(/\s+/g, ' ').trim());
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].includes('▎') && lines[i].length > 30 && lines[i] === lines[i - 1]) return true;
+  }
+  return false;
+})();
+console.log('finished: history rows =', r.history().length, '| duplicated history lines =', cleanDupes, '| stale-dup check was =', dupesHistory);
+let ok = tailRows <= 20 && !dupesMid && r.history().length > 0 && !cleanDupes;
+console.log(ok ? 'PROVEN' : 'BROKEN');
+r.kill(); await r.wait(300); process.exit(ok ? 0 : 1);

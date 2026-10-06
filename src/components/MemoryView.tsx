@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput } from '../vendor/ink/index.js';
 import { session } from '../state/session.js';
 import { allNotes, removeNote } from '../platform/memory.js';
 import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';

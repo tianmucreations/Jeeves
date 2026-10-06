@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Text } from 'ink';
+import { Text } from '../vendor/ink/index.js';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import { platform } from 'node:os';

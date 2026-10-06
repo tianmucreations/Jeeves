@@ -28,7 +28,9 @@ export interface CommandSpec {
 }
 
 async function undo(): Promise<void> {
-  if (session.status === 'working') {
+  // The one busy gate (session.busy): a question waiting counts as busy, exactly
+  // as on every other screen - this check had drifted and forgot the question.
+  if (session.busy()) {
     session.addNotice('Undo works between tasks - wait for this one to finish, then click Settings, then Undo last change.');
     return;
   }
@@ -43,10 +45,10 @@ async function undo(): Promise<void> {
 }
 
 export const COMMAND_TABLE: CommandSpec[] = [
-  { command: '/settings', window: 'settings', description: 'everything in one place - folders, AI service, keys, and more (or click Settings at the bottom)', run: () => session.openSettings() },
+  { command: '/settings', window: 'settings', description: 'everything in one place (or click Settings at the bottom)', run: () => session.openSettings() },
   { command: '/help', label: 'Help', place: 'more', window: 'help', description: 'what I can do', run: () => session.openHelp() },
-  { command: '/model', window: 'settings', description: 'choose the AI service and model', run: () => openModelPicker() },
-  { command: '/keys', window: 'settings', description: 'connect an AI service, or remove one', run: () => session.openKeys() },
+  { command: '/model', window: 'settings', description: 'choose the provider and model', run: () => openModelPicker() },
+  { command: '/keys', window: 'settings', description: 'advanced: keys, including the OpenRouter account key', run: () => session.openKeys() },
   { command: '/folder', window: 'folder', description: 'work in a different folder, or just chat', run: () => session.openFolderPicker() },
   { command: '/clear', label: 'New conversation', place: 'conversation', description: 'start fresh - this one stays saved', run: () => {
       clearConversation();
@@ -73,6 +75,13 @@ export const COMMAND_TABLE: CommandSpec[] = [
     } },
   { command: '/address', label: 'How I address you', window: 'settings', description: 'change how Jeeves addresses you', run: () => openAddressPrompt() },
   { command: '/verbose', label: 'Show every step', place: 'more', description: 'show every step, for the curious', run: () => session.addNotice(toggleVerbose()) },
+  { command: '/tasks', label: 'Background tasks', place: 'more', description: 'see what runs in the background, and stop one', run: () => {
+      if (session.backgroundTasks.length === 0) {
+        session.addNotice("Nothing is running in the background right now.");
+        return;
+      }
+      session.setTasksOpen(!session.tasksOpen);
+    } },
   { command: '/exit', label: 'Quit', place: 'more', window: 'exit', description: 'quit', run: () => session.requestExit() },
 ];
 

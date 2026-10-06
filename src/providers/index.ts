@@ -45,7 +45,7 @@ export const PROVIDER_ROWS = [
   { id: 'xai', label: 'xAI (Grok)', description: 'Grok, with your own xAI key' },
   { id: 'groq', label: 'Groq', description: 'fast open models, with your own Groq key' },
   { id: 'mistral', label: 'Mistral', description: 'Mistral, with your own Mistral key' },
-  { id: 'custom', label: 'Other service', description: 'any compatible service - paste its address and key' },
+  { id: 'custom', label: 'Other provider', description: 'any compatible provider - paste its address and key' },
   { id: 'ollama', label: 'Ollama', description: 'models on this computer, no key needed' },
 ];
 
@@ -95,10 +95,10 @@ export function serviceKey(providerId: string): string | null {
   return serviceKeys.get(providerId) ?? null;
 }
 
-// The name of the compatible service, from its address ("Other service" before one is added).
+// The name of the compatible service, from its address ("Other provider" before one is added).
 export function customServiceName(): string {
   const saved = getCustomService();
-  return saved ? serviceNameFor(saved.baseURL) : 'Other service';
+  return saved ? serviceNameFor(saved.baseURL) : 'Other provider';
 }
 
 export type KeySaveResult = 'saved' | 'saved-unchecked' | 'rejected' | 'keychain';

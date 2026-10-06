@@ -2,9 +2,7 @@
 // (The GLM-5.3-Flash "thinks in plain text" habit is the thing being watched.)
 import { Rig } from './pty-rig.mjs';
 const r = new Rig();
-await r.until((t) => t.includes('Just chat - no project folder'), 15000);
-r.send('\r');
-await r.until((t) => t.includes('Settings'), 15000, 'conversation');
+await r.bootConversation();
 await r.wait(1200);
 const asks = ['Please create a text file called plan.txt containing the word hello.', 'Make a new folder called photos for me.', 'Save a note called shopping.txt that says milk and eggs.'];
 for (const ask of asks) {

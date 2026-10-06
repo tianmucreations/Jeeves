@@ -30,8 +30,23 @@ export function expandPath(p: string, baseDir: string = process.cwd()): string {
   return path.resolve(baseDir, trimmed);
 }
 
+// The working directory the shell commands run in, remembered across commands
+// (Claude Code's shell persistence). It starts at the project folder; a bare
+// `cd` from the model moves it; the person changing folders resets it. The file
+// tools resolve relative paths against it too, so the model's `cd` and its
+// relative paths always agree.
+let shellCwd: string | null = null;
+
+export function currentShellCwd(): string {
+  return shellCwd ?? process.cwd();
+}
+
+export function setShellCwd(cwd: string): void {
+  shellCwd = cwd;
+}
+
 export function resolveFromCwd(p: string): string {
-  return expandPath(p);
+  return expandPath(p, currentShellCwd());
 }
 
 export interface FolderEntry {

@@ -10,6 +10,11 @@ import { CheckpointStore, type Checkpoint, type UndoResult } from './store.js';
 
 let turnLabel = '';
 let takenThisTurn = false;
+// The single-flight guard (3 Oct): two parallel tool calls used to pass the
+// "already taken?" check before either finished, and the folder was backed up
+// twice. Now the second caller waits on the FIRST attempt's promise - the
+// backup happens once, and everyone gets the same result.
+let inFlight: Promise<{ ok: boolean; problem?: string }> | null = null;
 
 export function checkpointStoreRoot(): string {
   return process.env.JEEVES_CHECKPOINTS_DIR || path.join(settingsFolder(), 'checkpoints');
@@ -22,25 +27,31 @@ function store(): CheckpointStore {
 export function startTurnCheckpoints(label: string): void {
   turnLabel = label;
   takenThisTurn = false;
+  inFlight = null;
 }
 
 // Called before any change. Never throws: a backup failure is reported plainly and
 // the person decides - but the change is not silently made without a backup.
 export async function ensureCheckpoint(): Promise<{ ok: boolean; problem?: string }> {
   if (takenThisTurn) return { ok: true };
-  session.setBusyNote('backing up…');
-  try {
-    const checkpoint = await store().create(turnLabel || 'a change');
-    takenThisTurn = true;
-    // Files too big or unreadable to back up are simply left out. (A "Backup note ... /undo can't
-    // bring those back" notice used to say so; it only frightened people - 26 Sept.)
-    void checkpoint;
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, problem: error instanceof Error ? error.message : String(error) };
-  } finally {
-    session.setBusyNote(null);
-  }
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    session.setBusyNote('backing up…');
+    try {
+      const checkpoint = await store().create(turnLabel || 'a change');
+      takenThisTurn = true;
+      // Files too big or unreadable to back up are simply left out. (A "Backup note ... /undo can't
+      // bring those back" notice used to say so; it only frightened people - 26 Sept.)
+      void checkpoint;
+      return { ok: true } as const;
+    } catch (error) {
+      return { ok: false, problem: error instanceof Error ? error.message : String(error) };
+    } finally {
+      session.setBusyNote(null);
+      inFlight = null;
+    }
+  })();
+  return inFlight;
 }
 
 export interface UndoOutcome {

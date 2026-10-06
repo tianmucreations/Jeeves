@@ -153,6 +153,24 @@ const server = http.createServer((req, res) => {
       }, 1500);
       return;
     }
+    // BGTEST: starts one command in the background (sleep 300), then answers - for checking
+    // the "1 task running" note, /tasks and its Stop button.
+    if (said.includes('BGTEST')) {
+      const step = msgs.slice(msgs.lastIndexOf(lastUser) + 1).filter((m) => m.role === 'tool').length;
+      const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      setTimeout(() => {
+        if (step < 1) {
+          const args = JSON.stringify({ command: 'sleep 300', background: true });
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_bg', type: 'function', function: { name: 'runBash', arguments: args } }] } }] });
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } });
+        } else {
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: { content: 'The preview is running.' } }] });
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 6, total_tokens: 106 } });
+        }
+        res.write('data: [DONE]\n\n'); res.end();
+      }, 500);
+      return;
+    }
     if (typeof lastUser?.content === 'string' ? lastUser.content.includes('TODOTEST') : JSON.stringify(lastUser?.content ?? '').includes('TODOTEST')) {
       const step = msgs.slice(msgs.lastIndexOf(lastUser) + 1).filter((m) => m.role === 'tool').length;
       const lists = [
@@ -172,6 +190,28 @@ const server = http.createServer((req, res) => {
         }
         res.write('data: [DONE]\n\n'); res.end();
       }, 3000);
+      return;
+    }
+    // LONGJOB: a 30-step job (one past the old 25-step stop). Steps 1-9 and 11-29
+    // run `echo step-N`, step 10 changes directory silently, step 30 runs pwd whose
+    // output proves the directory carried over. Then a plain finished answer - the
+    // job must never stop to ask the person to type "continue".
+    if (typeof lastUser?.content === 'string' ? lastUser.content.includes('LONGJOB') : JSON.stringify(lastUser?.content ?? '').includes('LONGJOB')) {
+      const step = msgs.slice(msgs.lastIndexOf(lastUser) + 1).filter((m) => m.role === 'tool').length;
+      const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      setTimeout(() => {
+        if (step < 30) {
+          const command = step === 9 ? 'cd /private/tmp' : step === 29 ? 'pwd' : `echo step-${step + 1} of 30`;
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: `call_${step}`, type: 'function', function: { name: 'runBash', arguments: JSON.stringify({ command }) } }] } }] });
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } });
+        } else {
+          const tools = msgs.slice(msgs.lastIndexOf(lastUser) + 1).filter((m) => m.role === 'tool');
+          const last = String(tools[tools.length - 1]?.content ?? '');
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: { content: `All 30 steps are done, and the job is complete. The last command saw: ${last.replace(/\s+/g, ' ').slice(0, 80)}` } }] });
+          send({ id: 'x', object: 'chat.completion.chunk', model: 'fake', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } });
+        }
+        res.write('data: [DONE]\n\n'); res.end();
+      }, 250);
       return;
     }
     const words = Array.from({ length: Number(process.env.FAKE_PARAS ?? 40) }, (_, i) => paragraph(i + 1)).join('').split(/(?<= )/);

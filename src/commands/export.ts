@@ -1,7 +1,7 @@
 import { writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { session, type TranscriptEntry } from '../state/session.js';
-import { copyToClipboard } from '../ink/selection.js';
+import { copyToClipboard } from '../ink/clipboard.js';
 import { displayPath } from '../platform/paths.js';
 
 // Getting something out of Jeeves: copy the last answer, or save the whole conversation as a document.

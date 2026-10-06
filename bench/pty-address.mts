@@ -1,0 +1,14 @@
+import { Rig } from './pty-rig.mjs';
+const r = new Rig(100, 30, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
+await r.bootConversation(); await r.wait(1000);
+const click = (c: number, row: number) => { r.mouse('press', c, row); r.mouse('release', c, row); };
+const open = async () => { r.send('/address'); await r.wait(200); r.send('\r'); await r.wait(1300); };
+const notice = () => r.text().match(/I shall address you as ([^.\n]*)\./g)?.slice(-1)[0];
+await open(); click(3, 3); await r.wait(1200); console.log('Sir click ->', notice());
+await open(); click(11, 3); await r.wait(1200); console.log("Ma'am click ->", notice());
+await open(); r.send('Captain'); await r.wait(400); console.log('typed:', r.screen()[4]);
+const sv = r.screen().findIndex((l) => l.includes(' Save ')); click(3, sv + 1); await r.wait(1200); console.log('Save click ->', notice());
+await open(); r.send('Boss'); await r.wait(300); r.send('\r'); await r.wait(1200); console.log('Enter ->', notice());
+await open(); const bk = r.screen().findIndex((l) => l.includes('← Back')); click(12, bk + 1); await r.wait(1200); console.log('Back click home:', /Settings\s+Picture/.test(r.text()));
+await open(); r.send('\x1b'); await r.wait(1200); console.log('Esc home:', /Settings\s+Picture/.test(r.text()));
+r.kill(); await r.wait(300); process.exit(0);

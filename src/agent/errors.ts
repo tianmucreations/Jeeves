@@ -48,7 +48,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   const make = (message: string, kind: ErrorKind): PlainError => ({ message, kind, detail: raw });
 
   if (/^no .*\bkey\b/.test(text)) {
-    return make('Jeeves isn\'t connected to an AI service yet - click Settings to connect one. It takes about a minute.', 'auth');
+    return make('Jeeves isn\'t connected to a provider yet - click Settings, then Provider, to connect one. It takes about a minute.', 'auth');
   }
   if (
     status === 401 ||
