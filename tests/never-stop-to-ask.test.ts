@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { tellsPersonToContinue } from '../src/agent/loop.js';
 import { bareCdTarget } from '../src/tools/runBash.js';
@@ -31,7 +32,8 @@ describe('a job never stops to ask the person to type "continue" (2 Oct)', () =>
 describe('the shell working directory carries over; a bare cd is silent and never asks (2 Oct)', () => {
   it('recognises a bare cd, with or without a target', () => {
     setShellCwd('/tmp');
-    expect(bareCdTarget('cd /private/tmp')).toBe('/private/tmp');
+    // path.resolve: on Windows the same folder is written with backslashes.
+    expect(bareCdTarget('cd /private/tmp')).toBe(path.resolve('/private/tmp'));
     expect(bareCdTarget('cd "folder with spaces"')).toBe(expandPath('folder with spaces', '/tmp'));
     expect(bareCdTarget('cd')).toBe(expandPath('~'));
   });
