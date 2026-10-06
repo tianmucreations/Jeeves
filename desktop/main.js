@@ -45,14 +45,10 @@ const config = await engine('platform/config.js');
 const { loadModels } = await engine('models/registry.js');
 const { toolLineText, isQuietEntry } = await engine('components/transcript-layout.js');
 const { footerSegments, shortModelName } = await engine('components/Footer.js');
-const { answerQuestion, answerOption, askQuestion } = await engine('agent/question.js');
-const { COMMAND_TABLE } = await engine('commands/registry.js');
-const { todoHeadline, todosUnfinished } = await engine('tools/todoList.js');
-const { stopBackgroundById } = await engine('tools/background.js');
 const { allowanceToday } = await engine('agent/spending.js');
 const { isAuto, workerModel } = await engine('agent/auto.js');
 const { killAllRunningCommands } = await engine('tools/runBash.js');
-const { ensureChatFolder, chatNotice, readyLine } = await engine('platform/chat-folder.js');
+const { ensureChatFolder, chatNotice } = await engine('platform/chat-folder.js');
 const { cleanAddress } = await engine('platform/address.js');
 
 let win = null;
@@ -109,8 +105,6 @@ function snapshot() {
     zaiQuota: s.zaiQuota,
     connected: providers.hasCredentials(),
     connectHint: 'open Settings to connect',
-    background: s.backgroundTasks.length,
-    planFirst: s.planMode,
   });
   return {
     // A visible warning, not a silent one: a test session used to be invisible
@@ -135,15 +129,6 @@ function snapshot() {
     transcript,
     model: isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model),
     segments,
-    // The job's checklist, only while steps are left (the terminal draws the same lines).
-    // The job's checklist, only while steps are left: ONE line naming the step in
-    // progress (the bullet-point boxes are gone - owner, 3 Oct).
-    question: session.question ? { question: session.question.question, options: session.question.options } : null,
-    todos: todosUnfinished(session.todos) ? [todoHeadline(session.todos)].filter(Boolean) : [],
-    // Background tasks and the open/closed state of their panel (the door
-    // behind the "/tasks" note in the info bar).
-    tasks: session.backgroundTasks.map((task) => ({ id: task.id, plain: task.plain, startedAt: task.startedAt })),
-    tasksOpen: session.tasksOpen,
   };
 }
 
@@ -221,15 +206,18 @@ function openFolder(target, remember = true) {
   }
   session.launchComplete();
   session.addNotice(remember ? `Now working in ${niceFolder(target)}.` : chatNotice(config.getAddress() ?? 'Sir'));
-  session.addNotice(readyLine());
   return true;
 }
 
 // Sends a message, then any sent while Jeeves was busy (as Input.tsx does).
-async function sendAndDrain(text, images = []) {
-  await runTurn(text, images);
-  for (let next = session.takeNext(); next !== undefined; next = session.takeNext()) await runTurn(next.text, next.images);
+async function sendAndDrain(text) {
+  await runTurn(text);
+  for (let next = session.takeQueued(); next !== undefined; next = session.takeQueued()) await runTurn(next);
 }
+
+// The terminal's full-screen menus aren't in the window yet.
+// /model, /keys and /address open Settings; /help opens the Help panel.
+const OPENS_SETTINGS = new Set(['/model', '/keys', '/address']);
 
 // Back to the welcome screen to pick another folder (or Just chat); the
 // conversation stays. Between tasks only, as in the terminal.
@@ -249,19 +237,6 @@ ipcMain.on('cancel-change-folder', () => {
 });
 
 ipcMain.handle('ready', () => snapshot());
-// The background-tasks panel (the door behind the "/tasks" note in the info bar).
-ipcMain.on('toggle-tasks', () => {
-  if (session.backgroundTasks.length === 0) {
-    session.addNotice('Nothing is running in the background right now.');
-    return;
-  }
-  session.setTasksOpen(!session.tasksOpen);
-  sendState();
-});
-ipcMain.on('stop-task', (_event, id) => {
-  stopBackgroundById(Number(id));
-  sendState();
-});
 // Highlighted text is copied here (the window's own clipboard door refuses when it is not the focused window).
 ipcMain.handle('copy-text', (_event, text) => {
   if (typeof text !== 'string' || !text) return false;
@@ -296,54 +271,34 @@ ipcMain.handle('choose-folder', async (_event, chosen) => {
   sendState();
   return ok;
 });
-// Pictures from the window: only real picture types, a sensible number and size.
-function cleanPictures(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((pic) => pic && /^image\/(png|jpeg|gif|webp)$/.test(pic.mediaType) && typeof pic.data === 'string' && pic.data.length > 0 && pic.data.length < 7_500_000)
-    .slice(0, 8)
-    .map((pic) => ({ name: String(pic.name ?? 'picture').slice(0, 80), mediaType: pic.mediaType, data: pic.data }));
-}
-
-ipcMain.on('send', (_event, raw, rawImages) => {
+ipcMain.on('send', (_event, raw) => {
   const text = String(raw ?? '').trim();
-  const images = cleanPictures(rawImages);
   if (!text) return;
-  // Words typed while a question with choices waits are the answer.
-  if (session.question) {
-    answerQuestion(text);
-    return;
-  }
-  // The commands the window does itself come from the one table of commands (commands/registry.js).
-  const spec = COMMAND_TABLE.find((entry) => entry.command === text);
-  if (spec?.window === 'folder') {
+  if (text === '/folder') {
     changeFolder();
     return;
   }
-  if (spec?.window === 'settings') {
+  if (OPENS_SETTINGS.has(text)) {
     win?.webContents.send('open-settings');
     return;
   }
-  if (spec?.window === 'help') {
+  if (text === '/help') {
     win?.webContents.send('open-help');
     return;
   }
-  if (spec?.window === 'exit') {
+  if (text === '/exit') {
     app.quit();
     return;
   }
   if (session.status !== 'working') {
-    void sendAndDrain(text, images);
+    void sendAndDrain(text);
   } else {
-    session.queueMessage(text, images);
+    session.queueMessage(text);
     session.addNotice(`Noted - I'll read this as soon as I've finished: "${text.length > 80 ? text.slice(0, 79) + '…' : text}"`);
   }
 });
 ipcMain.on('stop', () => {
   stopTurn();
-});
-ipcMain.on('answer-question', (_event, index) => {
-  if (session.question) answerOption(Number(index));
 });
 ipcMain.on('answer', (_event, answer) => {
   if (!session.approvalPending) return;
@@ -486,45 +441,6 @@ async function takeShots(out) {
     ipcMain.emit('send', {}, '/address');
     await wait(1200);
     console.log(`/address opens Settings: ${await js("!document.getElementById('settings').hidden")}, help closed: ${await js("document.getElementById('help').hidden")}`);
-    app.exit(0);
-    return;
-  }
-  // JEEVES_DESKTOP_FEATURETEST=1 (NODE_ENV=test, fake-zai running, hidden window): the newer
-  // screens - Settings lists, to-do list, question buttons, pictures - checked in the real window.
-  if (process.env.JEEVES_DESKTOP_FEATURETEST && process.env.NODE_ENV === 'test') {
-    const js = (code) => win.webContents.executeJavaScript(code);
-    await js("document.getElementById('just-chat').click()");
-    await wait(1000);
-    win.webContents.send('open-settings');
-    await wait(1500);
-    await shot('31-settings.png');
-    console.log(`settings sections: ${await js("[...document.querySelectorAll('#settings .settings-body h3')].map((h) => h.textContent).join(' | ')")}, other providers listed ${await js("document.querySelectorAll('#more-services .service').length")}, folder step: ${await js("document.getElementById('folder-step-name').textContent")}`);
-    await js("[...document.querySelectorAll('#services .service')].find((b) => b.textContent.startsWith('OpenAI')).click()");
-    await wait(600);
-    console.log(`OpenAI in Settings: how it connects ${await js("[...document.querySelectorAll('#service-detail button')].map((b) => b.textContent).filter((t) => t.includes('ChatGPT') || t.includes('key')).join(' | ')")}`);
-    console.log(`What I've spent section lines: ${await js("document.querySelectorAll('#spending dt').length")}`);
-    console.log(`More buttons (from the table): ${await js("[...document.querySelectorAll('#commands .service span')].map((b) => b.textContent).join(', ')")}`);
-    await js("document.getElementById('close-settings').click()");
-    await wait(300);
-    session.setTodos([{ content: 'Find the invoices', status: 'completed' }, { content: 'Rename them', status: 'in_progress' }, { content: 'Make a summary', status: 'pending' }]);
-    await wait(600);
-    console.log(`to-do list: shown ${await js("!document.getElementById('todos').hidden")}, rows ${await js("document.querySelectorAll('#todos div').length")}, current step marked ${await js("document.querySelectorAll('#todos .now').length")}`);
-    session.setTodos([]);
-    const asked = askQuestion({ question: 'Which folder should I use?', options: [{ label: 'Documents (Recommended)' }, { label: 'Desktop' }, { label: 'Downloads' }] });
-    await wait(600);
-    console.log(`question: shown ${await js("!document.getElementById('question').hidden")}, buttons ${await js("document.querySelectorAll('#question-options button').length")}`);
-    await js("document.querySelectorAll('#question-options button')[1].click()");
-    console.log(`clicked the second button -> answer: ${await asked}`);
-    await wait(400);
-    console.log(`question gone: ${await js("document.getElementById('question').hidden")}`);
-    await js(`(() => { const b = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0)); addPictureFile(new File([b], 'shot.png', { type: 'image/png' })); })()`);
-    await wait(600);
-    console.log(`picture chip: ${await js("document.querySelectorAll('#pics .pic').length")}`);
-    console.log(`Picture button present: ${await js("!!document.getElementById('attach') && document.getElementById('attach').textContent")}, greeting in the chat: ${session.transcript.some((e) => e.kind === 'notice' && e.text.startsWith('What can I do for you'))}`);
-    await js("document.getElementById('input').value = 'what is this?'; send()");
-    await wait(4000);
-    console.log(`after send: chips ${await js("document.querySelectorAll('#pics .pic').length")}, last user line: ${session.transcript.filter((e) => e.kind === 'user').at(-1)?.text}`);
-    await shot('30-features.png');
     app.exit(0);
     return;
   }

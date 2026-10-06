@@ -5,7 +5,9 @@ import type { Provider, StreamOptions, StreamResult, RateLimitInfo } from './typ
 import { silenceGuard } from './silence.js';
 import { prepareStepFor, stepCost } from './step-control.js';
 import { repairToolCall } from './repair.js';
-import { collectStream, MAX_TOOL_STEPS, headerNumber } from './stream-driver.js';
+
+// Assumption: the spec's "maxSteps" is called stopWhen/stepCountIs in AI SDK 7 (the installed version); same cap of 25.
+const MAX_TOOL_STEPS = 25;
 
 // Sticky routing: one id per conversation, sent with every request. OpenRouter uses
 // it directly as the routing key, pinning the conversation to one provider endpoint
@@ -73,6 +75,13 @@ export async function fetchKeyUsage(apiKey: string): Promise<number | null> {
   }
 }
 
+function headerNumber(headers: Record<string, string> | undefined, name: string): number | null {
+  const raw = headers?.[name];
+  if (raw === undefined) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function createOpenRouterProvider(apiKey: string): Provider {
   const openrouter = createOpenRouter({ apiKey });
   return {
@@ -80,8 +89,6 @@ export function createOpenRouterProvider(apiKey: string): Provider {
     name: 'OpenRouter',
     async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall, beforeStep, abortSignal }: StreamOptions): Promise<StreamResult> {
       const guard = silenceGuard(abortSignal);
-      // The request is OpenRouter's own (usage accounting makes it report each
-      // step's exact cost); the READING of the reply is the one shared stream driver.
       const result = streamText({
         instructions,
         // A stalled request must never wedge the app in the working state forever -
@@ -94,6 +101,7 @@ export function createOpenRouterProvider(apiKey: string): Provider {
         // Silence while the model answers is watched by silenceGuard (it pauses while a
         // command runs or waits for the person); the first piece still has 2 minutes.
         timeout: { firstChunkMs: 120_000 },
+        // Usage accounting makes OpenRouter report each step's exact cost.
         model: openrouter.chat(modelId, { usage: { include: true } }),
         messages,
         tools,
@@ -110,17 +118,61 @@ export function createOpenRouterProvider(apiKey: string): Provider {
           },
         },
       });
-      return collectStream(result, guard, { onToken, onReasoning, onToolCall }, ({ finalStep, steps }) => {
-        const headers = finalStep.response?.headers;
-        const limit = headerNumber(headers, 'x-ratelimit-limit');
-        const remaining = headerNumber(headers, 'x-ratelimit-remaining');
-        const reset = headerNumber(headers, 'x-ratelimit-reset');
-        const rateLimit: RateLimitInfo | null =
-          limit !== null || remaining !== null
-            ? { limit: limit ?? 0, remaining: remaining ?? 0, reset: reset ?? 0 }
-            : null;
-        return { rateLimit, stepCosts: steps.map(stepCost) };
-      });
+
+      let streamedError: unknown = null;
+      for await (const part of result.stream) {
+        guard.onPart(part);
+        if (part.type === 'text-delta') {
+          onToken(part.text);
+        } else if (part.type === 'reasoning-delta') {
+          onReasoning(part.text);
+        } else if (part.type === 'tool-call') {
+          onToolCall({ id: part.toolCallId, name: part.toolName });
+        } else if (part.type === 'error') {
+          streamedError = part.error;
+        }
+      }
+      guard.stop();
+
+      // The real stream error (a rejected key, a missing model) must win over the
+      // SDK's generic no-output error, which would otherwise mask the cause.
+      if (streamedError !== null) {
+        throw streamedError instanceof Error ? streamedError : new Error(String(streamedError));
+      }
+      const text = await result.text;
+
+const finalStep = await result.finalStep;
+      const reasoning = finalStep.reasoningText ?? '';
+      const responseMessages = await result.responseMessages;
+      const usage = await result.usage;
+
+      const steps = await result.steps;
+
+      const headers = finalStep.response.headers;
+      const limit = headerNumber(headers, 'x-ratelimit-limit');
+      const remaining = headerNumber(headers, 'x-ratelimit-remaining');
+      const reset = headerNumber(headers, 'x-ratelimit-reset');
+      const rateLimit: RateLimitInfo | null =
+        limit !== null || remaining !== null
+          ? { limit: limit ?? 0, remaining: remaining ?? 0, reset: reset ?? 0 }
+          : null;
+
+      return {
+        text,
+        reasoning,
+        messages: responseMessages,
+        usage: {
+          input: usage.inputTokens ?? 0,
+          output: usage.outputTokens ?? 0,
+          total: usage.totalTokens ?? 0,
+          cached: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+        },
+        cost: 0,
+        rateLimit,
+        stepCosts: steps.map(stepCost),
+        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
+        finishReason: finalStep.finishReason,
+      };
     },
   };
 }

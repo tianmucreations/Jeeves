@@ -1,5 +1,4 @@
 import { dispatchMouse } from './mouse.js';
-import { handleCursorReply } from './cursor-report.js';
 
 // The one place mouse reports are taken out of the keyboard stream - before Ink
 // (and so before any screen) ever sees them. Claude Code does the same: its
@@ -20,9 +19,7 @@ const MOUSE_REPORT = /\x1b\[<\d+;\d+;\d+[Mm]/g;
 // The same report with its Escape lost: only trusted at the very start of a chunk.
 const ORPHAN_REPORT = /^\[<\d+;\d+;\d+[Mm]/;
 // The end of a chunk that could be the front of a report: ESC, ESC [, ESC [ < 65 ; 3 ...
-// The terminal's answer to "where is the cursor?" (see cursor-report.ts).
-const CURSOR_REPLY = /\x1b\[(\d+);\d+R/g;
-const CUT_SHORT = /\x1b(?:\[(?:<[\d;]*|[\d;]*)?)?$/;
+const CUT_SHORT = /\x1b(?:\[(?:<[\d;]*)?)?$/;
 const MOUSE_BODY = /^\x1b\[(?:<[\d;]*)?$/;
 const HOLD_MS = 1000;
 const ESC_HOLD_MS = 40;
@@ -42,10 +39,6 @@ export class MouseFilter {
     }
     text = text.replace(MOUSE_REPORT, (report) => {
       dispatch(report);
-      return '';
-    });
-    text = text.replace(CURSOR_REPLY, (_all, row) => {
-      handleCursorReply(Number(row));
       return '';
     });
     const cut = CUT_SHORT.exec(text);

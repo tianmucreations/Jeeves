@@ -1,7 +1,9 @@
 import { Rig } from './pty-rig.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 const r = new Rig();
-await r.bootConversation();
+await r.until((t) => t.includes('Just chat - no project'), 15000);
+r.send('\r');
+await r.until((t) => t.includes('Settings'), 15000, 'conversation');
 await r.wait(1200);
 r.send('List the files in your working folder, then write about 300 words on the history of Spain.');
 await r.wait(300);

@@ -6,7 +6,7 @@ import { COMMANDS, KEY_BINDINGS } from '../src/commands/help.js';
 describe('plain-English error translation', () => {
   it('explains a missing key', () => {
     const result = plainError(new Error('No OpenRouter API key found. Add one with /keys.'));
-    expect(result.message).toContain('Settings');
+    expect(result.message).toContain('/keys');
     expect(result.kind).toBe('auth');
   });
 
@@ -36,7 +36,7 @@ describe('plain-English error translation', () => {
 
   it('explains a vanished model', () => {
     const result = plainError(new Error('Model z-ai/glm-9 not found (404)'));
-    expect(result.message).toContain('Settings');
+    expect(result.message).toContain('/model');
     expect(result.kind).toBe('model');
   });
 
@@ -59,7 +59,7 @@ describe('plain-English error translation', () => {
       'Failed after 3 attempts. Last error: AI_APICallError: Usage limit reached for 5 hour. Your limit will reset at 2026-09-17 13:03:01';
     const result = plainError(new Error(raw), 'zai');
     expect(result.message).toBe(
-      'Your Z.ai plan has used up its allowance for now. Z.ai says it resets at 13:03. Click Settings to use a different model meanwhile.'
+      'Your Z.ai plan has used up its allowance for now. Z.ai says it resets at 13:03. Type /model to use a different model meanwhile.'
     );
     expect(result.kind).toBe('payment');
   });
@@ -107,7 +107,7 @@ describe('rejected keys, as the services really send them', () => {
   const apiError = (message: string, statusCode: number) => Object.assign(new Error(message), { statusCode });
   it('recognises a bad OpenRouter key ("User not found." with status 401)', () => {
     const result = plainError(apiError('User not found.', 401), 'openrouter');
-    expect(result.message).toBe("OpenRouter didn't accept the key - click Settings, then Manage keys to check or replace it.");
+    expect(result.message).toBe("OpenRouter didn't accept the key - type /keys to check or replace it.");
     expect(result.kind).toBe('auth');
   });
   it('recognises a bad Z.ai key ("Authentication Failed" with status 401)', () => {

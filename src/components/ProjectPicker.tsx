@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Text, useInput, type Key } from '../vendor/ink/index.js';
-import { ButtonRow, buttonAt, keyPress, type ButtonSpec } from './ButtonRow.js';
+import React, { useMemo, useState } from 'react';
+import { Box, Text, useInput } from 'ink';
 import Fuse from 'fuse.js';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -10,7 +9,7 @@ import { getDefaultModel } from '../platform/config.js';
 import { enterFolder } from '../commands/folder.js';
 import { homeLocations, listSubfolders, displayPath, projectNameProblem, type FolderEntry } from '../platform/paths.js';
 import { hasCredentials, keysRead } from '../providers/index.js';
-import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
+import { isMouseSequence } from '../ink/mouse.js';
 import { ensureChatFolder } from '../platform/chat-folder.js';
 
 type Item =
@@ -65,13 +64,11 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
   const [stack, setStack] = useState<string[]>([]);
   const [filter, setFilter] = useState('');
   const [cursor, setCursor] = useState(0);
-  // The Search box is the first stop above the list: Up from the top row lands in it, Down leaves it.
-  const [inSearch, setInSearch] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createTarget, setCreateTarget] = useState<FolderEntry | null>(null);
   const [note, setNote] = useState('');
 
-  const listHeight = Math.max(1, rows - 6);
+  const listHeight = Math.max(1, rows - 4);
   const current = stack.length > 0 ? stack[stack.length - 1] : null;
 
   // Reading a folder is synchronous and fast, so both the listing and the menu are pure calculations.
@@ -82,16 +79,14 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
 
   const items = useMemo<Item[]>(() => {
     if (mode === 'list') {
-      const all = s.recentProjects.filter((folder) => existsSync(folder));
-      // Typing searches the recent folders by name.
-      const recents = filter ? new Fuse(all.map((folder) => ({ folder, name: path.basename(folder) })), { keys: ['name', 'folder'], threshold: 0.4 }).search(filter).map((result) => result.item.folder) : all;
+      const recents = s.recentProjects.filter((folder) => existsSync(folder));
       // First, for anyone who only wants to ask something: no project needed.
       const out: Item[] = [{ kind: 'chat' }];
       if (recents.length > 0) {
-        out.push({ kind: 'header', label: 'Recent project folders' });
+        out.push({ kind: 'header', label: 'Recent projects' });
         for (const folder of recents) out.push({ kind: 'recent', folder });
       } else {
-        out.push({ kind: 'header', label: filter ? `No recent folder matches "${filter}"` : 'No recent projects yet - pick Browse below' });
+        out.push({ kind: 'header', label: 'No recent projects yet - pick Browse below' });
       }
       out.push({ kind: 'browse' }, { kind: 'create' });
       return out;
@@ -135,9 +130,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
     // Only once the saved keys have been read can "no key yet" be true.
     void keysRead().then(() => {
       if (!hasCredentials()) {
-        // Step 2 of the first launch: the provider list (then its models, then how to connect).
-        session.pickerStart = null;
-        session.openPicker();
+        session.startWizard(true);
       } else if (!getDefaultModel()) {
         // The model list only when no model has been chosen yet - not every morning
         // (Claude Code starts straight in the conversation; /model changes it).
@@ -194,97 +187,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
     return text.length > width ? text.slice(0, width - 1) + '…' : text;
   }
 
-  // What choosing a row does, by keyboard (Enter) or by mouse (a click).
-  function activate(item: Item | undefined): void {
-    if (!item) return;
-    if (mode === 'create-location') {
-      if (item.kind === 'location') {
-        setCreateTarget(item.entry);
-        setMode('create-confirm');
-      }
-      if (item.kind === 'browse') {
-        setPurpose('create');
-        setMode('browse');
-        setStack([]);
-        setFilter('');
-        setCursor(0);
-      }
-      return;
-    }
-    if (mode === 'list') {
-      if (item.kind === 'chat') startChat();
-      if (item.kind === 'recent') startProject(item.folder);
-      if (item.kind === 'browse') {
-        setPurpose('open');
-        setMode('browse');
-        setStack([]);
-        setFilter('');
-        setCursor(0);
-      }
-      if (item.kind === 'create') startCreate();
-      return;
-    }
-    if (mode === 'browse') {
-      if (item.kind === 'back') goBack();
-      if (item.kind === 'choose' && current !== null) startProject(current);
-      if (item.kind === 'create-here' && current !== null) {
-        void createProject(path.join(current, createName.trim()));
-      }
-      if (item.kind === 'folder') openFolder(item.entry.path);
-    }
-  }
-
-  // The mouse works on these lists exactly as the keys do (owner, 30 Sept: some things clicked, others
-  // needed the keyboard). Off while a name is being typed, so the terminal's own selecting works there.
-  const listMode = mode === 'list' || mode === 'browse' || mode === 'create-location';
-  // The list starts under the title, and under the search line where there is one.
-  const listTop = mode === 'list' || mode === 'browse' ? 5 : 3;
-  const hasSearch = mode === 'list' || mode === 'browse';
-  function moveUp(): void {
-    if (inSearch) return;
-    const next = stepItem(items, resolved, -1);
-    if (next === resolved && hasSearch) setInSearch(true);
-    else setCursor(next);
-  }
-  function moveDown(): void {
-    if (inSearch) return setInSearch(false);
-    setCursor(stepItem(items, resolved, 1));
-  }
-  // Buttons on the last row do what the keys do: Back is Esc, the others are Enter.
-  const press = (over: Parameters<typeof keyPress>[0]) => () => handleInput('', keyPress(over));
-  const backLabel = mode === 'list' ? (session.switchingFolder ? '← Back to the conversation' : 'Just chat') : '← Back';
-  const footerButtons: ButtonSpec[] =
-    mode === 'create-name'
-      ? [{ label: 'Cancel', run: press({ escape: true }) }, { label: 'Continue', run: press({ return: true }) }]
-      : mode === 'create-confirm'
-        ? [{ label: '← Back', run: press({ escape: true }) }, { label: 'Create', run: press({ return: true }) }]
-        : mode === 'list' && !session.switchingFolder
-          ? []
-          : [{ label: backLabel, run: press({ escape: true }) }];
-  const onMouse = (report: string) => {
-    const event = parseMouseSequence(report);
-    if (!event) return;
-    if (event.kind === 'press' && event.button === 0 && event.row === rows && footerButtons.length > 0) return void buttonAt(footerButtons, event.col)?.run();
-    if (!listMode) return;
-    if (event.kind === 'wheel') {
-      if (event.button === 0) moveUp();
-      else moveDown();
-      return;
-    }
-    if (event.kind !== 'press' || event.button !== 0) return;
-    if (hasSearch && event.row === 3) return setInSearch(true);
-    const index = start + (event.row - listTop);
-    if (event.row >= listTop && items[index] && items[index].kind !== 'header') {
-      setInSearch(false);
-      setCursor(index);
-      activate(items[index]);
-    }
-  };
-  const onMouseRef = useRef(onMouse);
-  onMouseRef.current = onMouse;
-  useEffect(() => subscribeMouse((report) => onMouseRef.current(report)), []);
-
-  const handleInput = (input: string, key: Key) => {
+  useInput((input, key) => {
     if (isMouseSequence(input)) return;
         if (mode === 'create-name') {
       if (key.escape) {
@@ -322,14 +225,15 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
       }
       return;
     }
-    if (key.upArrow) return moveUp();
-    if (key.downArrow) return moveDown();
+    if (key.upArrow) {
+      setCursor(stepItem(items, resolved, -1));
+      return;
+    }
+    if (key.downArrow) {
+      setCursor(stepItem(items, resolved, 1));
+      return;
+    }
     if (key.escape) {
-      if (mode === 'list' && filter) {
-        setFilter('');
-        setCursor(0);
-        return;
-      }
       if (mode === 'list') {
         // From /folder: back to the conversation, nothing changed. On first launch:
         // Just chat - never the folder Jeeves happened to start in, which for most
@@ -346,25 +250,49 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
       goBack();
       return;
     }
-    if ((mode === 'create-location' || mode === 'list' || mode === 'browse') && key.return) {
-      if (!(hasSearch && inSearch && !filter)) activate(items[resolved]);
+    if (mode === 'create-location' && key.return) {
+      const item = items[resolved];
+      if (!item) return;
+      if (item.kind === 'location') {
+        setCreateTarget(item.entry);
+        setMode('create-confirm');
+      }
+      if (item.kind === 'browse') {
+        setPurpose('create');
+        setMode('browse');
+        setStack([]);
+        setFilter('');
+        setCursor(0);
+      }
       return;
     }
-    if (hasSearch && (key.backspace || key.delete || (input && !key.ctrl && !key.meta))) setInSearch(true);
-    if (mode === 'list') {
-      // Typing searches the recent folders.
-      if (key.backspace || key.delete) {
-        setFilter((currentFilter) => currentFilter.slice(0, -1));
+    if (mode === 'list' && key.return) {
+      const item = items[resolved];
+      if (!item) return;
+      if (item.kind === 'chat') startChat();
+      if (item.kind === 'recent') startProject(item.folder);
+      if (item.kind === 'browse') {
+        setPurpose('open');
+        setMode('browse');
+        setStack([]);
+        setFilter('');
         setCursor(0);
-        return;
       }
-      if (input && !key.ctrl && !key.meta) {
-        setFilter((currentFilter) => currentFilter + input);
-        setCursor(0);
-      }
+      if (item.kind === 'create') startCreate();
       return;
     }
     if (mode === 'browse') {
+      if (key.return) {
+        const item = items[resolved];
+        if (!item) return;
+        if (item.kind === 'back') goBack();
+        if (item.kind === 'choose' && current !== null) startProject(current);
+        if (item.kind === 'create-here' && current !== null) {
+          void createProject(path.join(current, createName.trim()));
+        }
+        if (item.kind === 'folder') openFolder(item.entry.path);
+        return;
+      }
       if (key.backspace || key.delete) {
         setFilter((currentFilter) => currentFilter.slice(0, -1));
         setCursor(0);
@@ -375,16 +303,15 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
       setCursor(0);
       return;
     }
-  };
-  useInput(handleInput);
+  });
 
   const title =
     mode === 'list'
       ? session.switchingFolder
         ? 'Change folder - or Just chat'
-        : 'Just chat, or choose a project folder'
+        : 'Just chat, or choose a project'
       : mode === 'create-name'
-        ? 'Make a new project folder'
+        ? 'Create a new project'
         : mode === 'create-location'
           ? `Where should "${createName.trim()}" live?`
           : mode === 'create-confirm'
@@ -398,32 +325,27 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
   const hint =
     mode === 'list'
       ? session.switchingFolder
-        ? 'click one, or type to search'
-        : 'click one, or type to search'
+        ? '↑↓ move · Enter choose · Esc back to the conversation'
+        : '↑↓ move · Enter choose · Esc just chat'
       : mode === 'create-name'
-        ? 'type a name'
+        ? 'type a name · Enter continue · Esc cancel'
         : mode === 'create-location'
-          ? 'click one, or ↑↓ Enter'
+          ? '↑↓ move · Enter choose · Esc back'
           : mode === 'create-confirm'
-            ? 'ready to create'
-            : 'click one, or ↑↓ Enter';
+            ? 'Enter create · Esc back'
+            : '↑↓ move · Enter open · type to filter · Esc back';
 
   return (
     <Box flexDirection="column" height={rows}>
       <Text dimColor>{title}</Text>
-      <Text> </Text>
-      {mode === 'browse' || mode === 'list' ? (
+      {mode === 'browse' ? (
         <Box>
-          <Text bold>Search: </Text>
-          <Text>[ </Text>
+          <Text dimColor>filter: </Text>
           <Text>{filter}</Text>
-          {inSearch ? <Text inverse> </Text> : null}
-          <Text dimColor>{filter ? '' : 'type here to find a folder'}</Text>
-          <Text>{' '.repeat(Math.max(0, 28 - filter.length - (filter ? 0 : 26) - (inSearch ? 1 : 0)))} ]</Text>
+          <Text dimColor>{filter ? '' : 'optional'}</Text>
         </Box>
       ) : null}
-      {mode === 'browse' || mode === 'list' ? <Text> </Text> : null}
-      <Box flexDirection="column" flexGrow={1} minHeight={listHeight}>
+      <Box flexDirection="column" flexGrow={1} justifyContent="center" minHeight={listHeight}>
         {mode === 'create-name' ? (
           <Text>
             <Text dimColor>Name: </Text>
@@ -439,7 +361,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
         ) : null}
         {visible.map((item, index) => {
           const absoluteIndex = start + index;
-          const selected = absoluteIndex === resolved && !(inSearch && !filter);
+          const selected = absoluteIndex === resolved;
           if (item.kind === 'header') {
             return (
               <Text key={`h${absoluteIndex}`} dimColor>
@@ -460,7 +382,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
             return (
               <Text key="chat" inverse={selected}>
                 <Text color="#c9a96a" bold>{' Just chat'}</Text>
-                <Text dimColor>{' - no project folder needed'}</Text>
+                <Text dimColor>{' - no project needed'}</Text>
               </Text>
             );
           }
@@ -474,7 +396,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
           if (item.kind === 'create') {
             return (
               <Text key="create" inverse={selected}>
-                {' Make a new project folder →'}
+                {' Create a new project →'}
               </Text>
             );
           }
@@ -517,11 +439,7 @@ export function ProjectPicker({ rows, columns }: { rows: number; columns: number
         ) : null}
         {mode === 'browse' && listing.error ? <Text dimColor>({listing.error})</Text> : null}
       </Box>
-      {note ? <Text color="yellow">{note}</Text> : null}
-      <Text>
-        <ButtonRow buttons={footerButtons} />
-        <Text dimColor>{footerButtons.length > 0 ? '  ' + hint : hint}</Text>
-      </Text>
+      {note ? <Text color="yellow">{note}</Text> : <Text dimColor>{hint}</Text>}
     </Box>
   );
 }

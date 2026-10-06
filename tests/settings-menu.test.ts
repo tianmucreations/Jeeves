@@ -47,21 +47,12 @@ const items = (rows: SettingsRow[]) => rows.filter((row): row is Extract<Setting
 const headers = (rows: SettingsRow[]) => rows.filter((row) => row.kind === 'header').map((row) => (row as { title: string }).title);
 
 describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
-  it('runs in the owner\'s order (30 Sept): the three choices first - 1 folder, 2 provider, 3 model - then spending, you, conversations, more', () => {
+  it('runs in order: folders, services, models, keys, you, and the commands last', () => {
     const titles = headers(settingsRows(base));
-    expect(titles).toEqual(['CHOOSE', 'SPENDING', 'YOU', 'CONVERSATIONS', 'MORE']);
-    const steps = items(settingsRows(base)).slice(0, 3).map((row) => row.label);
-    expect(steps).toEqual(['1. Project folder →', '2. Provider →', '3. Model →']);
-  });
-
-  it('has no separate keys list: connecting and disconnecting are part of choosing the provider and model', () => {
-    const labels = items(settingsRows(base)).map((row) => row.label);
-    expect(labels.some((label) => /keys/i.test(label))).toBe(false);
-    expect(items(settingsRows(base)).some((row) => row.action.type === 'command' && row.action.command === '/keys')).toBe(false);
-  });
-
-  it('is short enough to see nearly all of it in one window (the long lists were burying the buttons)', () => {
-    expect(settingsRows(base).length).toBeLessThan(34);
+    expect(titles[0]).toBe('FOLDERS');
+    expect(titles[1]).toBe('PROVIDER');
+    expect(titles[2]).toMatch(/^MODELS/);
+    expect(titles[titles.length - 1]).toMatch(/^COMMANDS/);
   });
 
   it('puts a blank line between sections, and never one at the very top', () => {
@@ -72,45 +63,46 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
     });
   });
 
-  it('step 2 says which provider is in use now, and step 3 which model, each opening its own list', () => {
-    const rows = items(settingsRows(base));
-    const provider = rows.find((r) => r.label === '2. Provider →')!;
-    const model = rows.find((r) => r.label === '3. Model →')!;
-    expect(provider.hint).toBe('now OpenRouter');
-    expect(provider.action.type).toBe('providers');
-    expect(model.hint).toBe('now Auto - and how to connect');
-    expect(model.action).toEqual({ type: 'service', provider: 'openrouter' });
-    const onZai = items(settingsRows({ ...base, providerId: 'zai', providerLabel: 'Z.ai', model: 'glm-5.3', models: ZAI_MODELS }));
-    expect(onZai.find((r) => r.label === '2. Provider →')!.hint).toBe('now Z.ai');
-    expect(onZai.find((r) => r.label === '3. Model →')!.hint).toBe('now GLM-5.3 - and how to connect');
-    const onChatGpt = items(settingsRows({ ...base, providerId: 'chatgpt', providerLabel: 'ChatGPT', model: 'gpt-5.5', models: [] }));
-    expect(onChatGpt.find((r) => r.label === '2. Provider →')!.hint).toBe('now ChatGPT (your plan)');
-    expect(onChatGpt.find((r) => r.label === '3. Model →')!.action).toEqual({ type: 'service', provider: 'openai' });
+  it('lists every recent folder, Just chat, Browse and Create - the one in use ticked', () => {
+    const folderRows = items(settingsRows(base)).filter((row) => ['chat', 'folder', 'browse', 'create'].includes(row.action.type));
+    expect(folderRows.map((row) => row.label)).toEqual(['Just chat', 'Alpha', 'Beta', 'Browse for a folder →', 'Create a new project →']);
+    expect(folderRows.filter((row) => row.current).map((row) => row.label)).toEqual(['Alpha']);
   });
 
-  it('step 1 says where Jeeves is working, and opens the folder list', () => {
-    const row = items(settingsRows(base)).find((r) => r.action.type === 'folders')!;
-    expect(row.label).toBe('1. Project folder →');
-    expect(row.hint).toBe('now Alpha');
-    const chatting = items(settingsRows({ ...base, folder: base.chatFolder })).find((r) => r.action.type === 'folders')!;
-    expect(chatting.hint).toBe('now just chatting');
+  it('lists every AI service, saying which is in use and which are connected', () => {
+    const services = items(settingsRows(base)).filter((row) => row.action.type === 'service');
+    expect(services.map((row) => row.label)).toEqual(PROVIDER_ROWS.map((row) => row.label));
+    expect(services.find((row) => row.label === 'OpenRouter')?.hint).toMatch(/^in use/);
+    expect(services.find((row) => row.label === 'Z.ai')?.hint).toMatch(/^connected/);
+    expect(services.find((row) => row.label === 'Anthropic')?.hint).not.toMatch(/connected|in use/);
   });
 
-  it("keeps a way to every service's own list: the picker the row opens lists them all", () => {
-    expect(PROVIDER_ROWS.length).toBeGreaterThan(5);
+  it("lists the service's recommended models (Auto first, ticked) and favourites - never one that can't do tasks", () => {
+    const models = items(settingsRows(base)).filter((row) => row.action.type === 'model');
+    expect(models[0].label).toBe('Auto');
+    expect(models[0].current).toBe(true);
+    const labels = models.map((row) => row.label);
+    expect(labels).toContain('GLM 5.3');
+    expect(labels).toContain('Favourite');
+    expect(labels).not.toContain('Chat Only');
+    expect(items(settingsRows(base)).some((row) => row.action.type === 'all-models')).toBe(true);
   });
 
-  it('spending has its own section: what I have spent, and both limits', () => {
-    const rows = settingsRows(base);
-    const at = rows.findIndex((row) => row.kind === 'header' && row.title === 'SPENDING');
-    const spending = items(rows.slice(at, at + 5)).map((row) => row.label);
-    expect(spending).toEqual(["What I've spent →", 'Daily spending limit', 'Weekly spending limit']);
+  it("on Z.ai, lists Z.ai's own models", () => {
+    const rows = settingsRows({ ...base, providerId: 'zai', providerLabel: 'Z.ai', model: 'glm-5.3', models: ZAI_MODELS });
+    const models = items(rows).filter((row) => row.action.type === 'model');
+    expect(models.length).toBe(ZAI_MODELS.filter((m) => m.supportedParameters.includes('tools')).length);
+    expect(models.find((row) => row.current)?.label).toBe('GLM-5.3');
   });
 
-  it('lists every command that the one table marks for Settings, in the table\'s order (conversation ones first, then More)', () => {
-    const commands = items(settingsRows(base)).filter((row) => row.action.type === 'command' && row.action.command !== '/keys' && row.action.command !== '/address');
-    const expected = [...COMMANDS.filter((entry) => entry.place === 'conversation'), ...COMMANDS.filter((entry) => entry.place === 'more')].map((entry) => entry.label);
-    expect(commands.map((row) => row.label)).toEqual(expected);
+  it('offers both spending limits next to the keys', () => {
+    const spending = items(settingsRows(base)).filter((row) => row.action.type === 'limit' || row.action.type === 'limit-weekly');
+    expect(spending.map((row) => row.label)).toEqual(['Daily spending limit', 'Weekly spending limit']);
+  });
+
+  it('ends with every command except /settings itself', () => {
+    const commands = items(settingsRows(base)).filter((row) => row.action.type === 'command' && row.label.startsWith('/'));
+    expect(commands.map((row) => row.label)).toEqual(COMMANDS.map((entry) => entry.command).filter((c) => c !== '/settings'));
   });
 
   it('only rows that do something can be highlighted', () => {
@@ -149,20 +141,23 @@ describe('opening the Settings screen', () => {
 });
 
 describe('the wheel over the typing box', () => {
-  it('reaches the box wherever mouse reporting is live; the conversation itself scrolls natively now', () => {
+  it('reads back through a long message instead of scrolling the conversation', () => {
+    session.transcriptScrollUp = 0;
     session.transcriptView = null;
-    const wheeled: [number, boolean][] = [];
-    session.inputWheel = (row, up) => {
-      wheeled.push([row, up]);
+    const wheeled: boolean[] = [];
+    session.inputWheel = (_row, up) => {
+      wheeled.push(up);
+      return true;
     };
     handleMouseInput('\x1b[<64;5;21M');
     handleMouseInput('\x1b[<65;5;21M');
-    expect(wheeled).toEqual([[21, true], [21, false]]);
-    // With no box listener, a wheel event is simply nobody's: the terminal
-    // scrolls itself in the plain conversation (there is no in-app scrolling
-    // to fall back to any more - that machinery is retired).
-    session.inputWheel = () => {};
+    expect(wheeled).toEqual([true, false]);
+    expect(session.transcriptScrollUp).toBe(0);
+    // Not over the box (or nothing to read back): the conversation scrolls as before.
+    session.inputWheel = () => false;
     handleMouseInput('\x1b[<64;5;5M');
+    expect(session.transcriptScrollUp).toBe(3);
     session.inputWheel = null;
+    session.transcriptScrollUp = 0;
   });
 });

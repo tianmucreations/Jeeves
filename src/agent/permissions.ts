@@ -228,7 +228,7 @@ export function answerApproval(approved: boolean, scope: 'once' | 'project' = 'o
   if (approved && scope === 'project' && current.trustable) {
     trustProject();
     if (current.command) trustCommandFamily(current.command);
-    session.addNotice(`From now on I won't ask before changing things in this project folder, ${getAddress() ?? 'Sir'} - every change is still backed up, so Settings, then Undo last change, puts it back. I'll still ask about anything outside it. Click Settings, then Ask before changes, to have me ask every time again.`);
+    session.addNotice(`From now on I won't ask before changing things in this project folder, ${getAddress() ?? 'Sir'} - every change is still backed up, so /undo puts it back. I'll still ask about anything outside it. Type /ask to have me ask every time again.`);
     for (let i = queue.length - 1; i >= 0; i--) {
       if (queue[i].trustable) queue.splice(i, 1)[0].resolve(true);
     }

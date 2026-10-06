@@ -99,7 +99,7 @@ async function searchOnPlan(query: string, site?: string): Promise<Citation[]> {
   const key = getZaiKey();
   if (!key) {
     recordWebUnavailable();
-    throw new Error('Web search on the Z.ai plan needs your Z.ai key - click Settings, then Manage keys to add it.');
+    throw new Error('Web search on the Z.ai plan needs your Z.ai key - type /keys to add it.');
   }
   try {
     const results = await zaiSearch(key, query, site);
@@ -124,7 +124,7 @@ export async function searchWeb(query: string, site?: string): Promise<Citation[
   const key = getOpenRouterKey();
   if (!key) {
     recordWebUnavailable();
-    throw new Error('Web search needs an OpenRouter key - click Settings, then Manage keys to add one.');
+    throw new Error('Web search needs an OpenRouter key - type /keys to add one.');
   }
   let lastError: unknown = null;
   for (const model of readingModels()) {

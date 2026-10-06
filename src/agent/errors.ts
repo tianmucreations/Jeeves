@@ -48,7 +48,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
   const make = (message: string, kind: ErrorKind): PlainError => ({ message, kind, detail: raw });
 
   if (/^no .*\bkey\b/.test(text)) {
-    return make('Jeeves isn\'t connected to a provider yet - click Settings, then Provider, to connect one. It takes about a minute.', 'auth');
+    return make('Jeeves isn\'t connected to an AI service yet - type /keys to connect one. It takes about a minute.', 'auth');
   }
   if (
     status === 401 ||
@@ -65,7 +65,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
     text.includes('authentication failed') ||
     text.includes('user not found')
   ) {
-    return make(`${service} didn't accept the key - click Settings, then Manage keys to check or replace it.`, 'auth');
+    return make(`${service} didn't accept the key - type /keys to check or replace it.`, 'auth');
   }
   // Z.ai's flat plan reports its time window as "Usage limit reached for 5 hour.
   // Your limit will reset at 2026-09-17 13:03:01" (seen in a real session). The
@@ -74,7 +74,7 @@ export function plainError(error: unknown, providerId?: string): PlainError {
     const reset = raw.match(/reset at \d{4}-\d{2}-\d{2} (\d{2}:\d{2})/i);
     const when = reset ? ` Z.ai says it resets at ${reset[1]}.` : '';
     return {
-      ...make(`Your ${service} plan has used up its allowance for now.${when} Click Settings to use a different model meanwhile.`, 'payment'),
+      ...make(`Your ${service} plan has used up its allowance for now.${when} Type /model to use a different model meanwhile.`, 'payment'),
       resetAt: reset ? reset[1] : '',
     };
   }
@@ -116,16 +116,13 @@ export function plainError(error: unknown, providerId?: string): PlainError {
     return make(`Couldn't reach ${service} - check the internet connection and ask again in a moment.`, 'network');
   }
   if ((status === 404 || text.includes('404') || text.includes('not found')) && text.includes('model')) {
-    return make("That model isn't available any more - click Settings to pick another.", 'model');
-  }
-  if (/image|vision|multimodal|multi-modal|picture/.test(text) && /not support|unsupported|does not accept|doesn't accept|cannot|can't|invalid/.test(text)) {
-    return make("This AI model can't see pictures. Choose a model that does - click Settings.", 'model');
+    return make("That model isn't available any more - type /model to pick another.", 'model');
   }
   if (text.includes('context') && (text.includes('length') || text.includes('too long'))) {
-    return make('This conversation grew too long for the model - click Settings to switch, or start a new conversation there.', 'context');
+    return make('This conversation grew too long for the model - type /model to switch, or /clear to start fresh.', 'context');
   }
   return make(
-    "Something went wrong with that request and I don't recognise the reason - please ask again. Click Settings, then Show every step to see the technical details next time.",
+    "Something went wrong with that request and I don't recognise the reason - please ask again. Type /verbose to see the technical details next time.",
     'other'
   );
 }

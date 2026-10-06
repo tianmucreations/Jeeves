@@ -16,12 +16,8 @@ export { getSystemPrompt };
 
 // Builds the message list for one turn; automatic summarisation of older turns (spec 3.3)
 // is deferred until long-conversation handling lands.
-export function buildTurnMessages(history: ModelMessage[], userText: string, images: { mediaType: string; data: string }[] = []): ModelMessage[] {
-  // Pictures travel with the words as extra parts of the same message.
-  const userMessage: ModelMessage =
-    images.length > 0
-      ? { role: 'user', content: [{ type: 'text', text: userText }, ...images.map((image) => ({ type: 'file' as const, data: image.data, mediaType: image.mediaType }))] }
-      : { role: 'user', content: userText };
+export function buildTurnMessages(history: ModelMessage[], userText: string): ModelMessage[] {
+  const userMessage: ModelMessage = { role: 'user', content: userText };
   return [...history, userMessage];
 }
 
@@ -84,15 +80,9 @@ export function summaryDue(conversationTokens: number, limit: number): boolean {
 // Condenses the whole conversation into a single summary message so a model can
 // continue without re-reading every turn: on a model switch, or automatically when
 // the conversation grows long.
-//
-// BACKGROUND-LAYER RULES (3 Oct refactor): the summary runs under the job's stop
-// signal, so Esc ends it (it used to keep spending after the person stopped);
-// and it writes NO status - the "working"/"idle" it used to stamp fought the
-// running job and briefly let a second message start inside the first. The
-// amber "tidying up…" note in the info bar is the only sign it is running.
-export async function summariseHistory(signal?: AbortSignal): Promise<void> {
+export async function summariseHistory(): Promise<void> {
   if (session.history.length === 0) return;
-  if (signal?.aborted) return;
+  session.setStatus('working');
   session.setTidying(true);
   try {
     const provider = getActiveProvider();
@@ -108,7 +98,6 @@ export async function summariseHistory(signal?: AbortSignal): Promise<void> {
       onToken: () => {},
       onReasoning: () => {},
       onToolCall: () => {},
-      abortSignal: signal,
     });
     for (const cost of result.stepCosts ?? []) reportStepCost(cost);
     const summary = result.text.trim();
@@ -129,4 +118,5 @@ export async function summariseHistory(signal?: AbortSignal): Promise<void> {
     noteSummaryFailure();
   }
   session.setTidying(false);
+  session.setStatus('idle');
 }

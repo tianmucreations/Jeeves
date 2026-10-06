@@ -1,6 +1,0 @@
-{
-  "name": "ink",
-  "version": "7.1.1-jeeves",
-  "type": "module",
-  "exports": { ".": "./index.js", "./package.json": "./package.json" }
-}

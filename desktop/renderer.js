@@ -122,17 +122,8 @@ function renderInfo(s) {
   s.segments.forEach((seg, i) => {
     if (i > 0) els.segments.appendChild(Object.assign(document.createElement('span'), { className: 'sep', textContent: '·' }));
     const span = document.createElement('span');
-    // The "/tasks" note in the bar is a door, not a dead end: clicking it opens
-    // (or closes) the tasks panel above the typing box.
-    const isTaskNote = /task(s)? running/.test(seg.text);
-    if (isTaskNote) {
-      span.className = 'seg cyan link';
-      span.textContent = seg.text;
-      span.addEventListener('click', () => window.jeeves.toggleTasks());
-    } else {
-      span.className = `seg ${seg.color ?? ''}`;
-      span.textContent = seg.text;
-    }
+    span.className = `seg ${seg.color ?? ''}`;
+    span.textContent = seg.text;
     els.segments.appendChild(span);
   });
 }
@@ -157,60 +148,6 @@ function render(s) {
   els.chat.hidden = false;
   renderTranscript(s.transcript);
 
-  // The job's checklist above the typing box while steps are left: ONE line
-  // naming the step in progress (the bullet-point boxes are gone - owner, 3 Oct).
-  const todosEl = document.getElementById('todos');
-  todosEl.hidden = !(s.todos?.length);
-  todosEl.textContent = '';
-  for (const line of s.todos ?? []) {
-    const row = document.createElement('div');
-    row.textContent = line;
-    row.className = 'now';
-    todosEl.appendChild(row);
-  }
-
-  // The background-tasks panel: the door behind the "/tasks" note in the info
-  // bar. Each task gets its own Stop button.
-  const tasksEl = document.getElementById('tasks');
-  tasksEl.hidden = !s.tasksOpen || !s.tasks?.length;
-  tasksEl.textContent = '';
-  for (const task of s.tasks ?? []) {
-    if (!s.tasksOpen) break;
-    const row = document.createElement('div');
-    row.className = 'now';
-    const label = document.createElement('span');
-    const seconds = Math.max(0, Math.round((Date.now() - task.startedAt) / 1000));
-    label.textContent = `#${task.id} ${task.plain} · ${seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`} — `;
-    const stop = document.createElement('button');
-    stop.className = 'btn';
-    stop.textContent = 'Stop';
-    stop.addEventListener('click', () => window.jeeves.stopTask(task.id));
-    row.appendChild(label);
-    row.appendChild(stop);
-    tasksEl.appendChild(row);
-  }
-
-  // A question with choices: a button each; typed words in the box are an answer too.
-  const questionEl = document.getElementById('question');
-  questionEl.hidden = !s.question;
-  if (s.question) {
-    document.getElementById('question-text').textContent = s.question.question;
-    const box = document.getElementById('question-options');
-    const key = JSON.stringify(s.question.options);
-    if (box.dataset.key !== key) {
-      box.dataset.key = key;
-      box.textContent = '';
-      s.question.options.forEach((option, index) => {
-        const button = document.createElement('button');
-        button.className = 'btn';
-        button.textContent = option.label;
-        if (option.description) button.title = option.description;
-        button.addEventListener('click', () => window.jeeves.answerQuestion(index));
-        box.appendChild(button);
-      });
-    }
-  }
-
   const asking = s.approval !== null;
   els.approval.hidden = !asking;
   els.hint.hidden = asking;
@@ -223,7 +160,7 @@ function render(s) {
     els.always.hidden = !s.approval.trustable;
   }
   els.stop.hidden = s.status !== 'working' && s.status !== 'awaiting-approval';
-  els.hint.textContent = els.stop.hidden ? 'Enter to send · Shift + Enter for a new line · Settings, then Undo last change, puts it back' : 'Esc or the square button stops Jeeves';
+  els.hint.textContent = els.stop.hidden ? 'Enter to send · Shift + Enter for a new line · /undo puts the last change back' : 'Esc or the square button stops Jeeves';
   els.input.placeholder = '';
   if (firstChat) els.input.focus();
   renderBusy();
@@ -258,72 +195,10 @@ function fitInput() {
   els.input.style.height = `${els.input.scrollHeight}px`;
 }
 
-// Pictures for the next message (pasted, or dropped on the window): shown as small
-// chips above the typing box, each with an x to take it back out.
-const pics = [];
-const MAX_PICTURE_BYTES = 5 * 1024 * 1024;
-function renderPics() {
-  const box = document.getElementById('pics');
-  box.hidden = pics.length === 0;
-  box.textContent = '';
-  pics.forEach((pic, index) => {
-    const chip = document.createElement('span');
-    chip.className = 'pic';
-    const thumb = document.createElement('img');
-    thumb.src = `data:${pic.mediaType};base64,${pic.data}`;
-    thumb.alt = '';
-    const remove = document.createElement('button');
-    remove.textContent = '×';
-    remove.title = 'Take this picture out';
-    remove.addEventListener('click', () => {
-      pics.splice(index, 1);
-      renderPics();
-      els.input.focus();
-    });
-    chip.append(thumb, `Picture ${index + 1}`, remove);
-    box.appendChild(chip);
-  });
-}
-function addPictureFile(file) {
-  if (!file || !/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return false;
-  if (file.size > MAX_PICTURE_BYTES) {
-    els.hint.textContent = `${file.name || 'That picture'} is over the 5 MB a picture can be - shrink it or take a smaller screenshot.`;
-    return true;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    pics.push({ name: file.name || 'pasted picture', mediaType: file.type, data: String(reader.result).split(',')[1] ?? '' });
-    renderPics();
-  };
-  reader.readAsDataURL(file);
-  return true;
-}
-els.input.addEventListener('paste', (event) => {
-  const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith('image/'));
-  if (files.length === 0) return;
-  event.preventDefault();
-  files.forEach(addPictureFile);
-});
-// The Picture button opens the computer's own "choose a picture" window.
-document.getElementById('attach').addEventListener('click', () => document.getElementById('attach-file').click());
-document.getElementById('attach-file').addEventListener('change', (event) => {
-  [...event.target.files].forEach(addPictureFile);
-  event.target.value = '';
-  els.input.focus();
-});
-document.addEventListener('dragover', (event) => event.preventDefault());
-document.addEventListener('drop', (event) => {
-  event.preventDefault();
-  [...(event.dataTransfer?.files ?? [])].forEach(addPictureFile);
-  els.input.focus();
-});
-
 function send() {
   const text = els.input.value;
-  if (!text.trim() && pics.length === 0) return;
-  window.jeeves.send(text || 'What is in this picture?', pics.map(({ name, mediaType, data }) => ({ name, mediaType, data })));
-  pics.length = 0;
-  renderPics();
+  if (!text.trim()) return;
+  window.jeeves.send(text);
   els.input.value = '';
   fitInput();
   els.scroller.scrollTop = els.scroller.scrollHeight;

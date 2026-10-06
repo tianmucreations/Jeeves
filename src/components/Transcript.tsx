@@ -1,173 +1,143 @@
-import React, { useMemo, useRef } from 'react';
-import { Static, Text } from '../vendor/ink/index.js';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { session, useSession, type TranscriptEntry } from '../state/session.js';
-import {
-  ANSWER_GUTTER,
-  ANSWER_GUTTER_COLOUR,
-  OWN_MESSAGE_BACKGROUND,
-  OWN_MESSAGE_TEXT,
-  buildDisplayLines,
-  entryDisplayLines,
-  isQuietEntry,
-  mergeToolGroups,
-  type DisplayLine,
-} from './transcript-layout.js';
+import { buildDisplayLines, ANSWER_GUTTER, ANSWER_GUTTER_COLOUR, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
+import { selectedRange } from '../ink/selection.js';
+import type { StyleSpan } from './markdown.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// THE CONVERSATION, THE CLAUDE CODE WAY (owner's order, 3 Oct: "finished text
-// feeds directly into the terminal's own native scrollback... scroll up and
-// down using the standard terminal scrolling action at any time, even while an
-// answer is printing").
-//
-// Until today Jeeves owned the whole window and scrolled internally, which
-// failed three times. Now the conversation is split the way Claude Code splits
-// it (Messages.tsx: "Content dropped from this slice has already been printed
-// to terminal scrollback - users can scroll up natively"):
-//
-//   • THE FEED — everything FINISHED, printed once into the terminal's own
-//     history via <Static>, never redrawn. The terminal's scrollbar, trackpad
-//     and Cmd+C selection reach it at all times.
-//   • THE LIVE TAIL — only what is still moving: the answer being written,
-//     the action in progress, the question waiting. A few rows above the
-//     typing box, redrawn every frame.
-//
-// An entry joins the feed the moment it settles. The feed never reprints (a
-// Static item is written exactly once), so the commit point must be stable:
-// it is the longest prefix of settled entries that does not split a mergeable
-// run (the condensing of repeated "Changed 1 file" lines happens at this
-// boundary — see mergeToolGroups).
-// ─────────────────────────────────────────────────────────────────────────────
-
-// A tool line whose run may still grow (the same action following it) must
-// stay in the live tail until its run settles, so the merged line can be
-// printed once, whole.
-function settlesAlone(entries: TranscriptEntry[], index: number): boolean {
-  const entry = entries[index];
-  const next = entries[index + 1];
-  if (entry.kind !== 'tool' || next === undefined || next.kind !== 'tool') return true;
-  const family = (data: { state: string; tool: string; quiet?: boolean }) => {
-    if (data.state === 'done' && !data.quiet && (data.tool === 'writeFile' || data.tool === 'editFile' || data.tool === 'runBash')) return data.tool;
-    if (data.state === 'failed' || data.state === 'declined') return `${data.tool}:${data.state}`;
-    return null;
-  };
-  const mine = family(entry.data);
-  return mine === null || mine !== family(next.data);
-}
-
-// How many entries have settled into the feed. Settled = finished kind (a user
-// message, an error, a notice), a tool line that answered, or an assistant
-// entry with something newer after it — or, crucially, the assistant entry of
-// a turn that has ENDED: a finished answer must land in the terminal's own
-// history the moment the job is done, not wait for a next message that may
-// never come (found by the stream-stability test, 3 Oct).
-export function settledCount(entries: TranscriptEntry[], turnSettled = false): number {
-  let count = 0;
-  while (count < entries.length) {
-    const entry = entries[count];
-    const isLast = count === entries.length - 1;
-    const settled =
-      entry.kind === 'user' ||
-      entry.kind === 'error' ||
-      entry.kind === 'notice' ||
-      entry.kind === 'reasoning' ||
-      (entry.kind === 'assistant' && (!isLast || turnSettled)) ||
-      (entry.kind === 'tool' && entry.data.state !== 'running' && entry.data.state !== 'awaiting');
-    if (!settled || !settlesAlone(entries, count)) break;
-    count += 1;
+// A formatted line cut into pieces wherever the style or the selection changes.
+function styledSegments(text: string, spans: StyleSpan[], selected: [number, number] | null): React.ReactNode[] {
+  const cuts = new Set<number>([0, text.length]);
+  for (const span of spans) {
+    cuts.add(span.from);
+    cuts.add(span.to);
   }
-  return count;
-}
-
-function FeedLine({ line, width }: { line: DisplayLine; width: number }): React.ReactElement {
-  if (line.spans || line.gutter) {
-    return (
-      <Text>
-        {line.gutter ? <Text color={ANSWER_GUTTER_COLOUR}>{ANSWER_GUTTER}</Text> : null}
-        {line.text ? line.text : ' '}
-      </Text>
+  if (selected) {
+    cuts.add(selected[0]);
+    cuts.add(selected[1]);
+  }
+  const points = [...cuts].filter((n) => n >= 0 && n <= text.length).sort((a, b) => a - b);
+  const pieces: React.ReactNode[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [from, to] = [points[i], points[i + 1]];
+    if (from === to) continue;
+    const style = spans.filter((span) => span.from <= from && span.to >= to);
+    pieces.push(
+      <Text
+        key={from}
+        bold={style.some((span) => span.bold)}
+        italic={style.some((span) => span.italic)}
+        color={style.some((span) => span.code) ? CODE_COLOUR : undefined}
+        inverse={selected !== null && from >= selected[0] && to <= selected[1]}
+      >
+        {text.slice(from, to)}
+      </Text>,
     );
   }
-  return (
-    <Text color={line.own ? OWN_MESSAGE_TEXT : line.color} backgroundColor={line.own ? OWN_MESSAGE_BACKGROUND : undefined} dimColor={line.dim}>
-      {line.text}
-    </Text>
-  );
+  return pieces;
 }
 
-// The printed conversation: settled entries only, merged where they repeat,
-// each rendered exactly once.
-//
-// THE APPEND-ONLY RULE: <Static> remembers HOW MANY items it has printed (a
-// plain count), never which. The item list must therefore only ever GROW — the
-// same entry always at the same position. Deriving the list fresh from the
-// transcript each render shifts positions whenever an older entry settles at a
-// different rate, and Static silently skips items (the vanishing-message bug,
-// 3 Oct). So the printed list is kept in a ref, only ever appended to, and the
-// whole <Static> is remounted (key=epoch) when the conversation itself is
-// replaced (/clear, resume).
-export function Feed({ entries, width, verbose, epoch, turnSettled }: { entries: TranscriptEntry[]; width: number; verbose: boolean; epoch: number; turnSettled: boolean }): React.ReactElement {
-  const printed = useRef<TranscriptEntry[]>([]);
-  const settled = entries.slice(0, settledCount(entries, turnSettled));
+// Inline code in Tianmu gold, as Claude Code gives it its own colour.
+const CODE_COLOUR = '#c9a96a';
 
-  const settledIds = new Set(settled.map((entry) => entry.id));
-  const printedIds = new Set(printed.current.map((entry) => entry.id));
-  // A replaced conversation: the first settled id is older than what we printed.
-  const replaced = printed.current.length > 0 && settled.length > 0 && settled[0].id < printed.current[0].id;
-  if (replaced || printedIds.size !== printed.current.length) printed.current = [];
-  for (const entry of settled) {
-    if (!printedIds.has(entry.id)) printed.current.push(entry);
-  }
-  void settledIds;
-  const merged = useMemo(() => mergeToolGroups(printed.current, verbose), [printed.current.length, verbose, width]);
-  // How many rows the printed history occupies ON SCREEN (the click mappings
-  // need the block's true position: right under the feed until the screen
-  // fills, then pinned to the bottom).
-  let rows_ = 0;
-  for (const entry of merged) {
-    if (isQuietEntry(entry, verbose)) continue;
-    rows_ += entryDisplayLines(entry, width, verbose).length;
-  }
-  session.feedRows = rows_;
-  return (
-    <Static key={epoch} items={merged}>
-      {(entry) => {
-        if (isQuietEntry(entry, verbose)) return null;
-        const lines = entryDisplayLines(entry, width, verbose);
-        return (
-          <React.Fragment key={entry.id}>
-            {lines.map((line, index) => (
-              <FeedLine key={index} line={line} width={width} />
-            ))}
-          </React.Fragment>
-        );
-      }}
-    </Static>
-  );
-}
+// Where the conversation sits on screen (1-based): below the top border and the
+// header row, one column in past the border and one of padding (app.tsx).
+const VIEW_TOP = 3;
+const VIEW_LEFT = 3;
 
-// The live tail: whatever is still moving, at most `max` rows, newest at the
-// bottom. When the answer runs longer than the tail, one dim line says where
-// the rest is - the scrollback above, reachable any time.
-export function LiveTail({ entries, width, verbose, max, turnSettled }: { entries: TranscriptEntry[]; width: number; verbose: boolean; max: number; turnSettled: boolean }): React.ReactElement {
+// Claude Code's ScrollBox pattern (ch13-14-terminal-ui.md): the outer box clips at
+// the viewport with overflow="hidden" and flexGrow={1}, so the transcript fills
+// every row left over by the fixed header, input, and footer slots - no dead space.
+// The content is anchored to the bottom (justifyContent flex-end), so the inner box
+// scrolls with a negative BOTTOM margin, which pushes it down past the bottom edge
+// and brings older lines in at the top. (A negative top margin, as in Claude Code's
+// top-anchored ScrollBox, does nothing to a bottom-anchored box - measured with
+// renderToString: the same last lines showed at every offset.) scrollTop is
+// clamped between 0 and contentHeight - viewportHeight, both measured live. While scrollTop is 0 the newest line sits at the bottom edge
+// (auto-follow): new content arrives and the view stays pinned to it.
+export function Transcript({ width }: { width: number }) {
   const s = useSession();
-  const visible = useMemo(() => {
-    const start = settledCount(entries, turnSettled);
-    return entries.slice(start);
-  }, [entries, turnSettled]);
-  const lines = useMemo(() => buildDisplayLines(visible, width, verbose), [visible, width, verbose]);
-  const hidden = Math.max(0, lines.length - max);
-  const shown = hidden > 0 ? lines.slice(hidden) : lines;
-  // The click mappings need to know how many rows the tail occupies; set
-  // silently (no redraw - it changes only when the tail does anyway).
-  session.liveTailRows = shown.length + (hidden > 0 ? 1 : 0) + (s.showLastReasoning && s.lastReasoning ? 1 : 0);
+  const { stdout } = useStdout();
+  const outer = useRef<DOMElement | null>(null);
+  const inner = useRef<DOMElement | null>(null);
+  const viewport = useBoxMetrics(outer);
+  const content = useBoxMetrics(inner);
+
+  const entries = useMemo<TranscriptEntry[]>(() => {
+    if (s.showLastReasoning && s.lastReasoning) {
+      return [...s.transcript, { id: -1, kind: 'reasoning', text: s.lastReasoning }];
+    }
+    return s.transcript;
+  }, [s.transcript, s.showLastReasoning, s.lastReasoning]);
+
+  const lines = useMemo(() => buildDisplayLines(entries, width, s.verbose), [entries, width, s.verbose]);
+
+  // Virtual scroll: never above the first line, never below the newest.
+  // Ink's measured height of the content lags a frame behind and, once the person
+  // has scrolled back, was seen to stop following the growing answer (26 Sept, in
+  // a real window) - so the number of lines drawn is the floor: every line is one row.
+  const contentRows = Math.max(lines.length, content.height);
+  const maxScroll = Math.max(0, contentRows - viewport.height);
+  // READING BACK WHILE JEEVES WRITES - the reading place is anchored to the TEXT, not to the
+  // bottom. The session counts rows up from the bottom, so every new line would push
+  // the page up; Claude Code's ScrollBox instead keeps scrollTop (rows from the TOP)
+  // and only follows when pinned to the bottom. Same thing here: whenever the person
+  // moves (the number in the session differs from what this component last settled
+  // on) the place is noted as rows-from-the-bottom AND how tall the content was; on
+  // every draw after that the offset is that plus the rows added since - worked out
+  // in THIS draw, so no frame is ever drawn with the page in the wrong place (the
+  // first version corrected it in an effect a frame later: 78 different pictures in
+  // 12 seconds of one answer, measured).
+  const place = useRef({ up: 0, rows: 0, settled: 0 });
+  if (s.transcriptScrollUp !== place.current.settled) {
+    place.current = { up: s.transcriptScrollUp, rows: contentRows, settled: s.transcriptScrollUp };
+  }
+  const followed = place.current.up === 0 ? 0 : Math.min(maxScroll, place.current.up + (contentRows - place.current.rows));
+  const scrollTop = Math.min(followed, maxScroll);
+  // Tell the session (silently: the number changes, nothing needs to redraw) so the
+  // next wheel notch or key press counts from where the page really is now.
+  if (session.transcriptScrollUp !== scrollTop) session.transcriptScrollUp = scrollTop;
+  place.current.settled = scrollTop;
+  useEffect(() => {
+    session.setTranscriptScrollMax(maxScroll);
+  }, [maxScroll]);
+  // The mouse turns a screen position into a line and character with this.
+  session.transcriptView = { top: VIEW_TOP, left: VIEW_LEFT, height: viewport.height, lines: lines.map((line) => line.text), gutters: lines.map((line) => line.gutter ?? 0), scrollTop };
+
   return (
-    <React.Fragment>
-      {hidden > 0 ? <Text dimColor wrap="truncate-end">{`  ↑ ${hidden} earlier lines above - scroll back any time`}</Text> : null}
-      {shown.map((line, index) => (
-        <FeedLine key={index} line={line} width={width} />
-      ))}
-      {/* The private thinking readout (/show thinking), still moving, sits here. */}
-      {s.showLastReasoning && s.lastReasoning ? <Text dimColor wrap="truncate-end">{`· ${s.lastReasoning.split('\n').pop() ?? ''}`}</Text> : null}
-    </React.Fragment>
+    <Box flexDirection="column" overflow="hidden" flexGrow={1} justifyContent="flex-end" ref={outer}>
+      <Box flexDirection="column" flexShrink={0} marginBottom={-scrollTop} ref={inner}>
+        {lines.map((line, index) => {
+          // Selected text is drawn reversed, as a terminal's own selection is.
+          const range = s.selection ? selectedRange(index, line.text.length) : null;
+          if (line.spans || line.gutter) {
+            return (
+              <Text key={index}>
+                {line.gutter ? <Text color={ANSWER_GUTTER_COLOUR}>{ANSWER_GUTTER}</Text> : null}
+                {styledSegments(line.text, line.spans ?? [], range)}
+              </Text>
+            );
+          }
+          return (
+            <Text
+              key={index}
+              color={line.own ? OWN_MESSAGE_TEXT : line.color}
+              backgroundColor={line.own ? OWN_MESSAGE_BACKGROUND : undefined}
+              dimColor={line.dim}
+            >
+              {range ? (
+                <>
+                  {line.text.slice(0, range[0])}
+                  <Text inverse>{line.text.slice(range[0], range[1])}</Text>
+                  {line.text.slice(range[1])}
+                </>
+              ) : (
+                line.text
+              )}
+            </Text>
+          );
+        })}
+      </Box>
+    </Box>
   );
 }

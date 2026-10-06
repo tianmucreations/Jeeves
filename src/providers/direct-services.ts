@@ -5,9 +5,7 @@
 // the official AI SDK package for each company, and prices and abilities from the
 // open models.dev catalogue (MIT licence), which OpenCode also uses.
 
-// The six with their own official packages, plus (like OpenCode's list of ~100) every
-// OpenAI-compatible company in the models.dev catalogue, added at run time below.
-export type DirectServiceId = string;
+export type DirectServiceId = 'anthropic' | 'openai' | 'google' | 'xai' | 'mistral' | 'groq';
 
 export interface DirectService {
   id: DirectServiceId;
@@ -18,8 +16,6 @@ export interface DirectService {
   // 18 Sept 2026 from each company's own descriptions and prices in models.dev (the
   // balanced tier - not the most expensive); not yet measured on the bench (plan step 6).
   defaults: string[];
-  // Companies added from the catalogue: the address requests go to.
-  baseURL?: string;
 }
 
 export const DIRECT_SERVICES: DirectService[] = [
@@ -34,13 +30,6 @@ export const DIRECT_SERVICES: DirectService[] = [
     label: 'OpenAI',
     keyPage: 'platform.openai.com/api-keys',
     defaults: ['gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4'],
-  },
-  {
-    // Signing in with a ChatGPT Plus or Pro plan instead of a key (providers/chatgpt.ts).
-    id: 'chatgpt',
-    label: 'ChatGPT',
-    keyPage: 'chatgpt.com',
-    defaults: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
   },
   {
     id: 'google',
@@ -71,34 +60,8 @@ export const DIRECT_SERVICES: DirectService[] = [
 // "Any compatible service": an address and a key the person pastes in.
 export const CUSTOM_SERVICE_ID = 'custom';
 
-// The catalogue's other companies (models.dev entries that speak the OpenAI format
-// at a fixed web address), filled in once the catalogue has loaded.
-export interface CompatibleProvider {
-  id: string;
-  name: string;
-  baseURL: string;
-  keyPage: string;
-}
-let compatible = new Map<string, DirectService>();
-
-// Ids Jeeves already treats specially, never taken over by a catalogue entry.
-const RESERVED = new Set(['openrouter', 'zai', 'ollama', 'custom', 'opencode-go', 'zai-coding-plan']);
-
-export function registerCompatible(list: CompatibleProvider[]): void {
-  const next = new Map<string, DirectService>();
-  for (const item of list) {
-    if (RESERVED.has(item.id) || DIRECT_SERVICES.some((service) => service.id === item.id)) continue;
-    next.set(item.id, { id: item.id, label: item.name, keyPage: item.keyPage, defaults: [], baseURL: item.baseURL });
-  }
-  compatible = next;
-}
-
-export function compatibleServices(): DirectService[] {
-  return [...compatible.values()];
-}
-
 export function directService(id: string): DirectService | undefined {
-  return DIRECT_SERVICES.find((service) => service.id === id) ?? compatible.get(id);
+  return DIRECT_SERVICES.find((service) => service.id === id);
 }
 
 export function isDirectService(id: string): id is DirectServiceId {

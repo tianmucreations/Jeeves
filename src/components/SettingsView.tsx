@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import path from 'node:path';
-import { Box, Text, useInput } from '../vendor/ink/index.js';
+import { Box, Text, useInput } from 'ink';
 import { session, useSession } from '../state/session.js';
 import { runTurn } from '../agent/loop.js';
 import { settingsRows, selectableIndexes, type SettingsAction } from '../commands/settings.js';
@@ -17,7 +17,7 @@ import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mous
 
 // The folder, service and model are changed between tasks only, as their own screens are.
 function busy(): boolean {
-  if (!session.busy()) return false;
+  if (session.status !== 'working' && !session.approvalPending) return false;
   session.addNotice('That can be changed between tasks - try again when I have finished.');
   return true;
 }
@@ -56,32 +56,6 @@ export function runSettingsAction(action: SettingsAction): void {
       return;
     case 'all-models':
       session.pickerStart = { provider: action.provider, full: true };
-      session.openPicker();
-      return;
-    case 'providers':
-      // Step 2: the provider list (then that provider's models, then how to connect).
-      session.pickerStart = null;
-      session.openPicker();
-      return;
-    case 'folders':
-      if (busy()) return;
-      session.folderPickerStart = 'list';
-      session.openFolderPicker();
-      return;
-    case 'chats':
-      session.openChats();
-      return;
-    case 'memory':
-      session.openMemory();
-      return;
-    case 'rewind':
-      session.openRewind();
-      return;
-    case 'spending':
-      session.openSpending();
-      return;
-    case 'more-providers':
-      session.pickerStart = { step: 'more' };
       session.openPicker();
       return;
     case 'limit':

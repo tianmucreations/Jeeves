@@ -36,8 +36,6 @@ export function browserCommand(url: string, platform: NodeJS.Platform = process.
 
 // Opens the address in the person's own browser, on every operating system.
 export function openInBrowser(url: string): void {
-  // Practice runs never open a real browser on the person's screen.
-  if (process.env.NODE_ENV === 'test' && process.env.JEEVES_NO_BROWSER) return;
   const command = browserCommand(url);
   try {
     const child = spawn(command[0] as string, command[1] as string[], { stdio: 'ignore', detached: true });

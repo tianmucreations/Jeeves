@@ -32,13 +32,13 @@ describe('system prompt', () => {
       'No wit, flourishes, metaphors or figures of speech - say the plain fact.',
       'Write for a person who has not seen your working.',
       'say what the thing actually is.',
-      'No preamble, no closing summary, no offer of further help, no restating the request.',
+      'No preamble, no closing summary, no offer of further help, and never restate the request.',
       'Never say "Let me...", "I\'ll now...", "Now let me...", or "First, I will..." before acting.',
       'A task is not finished until you say so in plain words; ending on an unfulfilled intention is not the same as finishing.',
       'always say plainly, in a sentence or two, that it is finished and what the outcome was - that is required, not optional.',
       'verify it: run the command, read the output, check the file.',
-      'Use the dedicated tool, not runBash:',
-      'Keep runBash for real system commands (git, npm, tests, builds), not ls, cat, pwd or echo.',
+      'When a dedicated tool exists, use it instead of runBash.',
+      'Reserve runBash for genuine system commands (git, npm, tests, builds) — not for ls, cat, pwd, or echo.',
       'If the user declines a permission, do not ask again for the same action.',
       'Prioritise accuracy over validating the user\'s beliefs',
     ]) {
@@ -168,7 +168,7 @@ describe("the projects folder fact (the wrong-drawer folder, 25 Sept: 'create a 
 describe('web research rules', () => {
   it('research before stating outside facts, from official sources, with the quote', () => {
     for (const rule of [
-      'Use the dedicated tool, not runBash: listDir to list, searchFiles for words inside files, findFiles for files by name,',
+      'You have seven tools: readFile, listDir, writeFile, runBash, webSearch, readWebPage, noteResearch.',
       'webSearch to find where to look. Its snippets are not checked facts.',
       "readWebPage on the most official source: the maker's own website, documentation, release list, or registry",
       'State the fact only once readWebPage has returned the exact quote',

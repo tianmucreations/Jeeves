@@ -45,7 +45,7 @@ describe('command dispatch', () => {
     await runTurn('/clear');
     // Only the note that says so is left (audit, 19 Sept: it used to clear in silence).
     expect(session.transcript.map((entry) => entry.kind)).toEqual(['notice']);
-    expect(session.transcript[0]).toMatchObject({ text: 'Started a fresh conversation - the earlier one stays saved.' });
+    expect(session.transcript[0]).toMatchObject({ text: 'Started a fresh conversation - the earlier one is cleared.' });
     expect(session.history).toHaveLength(0);
   });
 
@@ -60,9 +60,9 @@ describe('command dispatch', () => {
     expect(session.transcript.some((entry) => entry.kind === 'notice' && entry.text.includes('on'))).toBe(true);
   });
 
-  it('unknown commands point at Settings', async () => {
+  it('unknown commands point at /help', async () => {
     await runTurn('/bogus');
-    expect(session.transcript.some((entry) => entry.kind === 'notice' && entry.text.includes('Settings'))).toBe(true);
+    expect(session.transcript.some((entry) => entry.kind === 'notice' && entry.text.includes('/help'))).toBe(true);
   });
 
   it('clearConversation works directly', () => {
@@ -70,24 +70,5 @@ describe('command dispatch', () => {
     session.addNotice('note');
     clearConversation();
     expect(session.transcript).toHaveLength(0);
-  });
-});
-import { COMMAND_TABLE } from '../src/commands/registry.js';
-import { COMMANDS } from '../src/commands/help.js';
-import { settingsRows } from '../src/commands/settings.js';
-
-describe('one table of commands (Claude Code / OpenCode keep a registry)', () => {
-  it('every command is written once: Help, Settings and the typed commands all come from it', () => {
-    expect(COMMANDS.map((c) => c.command)).toEqual(COMMAND_TABLE.map((c) => c.command));
-    expect(new Set(COMMAND_TABLE.map((c) => c.command)).size).toBe(COMMAND_TABLE.length);
-    const base = { folder: '/x', chatFolder: '/x', recentProjects: [], providerId: 'zai', providerLabel: 'Z.ai', model: 'm', models: [], favorites: [], recents: [], services: [], connected: () => false, folderName: (f: string) => f, folderPath: (f: string) => f };
-    const listed = settingsRows(base as never).flatMap((row) => (row.kind === 'item' && row.action.type === 'command' ? [row.action.command] : []));
-    // Every command marked for Settings has its button, and nothing else is invented there.
-    expect(listed.filter((c) => c !== '/keys' && c !== '/address').sort()).toEqual(COMMAND_TABLE.filter((c) => c.place).map((c) => c.command).sort());
-  });
-  it('a command that is not in the table is answered plainly, and a plain message is not a command', async () => {
-    session.clearTranscript();
-    await runTurn('/nonsense');
-    expect(session.transcript.some((e) => e.kind === 'notice' && e.text.includes('click Settings'))).toBe(true);
   });
 });

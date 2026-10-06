@@ -9,11 +9,11 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { Provider, StreamOptions, StreamResult } from './types.js';
 import { silenceGuard } from './silence.js';
 import { repairToolCall } from './repair.js';
-import { prepareStepFor, stepCost, type FinishedStep } from './step-control.js';
-import { collectStream, MAX_TOOL_STEPS } from './stream-driver.js';
+import { prepareStepFor, type FinishedStep } from './step-control.js';
 import { directService, serviceNameFor, CUSTOM_SERVICE_ID, type DirectServiceId } from './direct-services.js';
 import { estimateCost, priceOf, type StepUsage } from './catalogue.js';
-import { chatGptModelFactory, currentChatGptStore } from './chatgpt.js';
+
+const MAX_TOOL_STEPS = 25;
 
 // Each company's official AI SDK package, at its default model type (OpenCode does the same).
 export function modelFactory(serviceId: DirectServiceId, apiKey: string): (modelId: string) => LanguageModel {
@@ -41,14 +41,6 @@ export function modelFactory(serviceId: DirectServiceId, apiKey: string): (model
     case 'groq': {
       const client = createGroq({ apiKey });
       return (id) => client.languageModel(id);
-    }
-    case 'chatgpt':
-      // No key: the person's ChatGPT plan, its tokens kept fresh by the store (chatgpt.ts).
-      return chatGptModelFactory(currentChatGptStore());
-    default: {
-      // Every other company in the catalogue: the OpenAI request format at its address.
-      const client = createOpenAICompatible({ name: serviceId, baseURL: directService(serviceId)?.baseURL ?? '', apiKey, includeUsage: true });
-      return (id) => client.chatModel(id);
     }
   }
 }
@@ -80,9 +72,7 @@ function streamWith(
   name: string,
   modelFor: (modelId: string) => LanguageModel,
   costOf: (modelId: string, usage: StepUsage) => number,
-  caching: boolean,
-  // ChatGPT's own address wants the rulebook in its own field, not as a system message, and nothing stored.
-  codex = false
+  caching: boolean
 ): Provider {
   return {
     id,
@@ -93,11 +83,8 @@ function streamWith(
       const system: string | SystemModelMessage | undefined =
         caching && instructions ? { role: 'system', content: instructions, providerOptions: ANTHROPIC_CACHE } : instructions;
       const guard = silenceGuard(abortSignal);
-      // Each company gets its own request (caching marks, the ChatGPT address's
-      // own fields); the READING of the reply is the one shared stream driver.
       const result = streamText({
-        instructions: codex ? undefined : system,
-        providerOptions: codex ? { openai: { instructions: instructions ?? '', store: false } } : undefined,
+        instructions: system,
         // The same limits on silence as the other services (see openrouter.ts).
         // Silence while the model answers is watched by silenceGuard (it pauses while a
         // command runs or waits for the person); the first piece still has 2 minutes.
@@ -121,10 +108,47 @@ function streamWith(
         // window; the failure still arrives below and is explained in plain English.
         onError: () => {},
       });
-      return collectStream(result, guard, { onToken, onReasoning, onToolCall }, ({ steps }) => ({
+      let streamedError: unknown = null;
+      for await (const part of result.stream) {
+        guard.onPart(part);
+        if (part.type === 'text-delta') {
+          onToken(part.text);
+        } else if (part.type === 'reasoning-delta') {
+          onReasoning(part.text);
+        } else if (part.type === 'tool-call') {
+          onToolCall({ id: part.toolCallId, name: part.toolName });
+        } else if (part.type === 'error') {
+          streamedError = part.error;
+        }
+      }
+      guard.stop();
+      // The real stream error (a rejected key, a missing model) must win over the
+      // SDK's generic no-output error, which would otherwise mask the cause.
+      if (streamedError !== null) {
+        throw streamedError instanceof Error ? streamedError : new Error(String(streamedError));
+      }
+      const text = await result.text;
+      const finalStep = await result.finalStep;
+      const responseMessages = await result.responseMessages;
+      const usage = await result.usage;
+      const steps = await result.steps;
+      return {
+        text,
+        reasoning: finalStep.reasoningText ?? '',
+        messages: responseMessages,
+        usage: {
+          input: usage.inputTokens ?? 0,
+          output: usage.outputTokens ?? 0,
+          total: usage.totalTokens ?? 0,
+          cached: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+        },
+        cost: 0,
+        rateLimit: null,
         // Worked out from the price list: these services don't report a cost.
         stepCosts: steps.map(stepCostOf),
-      }));
+        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
+        finishReason: finalStep.finishReason,
+      };
     },
   };
 }
@@ -136,8 +160,7 @@ export function createDirectProvider(serviceId: DirectServiceId, apiKey: string)
     service.label,
     modelFactory(serviceId, apiKey),
     (modelId, usage) => estimateCost(priceOf(serviceId, modelId), usage),
-    serviceId === 'anthropic',
-    serviceId === 'chatgpt'
+    serviceId === 'anthropic'
   );
 }
 

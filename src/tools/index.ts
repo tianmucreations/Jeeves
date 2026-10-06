@@ -8,16 +8,8 @@ import { session } from '../state/session.js';
 import { requestApproval, isReadOnlyBashCommand } from '../agent/permissions.js';
 import { readFileSchema, runReadFile } from './readFile.js';
 import { writeFileSchema, runWriteFile } from './writeFile.js';
-import { editFileSchema, runEditFile, editRefusal, editedContent } from './editFile.js';
 import { listDirSchema, runListDir } from './listDir.js';
-import { runBashSchema, runRunBash, bareCdTarget } from './runBash.js';
-import { presentPlanSchema, runPresentPlan, offerPlanSchema, runOfferPlan } from '../agent/plan.js';
-import { askQuestionSchema, askQuestion } from '../agent/question.js';
-import { memorySchema, runMemory } from './memory.js';
-import { helperSchema, runHelper } from '../agent/helper.js';
-import { searchFilesSchema, runSearchFiles, findFilesSchema, runFindFiles } from './search.js';
-import { todoListSchema, runTodoList } from './todoList.js';
-import { backgroundTaskSchema, runBackgroundTask } from './background.js';
+import { runBashSchema, runRunBash } from './runBash.js';
 import { webSearchSchema, runWebSearch, readWebPageSchema, runReadWebPage, researchService, borrowedSearchNeedsAsking, borrowedSearchQuestion } from './web/research.js';
 import { ensureCheckpoint, isOutsideProject, commandMayReachOutside } from '../checkpoints/index.js';
 import { resolveFromCwd } from '../platform/paths.js';
@@ -91,11 +83,11 @@ export function plainToolFailure(error: unknown): string {
   if (limit) return `still running after ${limit}, so it was stopped`;
   if (text.includes('timed out') || text.includes('etimedout') || text.includes('stopped after') || text.includes("didn't finish")) return 'took too long';
   if (text.includes('binary file')) return 'not a text file';
-  if (text.includes('web search needs an openrouter key')) return 'needs an OpenRouter key (click Settings, then Manage keys)';
+  if (text.includes('web search needs an openrouter key')) return 'needs an OpenRouter key (type /keys)';
   if (text.includes('web search is not available')) return 'web search is not available right now';
   if (text.includes("web search isn't available with")) return "web search isn't available with this service yet";
   if (text.includes('was not allowed in this conversation')) return 'not allowed';
-  if (text.includes('needs your z.ai key')) return 'needs your Z.ai key (click Settings, then Manage keys)';
+  if (text.includes('needs your z.ai key')) return 'needs your Z.ai key (type /keys)';
   if (text.includes("couldn't open")) return "that website wouldn't open";
   if (text.includes('not a valid web address') || text.includes('only web pages')) return 'not a web address';
   if (text.includes('needs an interactive terminal')) return 'that program needs typing in a window of its own';
@@ -120,9 +112,7 @@ function defineTool<S extends z.ZodObject>(config: {
   permission: boolean | ((input: z.output<S>) => boolean);
   summarize: (input: z.output<S>) => string;
   label: (input: z.output<S>, result: string) => string;
-  run: (input: z.output<S>, signal?: AbortSignal) => Promise<string>;
-  // True when this action changes things: refused while Plan first is on.
-  changes?: (input: z.output<S>) => boolean;
+  run: (input: z.output<S>) => Promise<string>;
   // Whether this action can change files - if so, the project folder is backed up
   // first, so /undo can put it back.
   changesFiles?: (input: z.output<S>) => boolean;
@@ -154,16 +144,10 @@ function defineTool<S extends z.ZodObject>(config: {
   return tool({
     description: config.description,
     inputSchema: config.schema,
-    execute: async (rawInput, execOptions) => {
+    execute: async (rawInput) => {
       // The SDK validates before execute; parsing again keeps this layer strictly typed.
       const input = config.schema.parse(rawInput);
       const summary = config.summarize(input);
-      // Plan first (agent/plan.ts): nothing is changed until a plan has been approved.
-      if (session.planMode && config.changes?.(input)) {
-        const line = session.addToolLine(config.name, summary, 'running');
-        session.updateToolLine(line, { state: 'failed', label: 'not yet - plan first is on' });
-        throw new PlainError('Not done: plan first is on, so nothing may be changed yet. Look around, then call presentPlan and wait for the approval.');
-      }
       // Read-before-write (and changed-since-read): refused before any question,
       // so the person is never asked to allow something that would be unsafe.
       const invalid = (await config.validate?.(input)) ?? null;
@@ -218,7 +202,7 @@ function defineTool<S extends z.ZodObject>(config: {
         await ensureCheckpoint();
       }
       try {
-        const result = await truncate(await config.run(input, execOptions?.abortSignal));
+        const result = await truncate(await config.run(input));
         session.updateToolLine(lineId, { state: 'done', label: config.label(input, result), quiet: config.quiet?.(input) ?? false });
         return result;
       } catch (error) {
@@ -264,35 +248,12 @@ export const TOOLS: ToolSet = {
     run: runListDir,
     hold: (input) => holdUntilReproduced('listDir', input.path, false),
   }),
-  searchFiles: defineTool({
-    name: 'searchFiles',
-    description: 'Find words (or a pattern) INSIDE the files of a folder, with the line. Use it instead of opening files one by one.',
-    schema: searchFilesSchema,
-    permission: false,
-    quiet: () => true,
-    summarize: (input) => clip(input.pattern, 50),
-    label: (input, result) => `Searched for ${clip(input.pattern, 40)} (${result.startsWith('Found') ? result.split(':')[0].replace('Found ', '') : 'nothing found'})`,
-    run: async (input) => runSearchFiles(input),
-    hold: (input) => holdUntilReproduced('searchFiles', input.pattern, false),
-  }),
-  findFiles: defineTool({
-    name: 'findFiles',
-    description: 'Find files BY NAME in a folder, with * as a wildcard (for example "*.pdf"). Newest first.',
-    schema: findFilesSchema,
-    permission: false,
-    quiet: () => true,
-    summarize: (input) => clip(input.pattern, 50),
-    label: (input, result) => `Looked for ${clip(input.pattern, 40)} (${result.startsWith('No files') ? 'none found' : `${result.split('\n').filter((l) => !l.startsWith('(')).length} found`})`,
-    run: async (input) => runFindFiles(input),
-    hold: (input) => holdUntilReproduced('findFiles', input.pattern, false),
-  }),
   writeFile: defineTool({
     name: 'writeFile',
     description:
       'Write text content to a file, creating the file if it does not exist. To change a file that already exists, read it first.',
     schema: writeFileSchema,
     permission: true,
-    changes: () => true,
     // Claude Code's FileWriteTool.validateInput: an existing file must have been
     // read in this conversation, and must not have changed since (a file the
     // person edited by hand mid-conversation can never be clobbered).
@@ -312,29 +273,6 @@ export const TOOLS: ToolSet = {
     // Outside the project still asks every time (no Always Allow), but the
     // "Heads up... /undo can't reverse" line is gone: it only frightened people
     // (owner, 26 Sept: Claude Code and OpenCode show nothing like it).
-    warningInline: true,
-  }),
-  editFile: defineTool({
-    name: 'editFile',
-    description:
-      'Change one part of an existing file: replace an exact piece of text with new text. Prefer this to writeFile for any change to a file that already exists. Read the file first; oldText must match exactly and be the only match (or set replaceAll).',
-    schema: editFileSchema,
-    permission: true,
-    // As Claude Code's FileEditTool.validateInput: read first, unchanged since, and the
-    // old text found exactly once (or replaceAll).
-    validate: (input) => editRefusal(input),
-    // The changed lines ride on the question itself.
-    preview: async (input) => {
-      const edited = await editedContent(input);
-      return edited ? writePreview(resolveFromCwd(input.path), edited.after) : null;
-    },
-    summarize: (input) => input.path,
-    label: () => 'Changed 1 file',
-    run: runEditFile,
-    hold: async (input) => holdUntilReproduced('editFile', input.path, true) ?? (await holdForWrite(input.path, resolveFromCwd(input.path), process.cwd())),
-    changesFiles: () => true,
-    warning: (input) => (isOutsideProject(input.path) ? 'outside the project folder' : null),
-    alreadyTrustedElsewhere: (input) => isOutsideProject(input.path) && isPathTrusted(input.path),
     warningInline: true,
   }),
   webSearch: defineTool({
@@ -363,19 +301,16 @@ export const TOOLS: ToolSet = {
   }),
   runBash: defineTool({
     name: 'runBash',
-    description:
-      'Run a shell command and return its output. The working directory carries over between commands (a bare `cd <folder>` moves it, silently); you never need `cd x && command` - just `cd x` once, then run commands.',
+    description: 'Run a shell command and return its output.',
     schema: runBashSchema,
     // Read-only commands never ask (the allowlist lives in permissions.ts);
     // command kinds the person has already allowed in this folder don't ask
     // either - but only while the command stays inside this project folder
-    // (see runBashNeedsPermission). A bare `cd` is not a command the person
-    // needs to know about at all: it moves the remembered working directory.
-    permission: (input) => bareCdTarget(input.command) === null && runBashNeedsPermission(input.command),
-    changes: (input) => bareCdTarget(input.command) === null && !isReadOnlyBashCommand(input.command),
+    // (see runBashNeedsPermission).
+    permission: (input) => runBashNeedsPermission(input.command),
     approvalCommand: (input) => input.command,
     warningInline: true,
-    quiet: (input) => bareCdTarget(input.command) !== null || isReadOnlyBashCommand(input.command),
+    quiet: (input) => isReadOnlyBashCommand(input.command),
     summarize: (input) => {
       const described = describeCommand(input.command);
       // No "(outside this project)" tail either (owner, 26 Sept: neither Claude Code
@@ -384,11 +319,8 @@ export const TOOLS: ToolSet = {
       return described;
     },
     label: (input) => describeDone(input.command),
-    run: async (input, signal) => {
-      // The job's stop signal reaches the shell command now: Esc ends the command
-      // actually running, not just the loop around it (3 Oct).
-      const output = await runRunBash(input, signal);
-      if (bareCdTarget(input.command) !== null) return output;
+    run: async (input) => {
+      const output = await runRunBash(input);
       // Looking around (a search that finds nothing exits 1) is not a problem to research.
       if (isReadOnlyBashCommand(input.command)) return output;
       const exit = output.match(/^exit code: (\d+|unknown)$/m)?.[1];
@@ -396,106 +328,17 @@ export const TOOLS: ToolSet = {
       return note ? output + note : output;
     },
     hold: (input) =>
-      bareCdTarget(input.command) !== null
-        ? null
-        : holdUntilReproduced('runBash', input.command, commandEditsFiles(input.command)) ??
-          (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
-    changesFiles: (input) => bareCdTarget(input.command) === null && !isReadOnlyBashCommand(input.command),
+      holdUntilReproduced('runBash', input.command, commandEditsFiles(input.command)) ??
+      (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
+    changesFiles: (input) => !isReadOnlyBashCommand(input.command),
     warning: (input) =>
-      bareCdTarget(input.command) !== null
-        ? null
-        : !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
-          ? 'outside the project folder'
-          : null,
+      !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
+        ? 'outside the project folder'
+        : null,
     alreadyTrustedElsewhere: (input) =>
-      bareCdTarget(input.command) === null &&
-      !isReadOnlyBashCommand(input.command) &&
-      commandMayReachOutside(input.command) &&
-      isCommandTrusted(input.command),
+      !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command) && isCommandTrusted(input.command),
   }),
 };
-
-TOOLS.offerPlan = defineTool({
-  name: 'offerPlan',
-  description:
-    'Ask the person, with Yes/No buttons, whether to plan first, before a big or unclear job.',
-  schema: offerPlanSchema,
-  permission: false,
-  summarize: () => 'plan first?',
-  label: (_input, result) => (result.includes('now ON') ? 'Planning first' : result.includes('did not answer') ? 'Plan offer not answered' : 'Going ahead without a plan'),
-  run: runOfferPlan,
-});
-
-TOOLS.presentPlan = defineTool({
-  name: 'presentPlan',
-  description: 'Show the person your plan and wait for their approval (Go ahead / Change the plan).',
-  schema: presentPlanSchema,
-  permission: false,
-  summarize: (input) => clip(input.plan.split('\n')[0], 60),
-  label: (_input, result) => (result.includes('approved') ? 'Plan approved' : result.includes('did not answer') ? 'Plan not answered' : 'Plan needs changes'),
-  run: runPresentPlan,
-});
-
-TOOLS.askQuestion = defineTool({
-  name: 'askQuestion',
-  description:
-    'Ask the person to choose between two to four options, as buttons (they can also type). Waits for the answer.',
-  schema: askQuestionSchema,
-  permission: false,
-  summarize: (input) => clip(input.question, 60),
-  label: (input, result) => (result.startsWith('The person did not answer') ? `Asked: ${clip(input.question, 50)} - no answer` : `Asked: ${clip(input.question, 40)} - ${clip(result, 40)}`),
-  run: async (input) => {
-    const answer = await askQuestion(input);
-    return answer ? answer : 'The person did not answer (they stopped the job).';
-  },
-});
-
-// A helper can only look: these, and no helper of its own.
-const HELPER_TOOLS = ['readFile', 'listDir', 'searchFiles', 'findFiles', 'webSearch', 'readWebPage'] as const;
-
-TOOLS.helper = defineTool({
-  name: 'helper',
-  description: 'Send a helper to look into something (read files, search, use the web) and report back briefly. It cannot change anything and sees none of this conversation, so give it everything it needs. Several can go at once.',
-  schema: helperSchema,
-  permission: false,
-  summarize: (input) => clip(input.task, 60),
-  label: (input) => `Helper looked into: ${clip(input.task, 50)}`,
-  run: async (input, signal) => runHelper(input, { tools: Object.fromEntries(HELPER_TOOLS.map((name) => [name, TOOLS[name]])), signal }),
-});
-
-TOOLS.memory = defineTool({
-  name: 'memory',
-  description:
-    'Remember or forget a note between conversations (when asked, or told a lasting preference). Never save passwords, keys or private numbers.',
-  schema: memorySchema,
-  permission: false,
-  summarize: (input) => (input.note ? clip(input.note, 60) : input.action),
-  label: (input, result) => (input.action === 'remember' ? (result.startsWith('Remembered') ? `Remembered: ${clip(input.note ?? '', 50)}` : 'Already remembered') : input.action === 'forget' ? (result.startsWith('Forgot') ? 'Forgot a note' : 'No note matched') : 'Checked what is remembered'),
-  run: async (input) => runMemory(input),
-});
-
-TOOLS.todoList = defineTool({
-  name: 'todoList',
-  description:
-    'The job\'s checklist: send the whole list each time, one step in_progress, each completed when truly done.',
-  schema: todoListSchema,
-  permission: false,
-  quiet: () => true,
-  summarize: (input) => `${input.todos.length} steps`,
-  label: () => 'Updated the to-do list',
-  run: async (input) => runTodoList(input),
-});
-
-TOOLS.backgroundTask = defineTool({
-  name: 'backgroundTask',
-  description: 'List, read the output of, or stop commands left running in the background with runBash background: true.',
-  schema: backgroundTaskSchema,
-  permission: false,
-  quiet: (input) => input.action !== 'stop',
-  summarize: (input) => (input.id !== undefined ? `${input.action} task ${input.id}` : input.action),
-  label: (input) => (input.action === 'stop' ? 'Stopped a background task' : 'Checked the background tasks'),
-  run: async (input) => runBackgroundTask(input),
-});
 
 // Research before building or patching: the note that releases a hold. Shown to the
 // person in full, because code can make research happen but not make it good.

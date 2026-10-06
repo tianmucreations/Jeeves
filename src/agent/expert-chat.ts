@@ -28,13 +28,9 @@ export const expertChat: ExpertChat = async (model, messages, maxTokens) => {
   if (isDirectService(providerId)) {
     const key = serviceKey(providerId);
     if (!key) throw new Error('the expert needs a key for this service');
-    const rules = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
-    // ChatGPT's own address wants the rulebook in its own field, and nothing stored.
-    const codex = providerId === 'chatgpt';
     const result = await generateText({
       model: modelFactory(providerId, key)(model),
-      instructions: codex ? undefined : rules || undefined,
-      providerOptions: codex ? { openai: { instructions: rules, store: false } } : undefined,
+      instructions: messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n') || undefined,
       messages: messages.filter((m) => m.role === 'user').map((m) => ({ role: 'user' as const, content: m.content })),
       // Thinking models spend part of the allowance before answering, so it is larger here.
       maxOutputTokens: maxTokens * 4,

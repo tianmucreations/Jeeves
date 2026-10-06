@@ -1,13 +1,13 @@
 import { session } from '../state/session.js';
+import { pointAt, copySelection, wordBoundsAt } from './selection.js';
 
-// SGR mouse tracking (modes 1000 + 1002 + 1006). Since the move to the
-// terminal's own scrollback (3 Oct), the plain conversation deliberately has
-// mouse reporting OFF: the wheel, the scrollbar and click-drag selection belong
-// to the TERMINAL, exactly as in Claude Code - scroll back any time, even
-// mid-answer, and select + copy natively. The app turns mouse reporting on
-// only where there is something of ours to click: a question, the Allow
-// buttons, or a screen with lists and buttons. This module parses those
-// reports and routes the clicks.
+// SGR mouse tracking (modes 1000 + 1002 + 1006), enabled for the whole session by
+// the AlternateScreen takeover and disabled on every exit path. Claude Code's
+// approach: in the alternate screen the terminal has no scrollback, so wheel
+// events are captured and translated into transcript scrolling. The trade-off is
+// the terminal's own click-drag selection, so selection is done here instead
+// (selection.ts): drag to select, copied on release. Fn in Terminal.app still
+// bypasses capture for the terminal's own selection.
 export const ENABLE_MOUSE_TRACKING = '\x1b[?1000h\x1b[?1002h\x1b[?1006h';
 export const DISABLE_MOUSE_TRACKING = '\x1b[?1006l\x1b[?1002l\x1b[?1000l';
 
@@ -25,8 +25,8 @@ export interface ParsedMouseEvent {
 }
 
 // Whoever is showing on screen listens here. Mouse reports never travel through
-// Ink's keyboard events (see stdin-filter.ts); they are handed to the listeners
-// directly - the typing box and the screens with lists.
+// Ink's keyboard events any more (see stdin-filter.ts); they are handed to the
+// listeners directly - the conversation's typing box and the Settings list.
 const listeners = new Set<(report: string) => void>();
 export function subscribeMouse(listener: (report: string) => void): () => void {
   listeners.add(listener);
@@ -34,9 +34,9 @@ export function subscribeMouse(listener: (report: string) => void): () => void {
 }
 
 // A trackpad flick sends dozens of wheel reports a second. They are gathered for
-// one frame's time and handled together (one redraw, not dozens) - the same
-// coalescing Claude Code applies to its own scrolls. Anything else (a click, a
-// drag) first lets the gathered wheel reports through, then runs.
+// one frame's time and handled together (one redraw, not dozens) - Claude Code's
+// ScrollBox does the same with a microtask-coalesced scrollBy. Anything else
+// (a click, a drag) first lets the gathered wheel reports through, then runs.
 const WHEEL_BATCH_MS = 16;
 let wheelQueue: string[] = [];
 let wheelTimer: NodeJS.Timeout | null = null;
@@ -91,71 +91,73 @@ export function parseMouseSequence(input: string): ParsedMouseEvent | null {
   return null;
 }
 
-// Where clicks land, in priority order: a question's choices, the info bar's
-// buttons, the Allow buttons, then the typing box. The wheel over the typing
-// box reads back through a message taller than the box; everywhere else a
-// wheel event has nothing of ours to move (the terminal scrolls itself), so
-// it is ignored.
-// THE HAND-OFF (6 Oct). The buttons in the info bar need mouse reports, but with
-// reporting on the terminal sends the wheel and drags to us instead of scrolling
-// its own history or selecting. So the mouse is ours only until the person
-// reaches for the terminal's own abilities: a turn of the wheel, or a click in
-// the printed history above the live block. Then reporting goes off for a few
-// seconds (the terminal scrolls and selects natively, Cmd+C copies) and comes
-// back by itself, so the buttons work again. The one report that triggers it is
-// spent; everything after it is the terminal's.
-const HAND_OFF_MS = 4000;
-let handOffTimer: NodeJS.Timeout | null = null;
-let restoreMouse: (() => void) | null = null;
-export function setMouseRestore(restore: (() => void) | null): void {
-  restoreMouse = restore;
-}
-export function mouseHandedOff(): boolean {
-  return handOffTimer !== null;
-}
-// A new screen with buttons of its own gets the mouse back at once.
-export function endHandOff(): void {
-  if (!handOffTimer) return;
-  clearTimeout(handOffTimer);
-  handOffTimer = null;
-  restoreMouse?.();
-}
-export function handOffToTerminal(ms = HAND_OFF_MS): void {
-  try {
-    process.stdout.write(DISABLE_MOUSE_TRACKING);
-  } catch {
-    // A closed stream must never crash the app.
-  }
-  if (handOffTimer) clearTimeout(handOffTimer);
-  handOffTimer = setTimeout(() => {
-    handOffTimer = null;
-    restoreMouse?.();
-  }, ms);
-  handOffTimer.unref?.();
-}
+// Wheel up scrolls the transcript up 3 rows, wheel down 3 rows back (or, over a
+// long message in the typing box, that message); the session clamps at the newest
+// (0) and the Transcript clamps at the oldest. The info bar's Settings button
+// opens Settings. A left-button
+// press in the conversation starts a selection, dragging extends it, and releasing
+// copies it. Nothing here ever reaches the text being typed.
+// Double-click selects the word under the pointer and triple-click the whole line,
+// copied when the button comes up - as Claude Code (App.tsx: 500 ms, one cell of
+// jitter allowed) and every terminal's own selection. Most people "highlight"
+// something by double-clicking it, which used to do nothing here (owner, 26 Sept).
+const MULTI_CLICK_MS = 500;
+const lastClick = { time: 0, col: -1, row: -1, count: 0 };
+let multiClickSelection = false;
 
 export function handleMouseInput(input: string): void {
   const event = parseMouseSequence(input);
   if (event === null) return;
   if (event.kind === 'wheel') {
-    if (session.inputWheel?.(event.row, event.button === 0) === true) return;
-    // Anywhere else: the terminal's own scrolling takes over.
-    handOffToTerminal();
+    // Over a message taller than the typing box, the wheel reads back through it
+    // (owner, 23 Sept: only the keys did it); everywhere else it scrolls the conversation.
+    if (session.inputWheel?.(event.row, event.button === 0)) return;
+    session.scrollTranscript(event.button === 0 ? 3 : -3);
     return;
   }
   if (event.button !== 0) return;
-  if (event.kind === 'press' && session.blockTop > 0 && event.row < session.blockTop) {
-    handOffToTerminal();
+  if (event.kind === 'press') {
+    const point = pointAt(event.col, event.row);
+    const now = Date.now();
+    const near = now - lastClick.time < MULTI_CLICK_MS && Math.abs(event.col - lastClick.col) <= 1 && Math.abs(event.row - lastClick.row) <= 1;
+    lastClick.count = near ? lastClick.count + 1 : 1;
+    Object.assign(lastClick, { time: now, col: event.col, row: event.row });
+    multiClickSelection = false;
+    const text = point ? session.transcriptView?.lines[point.line] : undefined;
+    if (point && text !== undefined && lastClick.count >= 2) {
+      const range = lastClick.count === 2 ? wordBoundsAt(text, point.ch) : ([0, Array.from(text).length] as [number, number]);
+      if (range) {
+        session.setSelection({ anchor: { line: point.line, ch: range[0] }, focus: { line: point.line, ch: Math.max(range[0], range[1] - 1) } });
+        multiClickSelection = true;
+        return;
+      }
+    }
+    session.setSelection(point ? { anchor: point, focus: point } : null);
+    // Outside the conversation: a click answers a pending question if one is on
+    // screen, otherwise it places the cursor in the typing box.
+    if (!point) {
+      if (session.footerClick?.(event.col, event.row)) return;
+      if (session.approvalPending) session.approvalClick?.(event.col, event.row);
+      else session.inputClick?.(event.col, event.row);
+    }
     return;
   }
-  if (event.kind === 'press') {
-    if (session.questionClick?.(event.col, event.row)) return;
-    if (session.tasksClick?.(event.col, event.row)) return;
-    if (session.footerClick?.(event.col, event.row)) return;
-    if (session.approvalPending) {
-      session.approvalClick?.(event.col, event.row);
-      return;
+  // A word or line picked by double or triple click stays as picked, and is
+  // copied when the button comes up.
+  if (multiClickSelection) {
+    if (event.kind === 'release') {
+      multiClickSelection = false;
+      void copySelection();
     }
-    session.inputClick?.(event.col, event.row);
+    return;
+  }
+  const current = session.selection;
+  if (!current) return;
+  const point = pointAt(event.col, event.row, true);
+  if (point) session.setSelection({ anchor: current.anchor, focus: point });
+  if (event.kind === 'release') {
+    const moved = point && (point.line !== current.anchor.line || point.ch !== current.anchor.ch);
+    if (moved) void copySelection();
+    else session.setSelection(null);
   }
 }

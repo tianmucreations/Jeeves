@@ -105,7 +105,7 @@ function wrapWithPrefix(s: string, width: number, prefix: string, indent: string
 // The tools' everyday names on screen; the internal names are for the model only.
 // runBash's summaries are full plain phrases of their own ("Create folder X"),
 // so they carry no tool name - the phrase IS the question.
-const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', searchFiles: 'Search', findFiles: 'Find', helper: 'Helper', writeFile: 'Write', editFile: 'Edit', runBash: '', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
+const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: '', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
 
 export function toolName(tool: string): string {
   return TOOL_NAMES[tool] ?? tool;
@@ -116,10 +116,6 @@ function phrase(tool: string, summary: string): string {
 }
 
 export function toolLineText(d: ToolLineData): { text: string; color?: 'yellow' | 'red'; dim?: boolean } {
-  // A merged group carries its finished sentence whole (see mergeToolGroups).
-  if (d.mergedText) {
-    return { text: d.mergedText, color: d.state === 'failed' || d.state === 'declined' ? 'red' : undefined };
-  }
   if (d.state === 'awaiting') {
     return { text: `? ${phrase(d.tool, d.summary)} — allow?`, color: 'yellow' };
   }
@@ -161,137 +157,6 @@ function answerLines(text: string, width: number, keep: boolean): { text: string
 // A finished look-around (read, list, search) is not kept on screen unless /verbose.
 export function isQuietEntry(entry: TranscriptEntry, verbose: boolean): boolean {
   return !verbose && entry.kind === 'tool' && entry.data.state === 'done' && entry.data.quiet === true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// THE CLUTTER FIX (owner, 3 Oct: "collapse these into a single, clean, dynamic
-// summary line"). Runs of the same finished action used to stack a line each —
-// seven "✓ Changed 1 file" rows in one job. They are merged HERE, at the
-// moment the group settles into the terminal's history: one line, with the
-// count. The lines the person watches while the job runs stay as they are
-// (they show progress); only what is printed into history condenses.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Which runs condense, and into what sentence.
-function mergeKindOf(entry: TranscriptEntry): 'change' | 'run' | 'fail' | 'decline' | null {
-  if (entry.kind !== 'tool') return null;
-  const d = entry.data;
-  if (d.mergedText) return null; // already merged
-  if (d.state === 'done' && !d.quiet && (d.tool === 'writeFile' || d.tool === 'editFile')) return 'change';
-  if (d.state === 'done' && !d.quiet && d.tool === 'runBash') return 'run';
-  if (d.state === 'failed') return 'fail';
-  if (d.state === 'declined') return 'decline';
-  return null;
-}
-
-const countWord = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
-export function mergeToolGroups(entries: TranscriptEntry[], verbose = false): TranscriptEntry[] {
-  const out: TranscriptEntry[] = [];
-  let index = 0;
-  while (index < entries.length) {
-    const entry = entries[index];
-    const kind = mergeKindOf(entry);
-    if (kind === null) {
-      out.push(entry);
-      index += 1;
-      continue;
-    }
-    // Gather the run: the same tool and kind, back to back. A quiet look-around
-    // in between prints nothing (unless /verbose is on), so it does not break
-    // the run - two changed files either side of a read still condense to one.
-    let end = index + 1;
-    while (end < entries.length) {
-      const next = entries[end];
-      if (isQuietEntry(next, verbose)) {
-        end += 1;
-        continue;
-      }
-      if (mergeKindOf(next) === kind && next.kind === 'tool' && entry.kind === 'tool' && next.data.tool === entry.data.tool) {
-        end += 1;
-        continue;
-      }
-      break;
-    }
-    const count = entries.slice(index, end).filter((member) => member.kind === 'tool' && mergeKindOf(member) === kind).length;
-    if (count === 1) {
-      out.push(entry);
-      index = end;
-      continue;
-    }
-    const tool = entry.kind === 'tool' ? entry.data.tool : '';
-    const last = entries[end - 1];
-    let mergedText: string;
-    if (kind === 'change') mergedText = `✓ Changed ${countWord(count, 'file')}`;
-    else if (kind === 'run') mergedText = `✓ Ran ${countWord(count, 'command')}`;
-    else if (kind === 'fail') {
-      const reason = last.kind === 'tool' ? last.data.label : '';
-      mergedText = `✗ ${toolName(tool)} failed ${countWord(count, 'time')}${reason ? ` - ${clipLine(reason, 50)}` : ''}`;
-    } else {
-      mergedText = `✗ ${toolName(tool)} - you said no (${countWord(count, 'time')})`;
-    }
-    out.push({
-      id: entry.kind === 'tool' ? entry.id : 0,
-      kind: 'tool',
-      data: { tool, summary: '', state: entry.kind === 'tool' ? entry.data.state : 'done', label: '', mergedText },
-    });
-    index = end;
-  }
-  return out;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ONE ENTRY AT A TIME, for the terminal's own history (3 Oct): finished text is
-// printed to the scrollback the moment it settles, and never redrawn. This
-// formats a single entry the same way buildDisplayLines would, so the
-// conversation reads identically — it just keeps flowing upwards.
-// ─────────────────────────────────────────────────────────────────────────────
-export function entryDisplayLines(entry: TranscriptEntry, width: number, verbose = false): DisplayLine[] {
-  const lines: DisplayLine[] = [];
-  const pushWrapped = (text: string, prefix: string, indent: string, color?: 'yellow' | 'red', dim?: boolean) => {
-    for (const line of wrapWithPrefix(text, width, prefix, indent)) {
-      lines.push({ text: line, color, dim });
-    }
-  };
-  switch (entry.kind) {
-    case 'user': {
-      // The gap that separates your words from what came before, then the grey band.
-      lines.push({ text: ' ' });
-      for (const line of wrapWithPrefix(entry.text, width, '> ', '  ')) {
-        lines.push({ text: line + ' '.repeat(Math.max(0, width - stringWidth(line))), own: true });
-      }
-      break;
-    }
-    case 'assistant': {
-      // Always a gap above Jeeves's answer, so it never runs straight on from
-      // the actions above it (the owner's request, 18 Sept).
-      lines.push({ text: ' ' });
-      for (const line of answerLines(entry.text, width - ANSWER_GUTTER.length, true)) {
-        lines.push({ text: line.text, spans: line.spans.length ? line.spans : undefined, gutter: ANSWER_GUTTER.length });
-      }
-      break;
-    }
-    case 'reasoning':
-      pushWrapped(entry.text, '· ', '  ', undefined, true);
-      break;
-    case 'error':
-      pushWrapped(entry.text, '', '', 'red');
-      break;
-    case 'notice':
-      pushWrapped(entry.text, '', '', 'yellow');
-      break;
-    case 'tool': {
-      if (entry.data.state === 'awaiting' && entry.data.detail) {
-        for (const line of entry.data.detail.split('\n')) {
-          lines.push({ text: clipLine('  ' + line, width), dim: true });
-        }
-      }
-      const rendered = toolLineText(entry.data);
-      lines.push({ text: clipLine(rendered.text, width), color: rendered.color, dim: rendered.dim });
-      break;
-    }
-  }
-  return lines;
 }
 
 export function buildDisplayLines(entries: TranscriptEntry[], width: number, verbose = false): DisplayLine[] {

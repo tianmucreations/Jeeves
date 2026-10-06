@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text, useWindowSize } from '../vendor/ink/index.js';
+import { Box, Text, useWindowSize } from 'ink';
 import { session, useSession } from '../state/session.js';
 import { allowanceToday } from '../agent/spending.js';
 import { isAuto, workerModel } from '../agent/auto.js';
@@ -13,7 +13,7 @@ export function shortModelName(model: string): string {
 
 export interface FooterSegment {
   text: string;
-  color?: 'yellow' | 'red' | 'cyan';
+  color?: 'yellow' | 'red';
 }
 
 export interface FooterInfo {
@@ -36,10 +36,6 @@ export interface FooterInfo {
   connected?: boolean;
   // What to do about it, in this app's words ("type /keys" or "open Settings").
   connectHint?: string;
-  // Commands left running in the background (Claude Code's "1 shell" pill, in plain words).
-  background?: number;
-  // Plan first is on: nothing changes until a plan is approved.
-  planFirst?: boolean;
 }
 
 const money = (value: number) => `$${value.toFixed(2)}`;
@@ -54,20 +50,8 @@ function quotaColor(pct: number): 'yellow' | 'red' | undefined {
 // The info bar says only what is worth a glance: which model is working (left),
 // and on the right what today has cost and what is left - or, for a flat-rate
 // plan, whether it has allowance. Warnings appear only when they matter.
-// The task note now names its own door (3 Oct): /tasks opens the panel where
-// each task can be seen and stopped - the old "ask me about it" was a dead end.
-export function backgroundNote(count: number): string {
-  return count === 1 ? '1 task running - /tasks to view it' : `${count} tasks running - /tasks to view them`;
-}
-
 export function footerSegments(info: FooterInfo): FooterSegment[] {
-  const rest = mainSegments(info);
-  const noted = info.background ? [{ text: backgroundNote(info.background), color: 'cyan' as const }, ...rest] : rest;
-  return info.planFirst ? [{ text: 'plan first', color: 'cyan' as const }, ...noted] : noted;
-}
-
-function mainSegments(info: FooterInfo): FooterSegment[] {
-  if (info.connected === false) return [{ text: `not connected - ${info.connectHint ?? 'click Settings to connect'}`, color: 'yellow' }];
+  if (info.connected === false) return [{ text: `not connected - ${info.connectHint ?? 'type /keys to connect'}`, color: 'yellow' }];
   const busy = info.busyNote ?? (info.tidying ? 'tidying up…' : null);
   const direct = isDirectService(info.providerId);
   // On the plan the percentages are never covered up: a busy note or "thinking…"
@@ -142,15 +126,6 @@ export function onSettingsButton(col: number): boolean {
   return col >= 2 && col <= SETTINGS_BUTTON.length + 1;
 }
 
-// A second button beside it, for showing Jeeves a picture: one click, then the computer's
-// own "choose a picture" window. Nothing to remember.
-export const PICTURE_BUTTON = ' Picture ';
-
-export function onPictureButton(col: number): boolean {
-  const first = SETTINGS_BUTTON.length + 3;
-  return col >= first && col < first + PICTURE_BUTTON.length;
-}
-
 export function Footer({ width }: { width: number }) {
   const s = useSession();
   // The row check still needs the live window height: the bar is the row above
@@ -158,13 +133,7 @@ export function Footer({ width }: { width: number }) {
   const { rows: windowRows } = useWindowSize();
   // The info bar is the box's bottom content row.
   session.footerClick = (col: number, row: number) => {
-    if (row !== session.footerRow) return false;
-    if (onPictureButton(col)) {
-      // A question waiting on the buttons above is answered first, never hidden.
-      if (!session.approvalPending) session.pictureButton?.();
-      return true;
-    }
-    if (!onSettingsButton(col)) return false;
+    if (row !== (windowRows ?? 24) - 1 || !onSettingsButton(col)) return false;
     // A question waiting on the buttons above is answered first, never hidden.
     if (session.approvalPending) return true;
     session.openSettings();
@@ -182,30 +151,20 @@ export function Footer({ width }: { width: number }) {
     zaiQuota: s.zaiQuota,
     // Whether a service is set up at all - not the brief "disconnected" of an internet drop.
     connected: hasCredentials(),
-    background: s.backgroundTasks.length,
-    planFirst: s.planMode,
   });
   const columns = width;
   const rightWidth = segments.reduce((sum, segment) => sum + segment.text.length, 0) + 3 * (segments.length - 1);
   // In Auto mode the bar names the model actually working: "auto · deepseek-v4-flash-0731".
   const name = isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model);
-  const model = fitModelName(name, columns - rightWidth - 2 - SETTINGS_BUTTON.length - PICTURE_BUTTON.length - 3);
+  const model = fitModelName(name, columns - rightWidth - 2 - SETTINGS_BUTTON.length - 2);
 
   // Full width, explicitly: a row-direction Box shrink-wraps its children and
   // space-between collapses (the same Ink trap recorded 17 Sept).
-  // The status dot moved here from the old window header (3 Oct): green when a
-  // service is connected, amber when not - the one glanceable "am I ready".
-  const dot = hasCredentials() ? '#34c759' : '#c9a96a';
   return (
     <Box justifyContent="space-between" width={columns}>
       <Text>
-        <Text color={dot}>● </Text>
         <Text color="yellow" inverse>
           {SETTINGS_BUTTON}
-        </Text>
-        {' '}
-        <Text color="yellow" inverse>
-          {PICTURE_BUTTON}
         </Text>
         {'  ' + model}
       </Text>

@@ -1,5 +1,5 @@
 // Built-in copy of the models.dev catalogue (MIT licence), trimmed to what Jeeves uses.
-// Taken 2026-10-06 by scripts/update-models-snapshot.ts - do not edit by hand.
+// Taken 2026-09-26 by scripts/update-models-snapshot.ts - do not edit by hand.
 import type { Catalogue } from './catalogue.js';
 
 export const MODELS_SNAPSHOT: Catalogue = {
@@ -9,7 +9,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Haiku 4.5 (latest)",
    "released": "2025-10-15",
    "context": 200000,
-   "image": true,
    "cost": {
     "input": 1,
     "output": 5,
@@ -22,7 +21,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Opus 4.5 (latest)",
    "released": "2025-11-24",
    "context": 200000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 25,
@@ -35,7 +33,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Sonnet 4.5 (latest)",
    "released": "2025-09-29",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 3,
     "output": 15,
@@ -48,7 +45,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Opus 5.5",
    "released": "2026-09-22",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 4,
     "output": 20,
@@ -61,7 +57,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Fable 5.1",
    "released": "2026-09-01",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 10,
     "output": 50,
@@ -74,7 +69,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Opus 4.5",
    "released": "2025-11-24",
    "context": 200000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 25,
@@ -87,7 +81,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Opus 5",
    "released": "2026-07-24",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 25,
@@ -100,7 +93,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Fable 5",
    "released": "2026-06-07",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 10,
     "output": 50,
@@ -113,7 +105,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Opus 4.8",
    "released": "2026-05-28",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 25,
@@ -126,7 +117,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Sonnet 4.5",
    "released": "2025-09-29",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 3,
     "output": 15,
@@ -139,7 +129,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Sonnet 5",
    "released": "2026-06-29",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 10,
@@ -152,7 +141,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Opus 4.6",
    "released": "2026-02-04",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 25,
@@ -165,7 +153,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Haiku 4.5",
    "released": "2025-10-15",
    "context": 200000,
-   "image": true,
    "cost": {
     "input": 1,
     "output": 5,
@@ -178,7 +165,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Claude Sonnet 4.6",
    "released": "2026-02-17",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 3,
     "output": 15,
@@ -187,24 +173,10 @@ export const MODELS_SNAPSHOT: Catalogue = {
    }
   },
   {
-   "id": "claude-sonnet-5-5",
-   "name": "Claude Sonnet 5.5",
-   "released": "2026-09-28",
-   "context": 1000000,
-   "image": true,
-   "cost": {
-    "input": 2,
-    "output": 10,
-    "cacheRead": 0.2,
-    "cacheWrite": 2.5
-   }
-  },
-  {
    "id": "claude-opus-4-7",
    "name": "Claude Opus 4.7",
    "released": "2026-04-14",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 25,
@@ -219,7 +191,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.4",
    "released": "2026-03-05",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 2.5,
     "output": 15,
@@ -231,7 +202,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.4 Pro",
    "released": "2026-03-05",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 30,
     "output": 180
@@ -242,7 +212,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.5 Pro",
    "released": "2026-04-23",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 30,
     "output": 180
@@ -253,7 +222,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.4 nano",
    "released": "2026-03-17",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 0.2,
     "output": 1.25,
@@ -265,7 +233,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-4o",
    "released": "2024-05-13",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 2.5,
     "output": 10,
@@ -277,7 +244,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5 Mini",
    "released": "2025-08-07",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 0.25,
     "output": 2,
@@ -289,7 +255,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.2 Pro",
    "released": "2025-12-11",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 21,
     "output": 168
@@ -300,7 +265,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.3 Codex",
    "released": "2026-02-05",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 1.75,
     "output": 14,
@@ -312,7 +276,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5 Nano",
    "released": "2025-08-07",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 0.05,
     "output": 0.4,
@@ -324,7 +287,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.6",
    "released": "2026-07-09",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 4,
     "output": 20,
@@ -337,7 +299,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5 Pro",
    "released": "2025-10-06",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 15,
     "output": 120
@@ -348,7 +309,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.3 Codex Spark",
    "released": "2026-02-05",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 1.75,
     "output": 14,
@@ -356,24 +316,10 @@ export const MODELS_SNAPSHOT: Catalogue = {
    }
   },
   {
-   "id": "gpt-6.1-sol",
-   "name": "GPT-6.1 Sol",
-   "released": "2026-09-29",
-   "context": 1050000,
-   "image": true,
-   "cost": {
-    "input": 2,
-    "output": 10,
-    "cacheRead": 0.1,
-    "cacheWrite": 2.5
-   }
-  },
-  {
    "id": "gpt-4o-2024-08-06",
    "name": "GPT-4o (2024-08-06)",
    "released": "2024-08-06",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 2.5,
     "output": 10,
@@ -385,7 +331,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-6 Astra",
    "released": "2026-09-04",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 10,
     "output": 50,
@@ -398,7 +343,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.1",
    "released": "2025-11-13",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 10,
@@ -410,7 +354,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-4o mini",
    "released": "2024-07-18",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 0.15,
     "output": 0.6,
@@ -422,23 +365,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "o3-pro",
    "released": "2025-06-10",
    "context": 200000,
-   "image": true,
    "cost": {
     "input": 20,
     "output": 80
-   }
-  },
-  {
-   "id": "gpt-daybreak-blue-latest",
-   "name": "Daybreak Blue",
-   "released": "2026-08-07",
-   "context": 1050000,
-   "image": true,
-   "cost": {
-    "input": 4,
-    "output": 20,
-    "cacheRead": 0.4,
-    "cacheWrite": 5
    }
   },
   {
@@ -446,7 +375,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.4 mini",
    "released": "2026-03-17",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 0.75,
     "output": 4.5,
@@ -458,7 +386,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.6 Luna",
    "released": "2026-07-09",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 0.2,
     "output": 1.2,
@@ -471,7 +398,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.2",
    "released": "2025-12-11",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 1.75,
     "output": 14,
@@ -483,7 +409,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.5",
    "released": "2026-04-23",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 5,
     "output": 30,
@@ -495,7 +420,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-4.1",
    "released": "2025-04-14",
    "context": 1047576,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 8,
@@ -507,7 +431,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-4o (2024-11-20)",
    "released": "2024-11-20",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 2.5,
     "output": 10,
@@ -519,7 +442,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-4.1 mini",
    "released": "2025-04-14",
    "context": 1047576,
-   "image": true,
    "cost": {
     "input": 0.4,
     "output": 1.6,
@@ -531,7 +453,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-6 Luna",
    "released": "2026-09-22",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 0.1,
     "output": 0.5,
@@ -544,7 +465,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.6 Terra",
    "released": "2026-07-09",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 12,
@@ -553,24 +473,10 @@ export const MODELS_SNAPSHOT: Catalogue = {
    }
   },
   {
-   "id": "gpt-daybreak-red-latest",
-   "name": "Daybreak Red",
-   "released": "2026-08-07",
-   "context": 400000,
-   "image": true,
-   "cost": {
-    "input": 12.5,
-    "output": 75,
-    "cacheRead": 1.25,
-    "cacheWrite": 15.625
-   }
-  },
-  {
    "id": "o3",
    "name": "o3",
    "released": "2025-04-16",
    "context": 200000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 8,
@@ -582,7 +488,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5",
    "released": "2025-08-07",
    "context": 400000,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 10,
@@ -594,7 +499,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-5.6 Sol",
    "released": "2026-07-09",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 4,
     "output": 20,
@@ -607,7 +511,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT-6 Sol",
    "released": "2026-09-22",
    "context": 1050000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 10,
@@ -622,7 +525,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini Flash Latest",
    "released": "2026-08-13",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.75,
     "output": 3.75,
@@ -633,15 +535,13 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "id": "gemma-4-31b-it",
    "name": "Gemma 4 31B IT",
    "released": "2026-04-02",
-   "context": 262144,
-   "image": true
+   "context": 262144
   },
   {
    "id": "gemini-flash-lite-latest",
    "name": "Gemini Flash-Lite Latest",
    "released": "2026-07-21",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.3,
     "output": 2.5,
@@ -653,7 +553,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.6 Flash",
    "released": "2026-07-21",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.75,
     "output": 3.75,
@@ -664,15 +563,13 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "id": "gemma-4-26b-a4b-it",
    "name": "Gemma 4 26B A4B IT",
    "released": "2026-04-02",
-   "context": 262144,
-   "image": true
+   "context": 262144
   },
   {
    "id": "gemini-3.5-flash-lite",
    "name": "Gemini 3.5 Flash Lite",
    "released": "2026-07-21",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.3,
     "output": 2.5,
@@ -684,7 +581,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.1 Pro Preview",
    "released": "2026-02-19",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 12,
@@ -696,7 +592,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 2.5 Computer Use Preview 10-2025",
    "released": "2025-10-07",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 10
@@ -707,7 +602,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.5 Flash",
    "released": "2026-05-19",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 1.5,
     "output": 9,
@@ -719,7 +613,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 2.5 Pro",
    "released": "2025-06-17",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 10,
@@ -731,7 +624,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 2.5 Flash",
    "released": "2025-06-17",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.3,
     "output": 2.5,
@@ -743,7 +635,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.7 Flash",
    "released": "2026-08-13",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.75,
     "output": 3.75,
@@ -755,7 +646,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.1 Pro Preview Custom Tools",
    "released": "2026-02-19",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 12,
@@ -767,7 +657,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3 Flash Preview",
    "released": "2025-12-17",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.5,
     "output": 3,
@@ -779,7 +668,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.8 Flash",
    "released": "2026-09-02",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.75,
     "output": 3.75,
@@ -791,7 +679,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 2.5 Flash-Lite",
    "released": "2025-06-17",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.1,
     "output": 0.4,
@@ -803,7 +690,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Gemini 3.1 Flash Lite",
    "released": "2026-05-07",
    "context": 1048576,
-   "image": true,
    "cost": {
     "input": 0.25,
     "output": 1.5,
@@ -817,7 +703,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok 4.7",
    "released": "2026-09-21",
    "context": 500000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 6,
@@ -829,7 +714,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok 4.3",
    "released": "2026-04-17",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 2.5,
@@ -841,7 +725,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok 4.20 (Reasoning)",
    "released": "2026-03-09",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 2.5,
@@ -853,7 +736,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok 4.5",
    "released": "2026-07-08",
    "context": 500000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 6,
@@ -865,7 +747,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok 4.20 (Non-Reasoning)",
    "released": "2026-03-09",
    "context": 1000000,
-   "image": true,
    "cost": {
     "input": 1.25,
     "output": 2.5,
@@ -877,7 +758,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok Build 0.1",
    "released": "2026-04-16",
    "context": 256000,
-   "image": true,
    "cost": {
     "input": 1,
     "output": 2,
@@ -889,7 +769,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Grok 4.6",
    "released": "2026-08-12",
    "context": 500000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 6,
@@ -903,11 +782,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Codestral (latest)",
    "released": "2024-05-29",
    "context": 256000,
-   "image": false,
    "cost": {
     "input": 0.3,
-    "output": 0.9,
-    "cacheRead": 0.03
+    "output": 0.9
    }
   },
   {
@@ -915,7 +792,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Large 2.1",
    "released": "2024-11-18",
    "context": 131072,
-   "image": false,
    "cost": {
     "input": 2,
     "output": 6
@@ -926,7 +802,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Nemo",
    "released": "2024-07-01",
    "context": 128000,
-   "image": false,
    "cost": {
     "input": 0.15,
     "output": 0.15
@@ -937,7 +812,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Medium 3.1",
    "released": "2025-08-12",
    "context": 262144,
-   "image": true,
    "cost": {
     "input": 0.4,
     "output": 2
@@ -948,11 +822,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Large (latest)",
    "released": "2024-11-01",
    "context": 262144,
-   "image": true,
    "cost": {
     "input": 0.5,
-    "output": 1.5,
-    "cacheRead": 0.05
+    "output": 1.5
    }
   },
   {
@@ -960,11 +832,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Small (latest)",
    "released": "2026-03-16",
    "context": 256000,
-   "image": true,
    "cost": {
     "input": 0.15,
-    "output": 0.6,
-    "cacheRead": 0.015
+    "output": 0.6
    }
   },
   {
@@ -972,7 +842,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GLM-5.2",
    "released": "2026-06-13",
    "context": 1000000,
-   "image": false,
    "cost": {
     "input": 1.4,
     "output": 4.4,
@@ -984,7 +853,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Ministral 8B (latest)",
    "released": "2024-10-01",
    "context": 128000,
-   "image": false,
    "cost": {
     "input": 0.1,
     "output": 0.1
@@ -995,7 +863,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mixtral 8x22B",
    "released": "2024-04-17",
    "context": 64000,
-   "image": false,
    "cost": {
     "input": 2,
     "output": 6
@@ -1006,7 +873,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Medium 3",
    "released": "2025-05-07",
    "context": 131072,
-   "image": true,
    "cost": {
     "input": 0.4,
     "output": 2
@@ -1017,7 +883,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Magistral Medium (latest)",
    "released": "2025-03-17",
    "context": 128000,
-   "image": false,
    "cost": {
     "input": 2,
     "output": 5
@@ -1028,7 +893,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Pixtral 12B",
    "released": "2024-09-01",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 0.15,
     "output": 0.15
@@ -1039,11 +903,19 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Small 4",
    "released": "2026-03-16",
    "context": 256000,
-   "image": true,
    "cost": {
     "input": 0.15,
-    "output": 0.6,
-    "cacheRead": 0.015
+    "output": 0.6
+   }
+  },
+  {
+   "id": "magistral-small",
+   "name": "Magistral Small",
+   "released": "2025-03-17",
+   "context": 128000,
+   "cost": {
+    "input": 0.5,
+    "output": 1.5
    }
   },
   {
@@ -1051,11 +923,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Large 3",
    "released": "2024-11-01",
    "context": 262144,
-   "image": true,
    "cost": {
     "input": 0.5,
-    "output": 1.5,
-    "cacheRead": 0.05
+    "output": 1.5
    }
   },
   {
@@ -1063,7 +933,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Pixtral Large (latest)",
    "released": "2024-11-01",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 2,
     "output": 6
@@ -1074,7 +943,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Voxtral Small (latest)",
    "released": "2025-07-15",
    "context": 32000,
-   "image": false,
    "cost": {
     "input": 0.1,
     "output": 0.3
@@ -1085,7 +953,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mixtral 8x7B",
    "released": "2023-12-11",
    "context": 32000,
-   "image": false,
    "cost": {
     "input": 0.7,
     "output": 0.7
@@ -1096,7 +963,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Small 3.2",
    "released": "2025-06-20",
    "context": 128000,
-   "image": true,
    "cost": {
     "input": 0.1,
     "output": 0.3
@@ -1107,7 +973,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GLM-5.3",
    "released": "2026-08-14",
    "context": 1000000,
-   "image": false,
    "cost": {
     "input": 1.4,
     "output": 4.4,
@@ -1119,11 +984,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Medium 3.5",
    "released": "2026-04-29",
    "context": 262144,
-   "image": true,
    "cost": {
     "input": 1.5,
-    "output": 7.5,
-    "cacheRead": 0.15
+    "output": 7.5
    }
   },
   {
@@ -1131,7 +994,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Ministral 3B (latest)",
    "released": "2024-10-01",
    "context": 128000,
-   "image": false,
    "cost": {
     "input": 0.04,
     "output": 0.04
@@ -1142,11 +1004,9 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Mistral Medium (latest)",
    "released": "2026-04-29",
    "context": 262144,
-   "image": true,
    "cost": {
     "input": 1.5,
-    "output": 7.5,
-    "cacheRead": 0.15
+    "output": 7.5
    }
   }
  ],
@@ -1156,7 +1016,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Llama 3.3 70B",
    "released": "2024-12-06",
    "context": 131072,
-   "image": false,
    "cost": {
     "input": 0.59,
     "output": 0.79
@@ -1167,7 +1026,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Llama 3.1 8B",
    "released": "2024-07-23",
    "context": 131072,
-   "image": false,
    "cost": {
     "input": 0.05,
     "output": 0.08
@@ -1178,7 +1036,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Qwen3.8 27B",
    "released": "2026-08-14",
    "context": 131042,
-   "image": true,
    "cost": {
     "input": 0.8,
     "output": 4
@@ -1189,7 +1046,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Qwen3.6 27B",
    "released": "2026-04-22",
    "context": 131072,
-   "image": true,
    "cost": {
     "input": 0.6,
     "output": 3,
@@ -1201,7 +1057,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT OSS 20B",
    "released": "2025-08-05",
    "context": 131072,
-   "image": false,
    "cost": {
     "input": 0.075,
     "output": 0.3,
@@ -1213,7 +1068,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "Safety GPT OSS 20B",
    "released": "2025-10-29",
    "context": 131072,
-   "image": false,
    "cost": {
     "input": 0.075,
     "output": 0.3
@@ -1224,7 +1078,6 @@ export const MODELS_SNAPSHOT: Catalogue = {
    "name": "GPT OSS 120B",
    "released": "2025-08-05",
    "context": 131072,
-   "image": false,
    "cost": {
     "input": 0.15,
     "output": 0.6,

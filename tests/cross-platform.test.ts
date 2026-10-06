@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { browserCommand, authorizeUrl } from '../src/providers/openrouter-signin.js';
-import { copyNative } from '../src/ink/clipboard.js';
+import { copyNative } from '../src/ink/selection.js';
 import { KEY_STORE, COPY_KEYS } from '../src/platform/wording.js';
 
 // Run on Windows, Linux and macOS by the GitHub checks with every save.

@@ -1,4 +1,3 @@
-import { HOW_IT_CONNECTS } from '../src/commands/settings.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { ModelMessage } from 'ai';
 import {
@@ -95,8 +94,7 @@ describe('direct connections: the model catalogue', () => {
 
   it('ships a built-in copy with every company, and each company has its everyday model in it', () => {
     for (const service of DIRECT_SERVICES) {
-      // The ChatGPT plan's list is OpenAI's, filtered (see directModelList).
-      const models = service.id === 'chatgpt' ? directModelList('chatgpt', MODELS_SNAPSHOT, null) : (MODELS_SNAPSHOT[service.id] ?? []);
+      const models = MODELS_SNAPSHOT[service.id] ?? [];
       expect(models.length, service.id).toBeGreaterThan(0);
       expect(service.defaults.some((id) => models.some((m) => m.id === id)), service.id).toBe(true);
     }
@@ -215,10 +213,7 @@ describe('direct connections: Anthropic prompt caching', () => {
 describe('direct connections: the rest of Jeeves', () => {
   it('lists every company and the compatible service in /model', () => {
     const ids = PROVIDER_ROWS.map((row) => row.id);
-    // The ChatGPT plan is not a line of its own: it is one of the two ways to connect on OpenAI's line.
-    for (const service of DIRECT_SERVICES.filter((s) => s.id !== 'chatgpt')) expect(ids).toContain(service.id);
-    expect(ids).not.toContain('chatgpt');
-    expect(HOW_IT_CONNECTS.openai).toContain('ChatGPT');
+    for (const service of DIRECT_SERVICES) expect(ids).toContain(service.id);
     expect(ids).toContain('custom');
     expect(PROVIDER_ROWS.find((row) => row.id === 'anthropic')?.description).not.toContain('through OpenRouter');
   });
@@ -246,7 +241,7 @@ describe('direct connections: the rest of Jeeves', () => {
 
   it("names the company in plain-English errors, including each one's own wording", () => {
     expect(plainError(Object.assign(new Error('invalid x-api-key'), { statusCode: 401 }), 'anthropic').message).toBe(
-      "Anthropic didn't accept the key - click Settings, then Manage keys to check or replace it."
+      "Anthropic didn't accept the key - type /keys to check or replace it."
     );
     expect(plainError(new Error('API key not valid. Please pass a valid API key.'), 'google').kind).toBe('auth');
     expect(plainError(new Error('Incorrect API key provided: sk-abc'), 'openai').kind).toBe('auth');

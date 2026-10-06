@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { statSync } from 'node:fs';
 import Conf from 'conf';
 import type { SpendReading } from '../state/today-spend.js';
 
@@ -33,46 +32,8 @@ interface JeevesConfig {
 // Persistent settings. Phase 7 expands this into the full config surface
 // (default model, favourites, recents, verbose flag). API keys are NEVER stored here (spec 5.3).
 // Tests run against their own settings file so they never touch - or race on - the real one.
-// THE SETTINGS FILE IS READ ONCE, NOT ON EVERY LOOK (6 Oct). `conf` re-reads and
-// re-parses the whole file on every single get(), and the typing box and the info
-// bar read settings every time they draw - and they draw dozens of times a second
-// while an answer streams. Measured with a CPU profile of a streaming answer:
-// ~10 of 22 seconds went on reading this file, which starved the keyboard (typed
-// letters arrived seconds late or not at all). Now the parsed file is kept in
-// memory and re-read only when the file itself changes (another window, the
-// desktop app, or our own set()). Values come back as copies, so a caller can
-// never change the cached copy by accident.
-class CachedConf<T extends Record<string, any>> extends Conf<T> {
-  private cachedStore: T | null = null;
-  private cachedStamp = '';
-  get store(): T {
-    try {
-      const info = statSync(this.path);
-      const stamp = `${info.mtimeMs}:${info.size}`;
-      if (this.cachedStore && stamp === this.cachedStamp) return this.cachedStore;
-      const fresh = super.store;
-      this.cachedStore = fresh;
-      this.cachedStamp = stamp;
-      return fresh;
-    } catch {
-      this.cachedStore = null;
-      return super.store;
-    }
-  }
-  set store(value: T) {
-    this.cachedStore = null;
-    super.store = value;
-  }
-  get(...args: any[]): any {
-    const value = (super.get as (...a: any[]) => any)(...args);
-    return value !== null && typeof value === 'object' ? structuredClone(value) : value;
-  }
-}
-
-const config = new CachedConf<JeevesConfig>({
-  // Each parallel test worker gets its own file (they used to trample one shared file, so a
-  // saved value could vanish mid-test); the practice runs of bench/ keep the plain name.
-  projectName: process.env.NODE_ENV === 'test' ? `jeeves-tests${process.env.VITEST_POOL_ID ? `-w${process.env.VITEST_POOL_ID}` : ''}` : 'jeeves',
+const config = new Conf<JeevesConfig>({
+  projectName: process.env.NODE_ENV === 'test' ? 'jeeves-tests' : 'jeeves',
 });
 
 // The folder Jeeves keeps its settings in (chosen by the conf library for each
@@ -238,12 +199,12 @@ export function clearAddress(): void {
   config.delete('address');
 }
 // The trimmed models.dev catalogue for direct connections (prices and abilities).
-export function getDirectCatalogue(): { catalogue: unknown; providers?: unknown; fetchedAt: number } | null {
+export function getDirectCatalogue(): { catalogue: unknown; fetchedAt: number } | null {
   return config.get('directCatalogue') ?? null;
 }
 
-export function setDirectCatalogue(catalogue: unknown, fetchedAt: number, providers?: unknown): void {
-  config.set('directCatalogue', { catalogue, providers, fetchedAt });
+export function setDirectCatalogue(catalogue: unknown, fetchedAt: number): void {
+  config.set('directCatalogue', { catalogue, fetchedAt });
 }
 
 // The address of the "any compatible service" the person added (its key is in the keychain).

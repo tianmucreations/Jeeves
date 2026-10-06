@@ -1,8 +1,8 @@
 import { COMMANDS } from './help.js';
-import { cleanModelName, type ModelInfo } from '../models/registry.js';
+import { cleanModelName, compactPrice, resolveCurated, type ModelInfo } from '../models/registry.js';
 import { isToolCapable } from '../models/filter.js';
 import { isModelUnreliable } from '../agent/model-health.js';
-import { AUTO_MODEL_ID } from '../agent/auto-ids.js';
+
 // One screen with everything in it, every choice listed out (owner, 23 Sept: "all
 // the folders including browse and new project... the providers, same thing, then
 // models and so on, command information down last"), in sections with a blank line
@@ -18,13 +18,6 @@ export type SettingsAction =
   | { type: 'service'; provider: string }
   | { type: 'model'; provider: string; model: ModelInfo }
   | { type: 'all-models'; provider: string }
-  | { type: 'more-providers' }
-  | { type: 'providers' }
-  | { type: 'folders' }
-  | { type: 'chats' }
-  | { type: 'memory' }
-  | { type: 'rewind' }
-  | { type: 'spending' }
   | { type: 'limit' }
   | { type: 'limit-weekly' };
 
@@ -50,22 +43,6 @@ export interface SettingsContext {
   folderPath: (folder: string) => string;
 }
 
-// How each service connects, in plain words (OpenCode's "(API key)" tags): a key you
-// paste in that is billed by use, or a flat monthly plan's key. Signing in with a
-// ChatGPT or Copilot subscription is not offered yet.
-export const HOW_IT_CONNECTS: Record<string, string> = {
-  openrouter: 'Pay per use, with a key (400+ models)',
-  zai: 'Flat monthly plan (GLM Coding Plan)',
-  anthropic: "Key only - Anthropic doesn't allow Claude plans in other apps",
-  openai: 'ChatGPT plan, or a key',
-  google: 'Pay per use, with a key',
-  xai: 'Pay per use, with a key',
-  groq: 'Pay per use, with a key',
-  mistral: 'Pay per use, with a key',
-  custom: 'Any other provider - its address and a key',
-  ollama: 'Free, runs on this computer',
-};
-
 export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   const rows: SettingsRow[] = [];
   const section = (title: string) => {
@@ -75,36 +52,59 @@ export function settingsRows(ctx: SettingsContext): SettingsRow[] {
   const item = (label: string, hint: string, action: SettingsAction, current = false) =>
     rows.push({ kind: 'item', label, hint, action, current });
 
-  // The order of the three choices Jeeves needs, as the owner laid it out (30 Sept): 1 the folder to work
-  // in, 2 the provider, 3 the model (and how to connect: a plan or a key). Each is one row, showing what
-  // is chosen now, that opens the full list for that step.
-  section('CHOOSE');
-  const inUse = ctx.models.find((model) => model.id === ctx.model);
-  const modelName = ctx.model === AUTO_MODEL_ID ? 'Auto' : inUse ? cleanModelName(inUse.name) : ctx.model;
-  item('1. Project folder →', ctx.folder === ctx.chatFolder ? 'now just chatting' : `now ${ctx.folderName(ctx.folder)}`, { type: 'folders' });
-  item('2. Provider →', `now ${ctx.providerLabel}${ctx.providerId === 'chatgpt' ? ' (your plan)' : ''}`, { type: 'providers' });
-  item('3. Model →', `now ${modelName} - and how to connect`, { type: 'service', provider: ctx.providerId === 'chatgpt' ? 'openai' : ctx.providerId });
+  section('FOLDERS');
+  item('Just chat', 'no project needed', { type: 'chat' }, ctx.folder === ctx.chatFolder);
+  for (const folder of ctx.recentProjects) {
+    item(ctx.folderName(folder), ctx.folderPath(folder), { type: 'folder', folder }, folder === ctx.folder);
+  }
+  item('Browse for a folder →', '', { type: 'browse' });
+  item('Create a new project →', '', { type: 'create' });
 
-  section('SPENDING');
-  item("What I've spent →", 'today, this week and what is left', { type: 'spending' });
+  section('PROVIDER');
+  for (const service of ctx.services) {
+    const state = service.id === ctx.providerId ? 'in use' : ctx.connected(service.id) ? 'connected' : '';
+    item(service.label, state ? `${state} - ${service.description}` : service.description, { type: 'service', provider: service.id }, service.id === ctx.providerId);
+  }
+
+  section(`MODELS - ${ctx.providerLabel} (in use - pick a plan above for others)`);
+  // Only models that can do tasks, and not one that has just failed twice running:
+  // Jeeves only offers what is proven to work.
+  const usable = (model: ModelInfo) => isToolCapable(model) && !isModelUnreliable(model.id);
+  const listed = new Set<string>();
+  const add = (model: ModelInfo, hint: string) => {
+    if (listed.has(model.id) || !usable(model)) return;
+    listed.add(model.id);
+    item(cleanModelName(model.name), hint, { type: 'model', provider: ctx.providerId, model }, model.id === ctx.model);
+  };
+  if (ctx.providerId === 'openrouter') {
+    for (const pick of resolveCurated(ctx.models)) add(pick.model, pick.blurb);
+  }
+  const byId = new Map(ctx.models.map((model) => [model.id, model]));
+  // The one in use, then favourites and recent ones, then (a short list like Z.ai's) the rest.
+  for (const id of [ctx.model, ...ctx.favorites, ...ctx.recents]) {
+    const model = byId.get(id);
+    if (model) add(model, compactPrice(model.promptPrice, model.completionPrice, model.priceLabel));
+  }
+  if (ctx.providerId !== 'openrouter') {
+    for (const model of ctx.models) add(model, compactPrice(model.promptPrice, model.completionPrice, model.priceLabel));
+  }
+  item(ctx.providerId === 'openrouter' ? 'All models →' : `Choose a ${ctx.providerLabel} model →`, ctx.providerId === 'openrouter' ? 'search every model, including free ones' : '', {
+    type: 'all-models',
+    provider: ctx.providerId,
+  });
+
+  section('KEYS & SPENDING');
+  item('Manage keys', 'connect an AI service, or remove one', { type: 'command', command: '/keys' });
   item('Daily spending limit', 'the most Jeeves may spend in a day', { type: 'limit' });
   item('Weekly spending limit', 'the most Jeeves may spend in a week', { type: 'limit-weekly' });
 
   section('YOU');
   item('How I address you', "Sir, Ma'am, or a name", { type: 'command', command: '/address' });
-  item('What I remember →', 'the notes I keep about you and this folder', { type: 'memory' });
 
-  section('CONVERSATIONS');
-  item('Earlier conversations →', 'carry on where you stopped', { type: 'chats' });
+  section('COMMANDS - type these any time, or choose one here');
   for (const entry of COMMANDS) {
-    if (entry.place === 'conversation') item(entry.label ?? entry.command, entry.description, { type: 'command', command: entry.command });
-  }
-  item('Go back to an earlier point →', 'put the folder back to before one of my changes', { type: 'rewind' });
-
-  section('MORE');
-  for (const entry of COMMANDS) {
-    if (entry.place !== 'more') continue;
-    item(entry.label ?? entry.command, entry.description, { type: 'command', command: entry.command });
+    if (entry.command === '/settings') continue;
+    item(entry.command, entry.description, { type: 'command', command: entry.command });
   }
   return rows;
 }

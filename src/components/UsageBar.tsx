@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from '../vendor/ink/index.js';
+import { Text } from 'ink';
 
 export function usageFraction(value: number, max: number): number {
   if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return 0;
