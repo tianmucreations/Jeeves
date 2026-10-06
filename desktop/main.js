@@ -47,7 +47,8 @@ const { toolLineText, isQuietEntry } = await engine('components/transcript-layou
 const { footerSegments, shortModelName } = await engine('components/Footer.js');
 const { answerQuestion, answerOption, askQuestion } = await engine('agent/question.js');
 const { COMMAND_TABLE } = await engine('commands/registry.js');
-const { todoLines, todosUnfinished } = await engine('tools/todoList.js');
+const { todoHeadline, todosUnfinished } = await engine('tools/todoList.js');
+const { stopBackgroundById } = await engine('tools/background.js');
 const { allowanceToday } = await engine('agent/spending.js');
 const { isAuto, workerModel } = await engine('agent/auto.js');
 const { killAllRunningCommands } = await engine('tools/runBash.js');
@@ -135,8 +136,14 @@ function snapshot() {
     model: isAuto(s.model) ? `auto · ${shortModelName(s.activeModel ?? workerModel())}` : shortModelName(s.model),
     segments,
     // The job's checklist, only while steps are left (the terminal draws the same lines).
+    // The job's checklist, only while steps are left: ONE line naming the step in
+    // progress (the bullet-point boxes are gone - owner, 3 Oct).
     question: session.question ? { question: session.question.question, options: session.question.options } : null,
-    todos: todosUnfinished(session.todos) ? todoLines(session.todos, 8) : [],
+    todos: todosUnfinished(session.todos) ? [todoHeadline(session.todos)].filter(Boolean) : [],
+    // Background tasks and the open/closed state of their panel (the door
+    // behind the "/tasks" note in the info bar).
+    tasks: session.backgroundTasks.map((task) => ({ id: task.id, plain: task.plain, startedAt: task.startedAt })),
+    tasksOpen: session.tasksOpen,
   };
 }
 
@@ -242,6 +249,19 @@ ipcMain.on('cancel-change-folder', () => {
 });
 
 ipcMain.handle('ready', () => snapshot());
+// The background-tasks panel (the door behind the "/tasks" note in the info bar).
+ipcMain.on('toggle-tasks', () => {
+  if (session.backgroundTasks.length === 0) {
+    session.addNotice('Nothing is running in the background right now.');
+    return;
+  }
+  session.setTasksOpen(!session.tasksOpen);
+  sendState();
+});
+ipcMain.on('stop-task', (_event, id) => {
+  stopBackgroundById(Number(id));
+  sendState();
+});
 // Highlighted text is copied here (the window's own clipboard door refuses when it is not the focused window).
 ipcMain.handle('copy-text', (_event, text) => {
   if (typeof text !== 'string' || !text) return false;
@@ -477,13 +497,12 @@ async function takeShots(out) {
     await wait(1000);
     win.webContents.send('open-settings');
     await wait(1500);
-    console.log(`settings: earlier-conversations section ${await js("[...document.querySelectorAll('#settings h3')].some((h) => h.textContent === 'Earlier conversations')")}, all-providers search ${await js("!!document.getElementById('more-search')")}, more buttons ${await js("[...document.querySelectorAll('[data-send]')].map((b) => b.textContent.split('put')[0].slice(0, 20)).length")}, other providers listed ${await js("document.querySelectorAll('#more-services .service').length")}`);
+    await shot('31-settings.png');
+    console.log(`settings sections: ${await js("[...document.querySelectorAll('#settings .settings-body h3')].map((h) => h.textContent).join(' | ')")}, other providers listed ${await js("document.querySelectorAll('#more-services .service').length")}, folder step: ${await js("document.getElementById('folder-step-name').textContent")}`);
     await js("[...document.querySelectorAll('#services .service')].find((b) => b.textContent.startsWith('OpenAI')).click()");
     await wait(600);
     console.log(`OpenAI in Settings: how it connects ${await js("[...document.querySelectorAll('#service-detail button')].map((b) => b.textContent).filter((t) => t.includes('ChatGPT') || t.includes('key')).join(' | ')")}`);
     console.log(`What I've spent section lines: ${await js("document.querySelectorAll('#spending dt').length")}`);
-    console.log(`Go back section: ${await js("[...document.querySelectorAll('#settings h3')].some((h) => h.textContent === 'Go back to an earlier point')")}`);
-    console.log(`What I remember section: ${await js("[...document.querySelectorAll('#settings h3')].some((h) => h.textContent === 'What I remember')")}`);
     console.log(`More buttons (from the table): ${await js("[...document.querySelectorAll('#commands .service span')].map((b) => b.textContent).join(', ')")}`);
     await js("document.getElementById('close-settings').click()");
     await wait(300);

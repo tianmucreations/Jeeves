@@ -1,6 +1,6 @@
 import { session } from '../state/session.js';
 import { setRecentProjects, getAddress } from '../platform/config.js';
-import { displayPath } from '../platform/paths.js';
+import { displayPath, setShellCwd } from '../platform/paths.js';
 import { chatNotice, readyLine } from '../platform/chat-folder.js';
 
 // Moves Jeeves into a folder - the folder list and Settings both come through here,
@@ -10,6 +10,7 @@ import { chatNotice, readyLine } from '../platform/chat-folder.js';
 export function enterFolder(folder: string, remember = true): boolean {
   try {
     process.chdir(folder);
+    setShellCwd(folder);
   } catch {
     // Staying in the current folder is the safe fallback.
   }

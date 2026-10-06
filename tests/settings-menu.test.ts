@@ -47,13 +47,21 @@ const items = (rows: SettingsRow[]) => rows.filter((row): row is Extract<Setting
 const headers = (rows: SettingsRow[]) => rows.filter((row) => row.kind === 'header').map((row) => (row as { title: string }).title);
 
 describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
-  it('runs in order: conversation, the AI and folder, keys and spending, you, and the rest last', () => {
+  it('runs in the owner\'s order (30 Sept): the three choices first - 1 folder, 2 provider, 3 model - then spending, you, conversations, more', () => {
     const titles = headers(settingsRows(base));
-    expect(titles).toEqual(['CONVERSATION', 'AI AND FOLDER', 'KEYS & SPENDING', 'YOU', 'MORE']);
+    expect(titles).toEqual(['CHOOSE', 'SPENDING', 'YOU', 'CONVERSATIONS', 'MORE']);
+    const steps = items(settingsRows(base)).slice(0, 3).map((row) => row.label);
+    expect(steps).toEqual(['1. Project folder →', '2. Provider →', '3. Model →']);
+  });
+
+  it('has no separate keys list: connecting and disconnecting are part of choosing the provider and model', () => {
+    const labels = items(settingsRows(base)).map((row) => row.label);
+    expect(labels.some((label) => /keys/i.test(label))).toBe(false);
+    expect(items(settingsRows(base)).some((row) => row.action.type === 'command' && row.action.command === '/keys')).toBe(false);
   });
 
   it('is short enough to see nearly all of it in one window (the long lists were burying the buttons)', () => {
-    expect(settingsRows(base).length).toBeLessThan(32);
+    expect(settingsRows(base).length).toBeLessThan(34);
   });
 
   it('puts a blank line between sections, and never one at the very top', () => {
@@ -64,16 +72,25 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
     });
   });
 
-  it('the AI is one row saying what is in use now, and opening the full provider and model lists', () => {
-    const row = items(settingsRows(base)).find((r) => r.action.type === 'ai')!;
-    expect(row.label).toBe('AI provider and model →');
-    expect(row.hint).toBe('now OpenRouter - Auto');
-    const onZai = items(settingsRows({ ...base, providerId: 'zai', providerLabel: 'Z.ai', model: 'glm-5.3', models: ZAI_MODELS })).find((r) => r.action.type === 'ai')!;
-    expect(onZai.hint).toBe('now Z.ai - GLM-5.3');
+  it('step 2 says which provider is in use now, and step 3 which model, each opening its own list', () => {
+    const rows = items(settingsRows(base));
+    const provider = rows.find((r) => r.label === '2. Provider →')!;
+    const model = rows.find((r) => r.label === '3. Model →')!;
+    expect(provider.hint).toBe('now OpenRouter');
+    expect(provider.action.type).toBe('providers');
+    expect(model.hint).toBe('now Auto - and how to connect');
+    expect(model.action).toEqual({ type: 'service', provider: 'openrouter' });
+    const onZai = items(settingsRows({ ...base, providerId: 'zai', providerLabel: 'Z.ai', model: 'glm-5.3', models: ZAI_MODELS }));
+    expect(onZai.find((r) => r.label === '2. Provider →')!.hint).toBe('now Z.ai');
+    expect(onZai.find((r) => r.label === '3. Model →')!.hint).toBe('now GLM-5.3 - and how to connect');
+    const onChatGpt = items(settingsRows({ ...base, providerId: 'chatgpt', providerLabel: 'ChatGPT', model: 'gpt-5.5', models: [] }));
+    expect(onChatGpt.find((r) => r.label === '2. Provider →')!.hint).toBe('now ChatGPT (your plan)');
+    expect(onChatGpt.find((r) => r.label === '3. Model →')!.action).toEqual({ type: 'service', provider: 'openai' });
   });
 
-  it('the folder is one row saying where Jeeves is working, and opening the folder list', () => {
+  it('step 1 says where Jeeves is working, and opens the folder list', () => {
     const row = items(settingsRows(base)).find((r) => r.action.type === 'folders')!;
+    expect(row.label).toBe('1. Project folder →');
     expect(row.hint).toBe('now Alpha');
     const chatting = items(settingsRows({ ...base, folder: base.chatFolder })).find((r) => r.action.type === 'folders')!;
     expect(chatting.hint).toBe('now just chatting');
@@ -83,9 +100,11 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
     expect(PROVIDER_ROWS.length).toBeGreaterThan(5);
   });
 
-  it('offers both spending limits next to the keys', () => {
-    const spending = items(settingsRows(base)).filter((row) => row.action.type === 'limit' || row.action.type === 'limit-weekly');
-    expect(spending.map((row) => row.label)).toEqual(['Daily spending limit', 'Weekly spending limit']);
+  it('spending has its own section: what I have spent, and both limits', () => {
+    const rows = settingsRows(base);
+    const at = rows.findIndex((row) => row.kind === 'header' && row.title === 'SPENDING');
+    const spending = items(rows.slice(at, at + 5)).map((row) => row.label);
+    expect(spending).toEqual(["What I've spent →", 'Daily spending limit', 'Weekly spending limit']);
   });
 
   it('lists every command that the one table marks for Settings, in the table\'s order (conversation ones first, then More)', () => {
@@ -130,23 +149,20 @@ describe('opening the Settings screen', () => {
 });
 
 describe('the wheel over the typing box', () => {
-  it('reads back through a long message instead of scrolling the conversation', () => {
-    session.transcriptScrollUp = 0;
+  it('reaches the box wherever mouse reporting is live; the conversation itself scrolls natively now', () => {
     session.transcriptView = null;
-    const wheeled: boolean[] = [];
-    session.inputWheel = (_row, up) => {
-      wheeled.push(up);
-      return true;
+    const wheeled: [number, boolean][] = [];
+    session.inputWheel = (row, up) => {
+      wheeled.push([row, up]);
     };
     handleMouseInput('\x1b[<64;5;21M');
     handleMouseInput('\x1b[<65;5;21M');
-    expect(wheeled).toEqual([true, false]);
-    expect(session.transcriptScrollUp).toBe(0);
-    // Not over the box (or nothing to read back): the conversation scrolls as before.
-    session.inputWheel = () => false;
+    expect(wheeled).toEqual([[21, true], [21, false]]);
+    // With no box listener, a wheel event is simply nobody's: the terminal
+    // scrolls itself in the plain conversation (there is no in-app scrolling
+    // to fall back to any more - that machinery is retired).
+    session.inputWheel = () => {};
     handleMouseInput('\x1b[<64;5;5M');
-    expect(session.transcriptScrollUp).toBe(3);
     session.inputWheel = null;
-    session.transcriptScrollUp = 0;
   });
 });

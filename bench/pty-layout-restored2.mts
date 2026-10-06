@@ -1,0 +1,15 @@
+import { Rig } from './pty-rig.mjs';
+const r = new Rig(100, 30, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
+await r.bootConversation();
+await r.wait(800);
+r.send('write me a long story'); await r.wait(300); r.send('\r');
+await r.wait(2500);
+console.log('--- mid-answer ---\n' + r.screen().join('\n'));
+await r.until((t) => !t.includes('esc to stop') && t.split('\n').length > 0 && r.text().includes('Settings'), 20000, 'x').catch(()=>{});
+await r.wait(6000);
+console.log('--- after ---\n' + r.screen().slice(-8).join('\n'));
+r.send('\x1b[5~'); await r.wait(500);
+console.log('--- pageup ---\n' + r.screen().slice(0,4).join('\n') + '\n...\n' + r.screen().slice(-5).join('\n'));
+r.send('/tasks'); r.send('\r'); await r.wait(800);
+console.log('--- tasks ---\n' + r.screen().slice(-8).join('\n'));
+r.kill(); await r.wait(300); process.exit(0);

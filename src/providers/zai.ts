@@ -4,6 +4,7 @@ import type { Provider, StreamOptions, StreamResult } from './types.js';
 import { silenceGuard } from './silence.js';
 import { repairToolCall } from './repair.js';
 import { prepareStepFor } from './step-control.js';
+import { collectStream, MAX_TOOL_STEPS } from './stream-driver.js';
 import type { ModelInfo } from '../models/registry.js';
 
 // The GLM Coding Plan endpoint: OpenAI Chat Completions protocol at
@@ -14,7 +15,6 @@ import type { ModelInfo } from '../models/registry.js';
 // thinks for up to half a minute before answering; with the old client that time
 // showed nothing at all (measured 19 Sept: 1,425 thinking tokens, first words at 26 s).
 export const ZAI_CODING_BASE_URL = 'https://api.z.ai/api/coding/paas/v4';
-const MAX_TOOL_STEPS = 25;
 
 // The GLM Coding Plan is flat-rate, so prices are meaningless per token; the picker
 // shows "included" instead of a dollar figure (spec: no misleading numbers).
@@ -83,6 +83,8 @@ export function createZaiProvider(apiKey: string): Provider {
     name: 'Z.ai',
     async stream({ modelId, messages, tools, instructions, onToken, onReasoning, onToolCall, beforeStep, abortSignal }: StreamOptions): Promise<StreamResult> {
       const guard = silenceGuard(abortSignal);
+      // The request is Z.ai's own; the READING of the reply is the one shared
+      // stream driver (stream-driver.ts) - the old copy-pasted consume loop is gone.
       const result = streamText({
         instructions,
         // A stalled request must never wedge the app in the working state forever -
@@ -107,45 +109,7 @@ export function createZaiProvider(apiKey: string): Provider {
         // window; the failure still arrives below and is explained in plain English.
         onError: () => {},
       });
-      let streamedError: unknown = null;
-      for await (const part of result.stream) {
-        guard.onPart(part);
-        if (part.type === 'text-delta') {
-          onToken(part.text);
-        } else if (part.type === 'reasoning-delta') {
-          onReasoning(part.text);
-        } else if (part.type === 'tool-call') {
-          onToolCall({ id: part.toolCallId, name: part.toolName });
-        } else if (part.type === 'error') {
-          streamedError = part.error;
-        }
-      }
-      guard.stop();
-      // The real stream error (a rejected key, a missing model) must win over the
-      // SDK's generic no-output error, which would otherwise mask the cause.
-      if (streamedError !== null) {
-        throw streamedError instanceof Error ? streamedError : new Error(String(streamedError));
-      }
-      const text = await result.text;
-      const finalStep = await result.finalStep;
-      const responseMessages = await result.responseMessages;
-      const usage = await result.usage;
-      const steps = await result.steps;
-      return {
-        text,
-        reasoning: finalStep.reasoningText ?? '',
-        messages: responseMessages,
-        usage: {
-          input: usage.inputTokens ?? 0,
-          output: usage.outputTokens ?? 0,
-          total: usage.totalTokens ?? 0,
-          cached: usage.inputTokenDetails?.cacheReadTokens ?? 0,
-        },
-        cost: 0,
-        rateLimit: null,
-        hitStepCap: steps.length >= MAX_TOOL_STEPS && finalStep.finishReason === 'tool-calls',
-        finishReason: finalStep.finishReason,
-      };
+      return collectStream(result, guard, { onToken, onReasoning, onToolCall });
     },
   };
 }

@@ -22,7 +22,7 @@ export function ChatsView({ rows }: { rows: number }) {
 
   const open = (chat: ConversationSummary | undefined) => {
     if (!chat) return;
-    if (session.status === 'working' || session.approvalPending) {
+    if (session.busy()) {
       session.addNotice('An earlier conversation can be opened between tasks - try again when I have finished.');
       session.closeChats();
       return;

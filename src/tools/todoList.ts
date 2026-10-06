@@ -29,6 +29,19 @@ export function todosUnfinished(todos: TodoItem[]): boolean {
   return todos.some((todo) => todo.status === 'pending' || todo.status === 'in_progress');
 }
 
+// THE ONE-LINE CHECKLIST (owner, 3 Oct: the bullet-point boxes are banned).
+// The whole list was drawn as a box of bullets above the typing area and it
+// cluttered the window; now the checklist is ONE compact line that updates in
+// place, naming the step in progress - a friendly cue, not a wall of dots.
+export function todoHeadline(todos: TodoItem[]): string | null {
+  const open = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress');
+  if (open.length === 0) return null;
+  const done = todos.length - open.length;
+  const current = open.find((todo) => todo.status === 'in_progress') ?? open[0];
+  const clip = (text: string) => (text.length > 48 ? text.slice(0, 47) + '…' : text);
+  return `Step ${todos.length - open.length + 1} of ${todos.length}: ${clip(current.content)}${done > 0 ? ` (${done} done)` : ''}`;
+}
+
 // The lines the screen draws: at most `max`, keeping the step in progress in view.
 export function todoLines(todos: TodoItem[], max = 6): string[] {
   const mark = (todo: TodoItem) => (todo.status === 'completed' ? '✓' : todo.status === 'in_progress' ? '●' : todo.status === 'cancelled' ? '✗' : '○');

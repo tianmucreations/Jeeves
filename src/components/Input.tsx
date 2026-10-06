@@ -198,15 +198,20 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
         session.setSelection(null);
       } else if (valueRef.current) {
         setValue('');
-      } else if (s.status === 'working' || s.approvalPending) {
+      } else if (s.busy()) {
         stopTurn();
       } else {
         pressCtrlCToQuit();
       }
       return;
     }
+    // Esc closes the background-tasks panel first (a panel is not a job).
+    if (key.escape && s.tasksOpen) {
+      s.setTasksOpen(false);
+      return;
+    }
     // Esc stops the job, as in Claude Code and the window's Stop button.
-    if (key.escape && (s.status === 'working' || s.approvalPending)) {
+    if (key.escape && s.busy()) {
       stopTurn();
       return;
     }
@@ -349,7 +354,7 @@ export function Input({ scrollPage = 10, width = 76 }: { scrollPage?: number; wi
       const pictures = picturesUsed(text);
       session.setAttachments([]);
       // /exit is honoured even mid-turn so a wedged request can never trap the user.
-      if (text === '/exit' || s.status !== 'working') {
+      if (text === '/exit' || !s.busy()) {
         void sendAndDrain(text, pictures);
       } else {
         // Busy: the message waits its turn and is sent as soon as this job finishes.

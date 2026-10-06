@@ -10,6 +10,7 @@ import { AlternateScreen, leaveAltScreen } from './ink/AlternateScreen.js';
 import { installMouseFilter } from './ink/stdin-filter.js';
 import { killAllRunningCommands } from './tools/runBash.js';
 import { getAddress } from './platform/config.js';
+import { installBufferGuard, installCrashGuards, forceExitSoon } from './core/buffers.js';
 
 // Local development bridge: settings such as OPENROUTER_API_KEY are loaded from a gitignored
 // .env file at the project root. Replaced by the secure OS credential store in Phase 7.
@@ -57,6 +58,15 @@ program
     // Ctrl+C is Jeeves's own (src/ink/quit.ts): twice to quit, never at once.
     // Mouse reports are taken out of the keyboard stream before Ink sees them.
     installMouseFilter();
+    // THE BUFFER GUARD (3 Oct): from here on, stderr and console cannot draw
+    // over the window - both land in the debug log in the settings folder.
+    installBufferGuard();
+    // THE CRASH GUARDS (3 Oct): an uncaught error hands the terminal back
+    // before Jeeves closes, says one plain line, and always finishes exiting.
+    installCrashGuards(() => {
+      killAllRunningCommands();
+      leaveAltScreen();
+    });
     const instance = render(
       <AlternateScreen>
         <App />
@@ -65,7 +75,8 @@ program
     );
     let quitting = false;
     // /exit asks for a clean shutdown: let Ink finish its frame teardown, hand the
-    // terminal back, then leave.
+    // terminal back, then leave - with a failsafe so a hang can never trap the
+    // terminal in full-screen mode.
     session.subscribe(() => {
       if (session.exitRequested && !quitting) {
         quitting = true;
@@ -75,6 +86,9 @@ program
           leaveAltScreen();
           process.exit(0);
         });
+        // If teardown hangs, force the exit; the terminal is already restored by
+        // AlternateScreen's own signal-exit cleanup.
+        setTimeout(() => forceExitSoon(0), 3000).unref();
       }
     });
   });

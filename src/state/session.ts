@@ -3,8 +3,11 @@ import { useSyncExternalStore } from 'react';
 import type { ModelMessage } from 'ai';
 import type { ModelInfo } from '../models/registry.js';
 import { AUTO_MODEL_ID } from '../agent/auto-ids.js';
+import { turns, type TurnStatus } from '../core/turn-machine.js';
 
-export type Status = 'idle' | 'working' | 'awaiting-approval' | 'disconnected';
+// The four coarse words the window shows. The ONE definition now lives in the
+// turn machine; this re-export keeps every existing import working unchanged.
+export type Status = TurnStatus;
 
 export type ToolLineState = 'awaiting' | 'running' | 'done' | 'failed' | 'declined' | 'held';
 
@@ -22,6 +25,9 @@ export interface ToolLineData {
   // A finished look-around (read, list, search) leaves no line behind: the person
   // asked for an answer, not a diary of ticks (owner, 26 Sept). /verbose shows them.
   quiet?: boolean;
+  // A merged group's finished sentence, whole (the clutter fix, 3 Oct): seven
+  // "Changed 1 file" lines print as one "Changed 7 files".
+  mergedText?: string;
 }
 
 export type TranscriptEntry =
@@ -38,7 +44,11 @@ class SessionStore {
   model = AUTO_MODEL_ID;
   providerId = 'openrouter';
   providerName = 'OpenRouter';
-  status: Status = 'idle';
+  // The coarse status (idle / working / awaiting-approval / disconnected) lives
+  // in the turn machine; this getter keeps every existing reader working.
+  get status(): Status {
+    return turns.snapshotStatus();
+  }
   approvalPending = false;
   // Incremented each time a question arrives, so screens and the desktop can
   // tell a new question from the one before (a notification timer restarts).
@@ -133,6 +143,8 @@ class SessionStore {
   // The Picture button in the info bar: registered by the typing box.
   pictureButton: (() => void) | null = null;
   questionClick: ((col: number, row: number) => boolean) | null = null;
+  // A click on a Stop button in the background-tasks panel; true when it landed on one.
+  tasksClick: ((col: number, row: number) => boolean) | null = null;
   footerClick: ((col: number, row: number) => boolean) | null = null;
   // Set by the typing box: scrolls a message taller than the box when the wheel
   // turns over it (the conversation scrolls everywhere else); true if it did.
@@ -166,6 +178,12 @@ class SessionStore {
   private version = 0;
   private reasoningEntryId: number | null = null;
   private listeners = new Set<() => void>();
+
+  constructor() {
+    // The turn machine is the only authority on busy/quiet. When it changes the
+    // coarse status, the window is redrawn - the store itself no longer decides.
+    turns.onStatusChange(() => this.emit());
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -236,6 +254,17 @@ class SessionStore {
     this.emit();
   }
 
+  // The background-tasks panel above the typing box (the door behind the blue
+  // note in the info bar): open by /tasks or by clicking the note on screens
+  // where the mouse is live. Shows each task with its own Stop button.
+  tasksOpen = false;
+
+  setTasksOpen(open: boolean): void {
+    if (this.tasksOpen === open) return;
+    this.tasksOpen = open;
+    this.emit();
+  }
+
   queueMessage(text: string, images: ImageAttachment[] = []): void {
     this.queued = [...this.queued, text];
     this.queuedImages = [...this.queuedImages, images];
@@ -262,21 +291,35 @@ class SessionStore {
     this.emit();
   }
 
+  // One gate for "may this screen/command act now": a job is running, or a
+  // question is waiting. Eleven copies of this test existed, and one had already
+  // drifted (it forgot the question) - they all read this one now.
+  busy(): boolean {
+    return this.status === 'working' || this.approvalPending;
+  }
+
+  // The status is written only through the turn machine (core/turn-machine.ts):
+  // a job can no longer stamp idle over another job, and nothing can stamp
+  // working over an empty window - the two writes that caused the stuck-window
+  // and status-fight bugs.
   setStatus(status: Status): void {
-    this.status = status;
-    this.emit();
+    turns.request(status);
   }
 
   setActiveApproval(): void {
     this.approvalPending = true;
     this.approvalSerial += 1;
-    this.status = 'awaiting-approval';
+    // The machine remembers which job asked and what it was doing, so the
+    // answer returns the job EXACTLY to its own work.
+    turns.awaitApproval(turns.currentGeneration !== 0 ? turns.currentGeneration : null);
     this.emit();
   }
 
   clearActiveApproval(): void {
     this.approvalPending = false;
-    this.status = 'working';
+    // Back to the asking job's own work - or to idle when the job is already
+    // gone. The old hard-coded "working" here was the stuck-window bug.
+    turns.approvalAnswered();
     this.emit();
   }
 
@@ -394,7 +437,7 @@ class SessionStore {
   }
 
   openPicker(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The model picker opens between tasks.');
       return;
     }
@@ -408,7 +451,7 @@ class SessionStore {
   }
 
   openKeys(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The key screens open between tasks.');
       return;
     }
@@ -450,7 +493,7 @@ class SessionStore {
   switchingFolder = false;
 
   openFolderPicker(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The folder can be changed between tasks.');
       return;
     }
@@ -471,12 +514,12 @@ class SessionStore {
   addressDone(): void {
     this.addressOpen = false;
     if (this.launchStage === 'address') this.launchStage = 'project';
-    // Always redraw: closing the screen without saving (Esc) changes nothing else.
+    // Always redraw: closing the screen without saving (Esc / Back) changes nothing else.
     this.emit();
   }
 
   openAddress(): void {
-    if (this.status === 'working' || this.approvalPending) {
+    if (this.busy()) {
       this.addNotice('The address change happens between tasks.');
       return;
     }
@@ -572,11 +615,9 @@ class SessionStore {
     this.emit();
   }
 
-  // Internal scrolling for the alternate-screen era: the terminal's own scrollback is
-  // unavailable there, so the transcript region scrolls itself. Positive deltas go up
-  // (older); the count is clamped between zero (the newest) and the measured maximum
-  // (the oldest), so overshooting the top never leaves wheel or arrow presses to
-  // unwind before the view moves again.
+  // Internal scrolling (the window owns the whole screen, so the conversation
+  // scrolls itself). Positive deltas go up (older); the count is clamped between
+  // zero (the newest) and the measured maximum (the oldest).
   scrollTranscript(delta: number): void {
     if (delta === 0) return;
     const next = Math.min(this.transcriptScrollMax, Math.max(0, this.transcriptScrollUp + delta));

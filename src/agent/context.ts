@@ -84,9 +84,15 @@ export function summaryDue(conversationTokens: number, limit: number): boolean {
 // Condenses the whole conversation into a single summary message so a model can
 // continue without re-reading every turn: on a model switch, or automatically when
 // the conversation grows long.
-export async function summariseHistory(): Promise<void> {
+//
+// BACKGROUND-LAYER RULES (3 Oct refactor): the summary runs under the job's stop
+// signal, so Esc ends it (it used to keep spending after the person stopped);
+// and it writes NO status - the "working"/"idle" it used to stamp fought the
+// running job and briefly let a second message start inside the first. The
+// amber "tidying up…" note in the info bar is the only sign it is running.
+export async function summariseHistory(signal?: AbortSignal): Promise<void> {
   if (session.history.length === 0) return;
-  session.setStatus('working');
+  if (signal?.aborted) return;
   session.setTidying(true);
   try {
     const provider = getActiveProvider();
@@ -102,6 +108,7 @@ export async function summariseHistory(): Promise<void> {
       onToken: () => {},
       onReasoning: () => {},
       onToolCall: () => {},
+      abortSignal: signal,
     });
     for (const cost of result.stepCosts ?? []) reportStepCost(cost);
     const summary = result.text.trim();
@@ -122,5 +129,4 @@ export async function summariseHistory(): Promise<void> {
     noteSummaryFailure();
   }
   session.setTidying(false);
-  session.setStatus('idle');
 }

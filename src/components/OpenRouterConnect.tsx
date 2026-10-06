@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useWindowSize, type Key } from 'ink';
+import { ButtonRow, buttonAt, keyPress, type ButtonSpec } from './ButtonRow.js';
 import { signInWithOpenRouter, WAITING_STEPS } from '../providers/openrouter-signin.js';
 import { noCreditNote } from '../providers/openrouter.js';
 import { storeOpenRouterKey, refreshCredit } from '../providers/index.js';
 import { keyLooksValid } from '../commands/keys.js';
-import { isMouseSequence } from '../ink/mouse.js';
+import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
 import { KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
 // Connecting Jeeves to OpenRouter, said plainly (owner, 19 Sept: "virtually no
@@ -16,11 +17,12 @@ import { KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 type Step = 'choose' | 'waiting' | 'paste';
 
 const CHOICES = [
-  { title: 'Sign in with OpenRouter (recommended)', detail: 'Your browser opens. Log in, or make a free account, then click Authorize and come back. No key to copy.' },
-  { title: 'Paste a key I already have', detail: 'For people who already made a key at openrouter.ai/keys.' },
+  { title: 'Sign in with OpenRouter (recommended)', detail: ['Your browser opens. Log in, or make a free account, then click Authorize', 'and come back. No key to copy.'] },
+  { title: 'Paste a key I already have', detail: ['For people who already made a key at openrouter.ai/keys.', ''] },
 ];
 
 export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean; onDone: (message: string) => void; onBack: () => void }) {
+  const { rows } = useWindowSize();
   const [step, setStep] = useState<Step>('choose');
   const [cursor, setCursor] = useState(0);
   const [pasted, setPasted] = useState('');
@@ -67,7 +69,31 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
     });
   }
 
-  useInput((input, key) => {
+  // Each choice is four rows (name, two lines of detail, a blank), from row 4 - one more with the
+  // "you already have a key" line.
+  const press = (over: Parameters<typeof keyPress>[0]) => () => handleInput('', keyPress(over));
+  const back: ButtonSpec = { label: '← Back', run: press({ escape: true }) };
+  const footerButtons: ButtonSpec[] =
+    step === 'waiting' ? [{ label: 'Cancel', run: press({ escape: true }) }] : step === 'paste' ? [back, { label: 'Save', run: press({ return: true }) }] : [back];
+  const firstRow = 4 + (hasKey ? 1 : 0);
+  const onMouse = (report: string) => {
+    const event = parseMouseSequence(report);
+    if (!event || event.kind !== 'press' || event.button !== 0) return;
+    // The buttons sit on the last row of the screen.
+    if (event.row === rows) return void buttonAt(footerButtons, event.col)?.run();
+    if (step !== 'choose') return;
+    const index = Math.floor((event.row - firstRow) / 4);
+    if (event.row >= firstRow && index >= 0 && index < CHOICES.length) {
+      setNote('');
+      if (index === 0) signIn();
+      else setStep('paste');
+    }
+  };
+  const onMouseRef = useRef(onMouse);
+  onMouseRef.current = onMouse;
+  useEffect(() => subscribeMouse((report) => onMouseRef.current(report)), []);
+
+  const handleInput = (input: string, key: Key) => {
     if (isMouseSequence(input)) return;
     if (step === 'waiting') {
       if (key.escape) signingIn.current?.abort();
@@ -118,23 +144,25 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
       if (choice === 0) signIn();
       else setStep('paste');
     }
-  });
+  };
+  useInput(handleInput);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
       <Text dimColor>Connect Jeeves to OpenRouter</Text>
-      <Box flexDirection="column" flexGrow={1} justifyContent="center">
+      <Box flexDirection="column" flexGrow={1} justifyContent={step === 'choose' ? 'flex-start' : 'center'}>
         {step === 'choose' && (
           <>
-            <Text>OpenRouter runs the AI models Jeeves thinks with. One account gives you hundreds of models, and you pay only for what you use.</Text>
+            <Text wrap="truncate-end">OpenRouter runs the AI models Jeeves thinks with. One account, hundreds of models, pay only for use.</Text>
             {hasKey ? <Text color="yellow">You already have an OpenRouter key saved. A new one replaces it - same account, same credit.</Text> : null}
             <Text> </Text>
             {CHOICES.map((choice, index) => (
-              <Box key={choice.title} flexDirection="column" marginBottom={1}>
+              <Box key={choice.title} flexDirection="column">
                 <Text inverse={index === cursor}>{` ${index + 1}. ${choice.title} `}</Text>
-                <Box paddingLeft={4}>
-                  <Text dimColor>{choice.detail}</Text>
-                </Box>
+                {choice.detail.map((line, i) => (
+                  <Text key={i} dimColor wrap="truncate-end">{`    ${line}`}</Text>
+                ))}
+                <Text> </Text>
               </Box>
             ))}
           </>
@@ -159,13 +187,11 @@ export function OpenRouterConnect({ hasKey, onDone, onBack }: { hasKey: boolean;
           </>
         )}
       </Box>
-      {note ? (
-        <Text color="yellow">{note}</Text>
-      ) : (
-        <Text dimColor>
-          {step === 'choose' ? '↑↓ or 1 / 2 choose · Enter continue · Esc back' : step === 'waiting' ? 'Esc stop waiting' : 'paste the key · Enter save · Esc back'}
-        </Text>
-      )}
+      {note ? <Text color="yellow">{note}</Text> : null}
+      <Text>
+        <ButtonRow buttons={footerButtons} />
+        <Text dimColor>{'  ' + (step === 'choose' ? 'click one, or ↑↓ Enter' : step === 'waiting' ? 'waiting for your browser' : 'paste the key')}</Text>
+      </Text>
     </Box>
   );
 }

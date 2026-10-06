@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Box, Text, useBoxMetrics, useStdout, type DOMElement } from 'ink';
 import { session, useSession, type TranscriptEntry } from '../state/session.js';
-import { buildDisplayLines, ANSWER_GUTTER, ANSWER_GUTTER_COLOUR, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
+import { buildDisplayLines, mergeToolGroups, ANSWER_GUTTER, ANSWER_GUTTER_COLOUR, OWN_MESSAGE_BACKGROUND, OWN_MESSAGE_TEXT } from './transcript-layout.js';
 import { selectedRange } from '../ink/selection.js';
 import type { StyleSpan } from './markdown.js';
 
@@ -70,7 +70,8 @@ export function Transcript({ width }: { width: number }) {
     return s.transcript;
   }, [s.transcript, s.showLastReasoning, s.lastReasoning]);
 
-  const lines = useMemo(() => buildDisplayLines(entries, width, s.verbose), [entries, width, s.verbose]);
+  // Runs of the same finished action condense into one line ("✓ Changed 7 files").
+  const lines = useMemo(() => buildDisplayLines(mergeToolGroups(entries, s.verbose), width, s.verbose), [entries, width, s.verbose]);
 
   // Virtual scroll: never above the first line, never below the newest.
   // Ink's measured height of the content lags a frame behind and, once the person

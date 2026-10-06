@@ -25,7 +25,7 @@ export function RewindView({ rows }: { rows: number }) {
   const goBack = () => {
     const point = list[at];
     if (!point) return;
-    if (session.status === 'working' || session.approvalPending) {
+    if (session.busy()) {
       session.addNotice('Going back works between tasks - try again when I have finished.');
       session.closeRewind();
       return;

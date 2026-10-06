@@ -1,0 +1,20 @@
+// A background task: the bar says "/tasks to view it"; /tasks lists it with a yellow Stop button; clicking Stop ends it.
+import { Rig } from './pty-rig.mjs';
+const r = new Rig(100, 32, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
+await r.bootConversation(); await r.wait(1000);
+r.send('BGTEST start a preview'); await r.wait(300); r.send('\r');
+await r.until((t) => t.includes('allow?'), 20000, 'the question');
+const ar = r.screen().findIndex((l) => l.includes('Always Allow'));
+r.mouse('press', 4, ar + 1); r.mouse('release', 4, ar + 1);
+await r.until((t) => t.includes('The preview is running'), 30000, 'job finished');
+await r.wait(1500);
+const bar = r.screen().find((l) => /Settings\s+Picture/.test(l)) ?? '';
+console.log('blue note names its door:', bar.includes('/tasks to view it'));
+r.send('/tasks'); await r.wait(300); r.send('\r'); await r.wait(1200);
+const rowIdx = r.screen().findIndex((l) => /#\d+ .*Stop/.test(l));
+console.log('panel row:', rowIdx >= 0 ? r.screen()[rowIdx].trim().slice(0, 60) : 'MISSING');
+r.mouse('press', 94, rowIdx + 1); r.mouse('release', 94, rowIdx + 1); await r.wait(2500);
+const after = r.text();
+console.log('task stopped (note gone):', !/task running/.test(after), '| panel gone:', !/#\d+ .*Stop/.test(after));
+console.log(r.screen().slice(-7).join('\n'));
+r.kill(); await r.wait(300); process.exit(0);

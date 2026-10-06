@@ -184,6 +184,7 @@ export function handleMouseInput(input: string): void {
     // screen, otherwise it places the cursor in the typing box.
     if (!point) {
       if (session.questionClick?.(event.col, event.row)) return;
+      if (session.tasksClick?.(event.col, event.row)) return;
       if (session.footerClick?.(event.col, event.row)) return;
       if (session.approvalPending) session.approvalClick?.(event.col, event.row);
       else session.inputClick?.(event.col, event.row);

@@ -54,8 +54,10 @@ function quotaColor(pct: number): 'yellow' | 'red' | undefined {
 // The info bar says only what is worth a glance: which model is working (left),
 // and on the right what today has cost and what is left - or, for a flat-rate
 // plan, whether it has allowance. Warnings appear only when they matter.
+// The task note now names its own door (3 Oct): /tasks opens the panel where
+// each task can be seen and stopped - the old "ask me about it" was a dead end.
 export function backgroundNote(count: number): string {
-  return count === 1 ? '1 task running - ask me about it' : `${count} tasks running - ask me about them`;
+  return count === 1 ? '1 task running - /tasks to view it' : `${count} tasks running - /tasks to view them`;
 }
 
 export function footerSegments(info: FooterInfo): FooterSegment[] {

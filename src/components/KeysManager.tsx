@@ -20,7 +20,6 @@ import { setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
-import { useMouseCapture } from '../ink/use-mouse-capture.js';
 import { HOW_IT_CONNECTS } from '../commands/settings.js';
 import { ChatGptConnect } from './ChatGptConnect.js';
 import { OpenAIConnect } from './OpenAIConnect.js';
@@ -56,14 +55,12 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   const s = useSession();
   const [phase, setPhase] = useState<Phase>(mode === 'wizard' ? { kind: 'ask' } : { kind: 'list' });
   const [cursor, setCursor] = useState(0);
-  // The question at the start has buttons: the mouse is on for it, and off again after.
-  useMouseCapture(phase.kind === 'ask');
   const answerAsk = (yes: boolean) => {
     if (yes) {
       setCursor(0);
       setPhase({ kind: 'list' });
     } else {
-      finishWizard('Not connected yet - click Settings any time to connect an AI service. It takes about a minute.', false, true);
+      finishWizard('Not connected yet - click Settings any time to connect a provider. It takes about a minute.', false, true);
     }
   };
   const answerAskRef = React.useRef(answerAsk);
@@ -314,7 +311,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     // phase: list
     if (key.escape) {
       if (mode === 'wizard') {
-        finishWizard('Not connected yet - click Settings any time to connect an AI service. It takes about a minute.', false, true);
+        finishWizard('Not connected yet - click Settings any time to connect a provider. It takes about a minute.', false, true);
       } else {
         session.closeKeys();
       }
@@ -331,7 +328,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     if (key.return) {
       const row = visibleRows[cursor];
       if (row?.id === CUSTOM_SERVICE_ID) {
-        setNote('Add it in /model, under Other service - it needs a web address as well as a key.');
+        setNote('Add it in /model, under Other provider - it needs a web address as well as a key.');
         return;
       }
       if (!row || row.id === 'ollama') {
@@ -369,7 +366,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           : phase.kind === 'saved'
             ? 'Saved'
             : mode === 'wizard'
-              ? 'Which AI service should do the thinking?'
+              ? 'Which provider should do the thinking?'
               : `Keys - stored in ${KEY_STORE}`;
 
   const hint =
@@ -446,7 +443,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         {phase.kind === 'ask' && <Text> </Text>}
         {phase.kind === 'ask' && (
           <>
-            <Text>Jeeves needs an AI service to think with - the company that runs the AI models.</Text>
+            <Text>Jeeves needs a provider to think with - the company that runs the AI models.</Text>
             <Text>You connect one account once, and pay that service only for what you use.</Text>
             <Text> </Text>
             <Text>

@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('jeeves', {
   answerQuestion: (index) => ipcRenderer.send('answer-question', index),
   answer: (letter) => ipcRenderer.send('answer', letter),
   stop: () => ipcRenderer.send('stop'),
+  toggleTasks: () => ipcRenderer.send('toggle-tasks'),
+  stopTask: (id) => ipcRenderer.send('stop-task', id),
   copyText: (text) => ipcRenderer.invoke('copy-text', text),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   setAddress: (value) => ipcRenderer.invoke('set-address', value),

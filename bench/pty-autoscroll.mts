@@ -23,11 +23,11 @@ console.log('copied lines:', copied.split('\n').length, '| has Paragraph 1:', co
 // Settings: the AI is one row; it opens the full provider list, which has "All providers".
 r.send('\x1b'); await r.wait(300);
 r.mouse('press', 4, 31); r.mouse('release', 4, 31);
-await r.until((t) => t.includes('AI provider and model'), 8000, 'settings list').catch(() => console.log(r.text()));
-console.log(r.screen().filter((l) => /AI provider and model|Project folder/.test(l)).map((l) => l.replace(/│/g, '').trim()).join('\n'));
-let at = r.screen().findIndex((l) => l.includes('AI provider and model'));
+await r.until((t) => t.includes('Provider'), 8000, 'settings list').catch(() => console.log(r.text()));
+console.log(r.screen().filter((l) => /Provider|Project folder/.test(l)).map((l) => l.replace(/│/g, '').trim()).join('\n'));
+let at = r.screen().findIndex((l) => l.includes('Provider'));
 r.mouse('press', 10, at + 1); r.mouse('release', 10, at + 1);
-await r.until((t) => t.includes('Choose an AI service'), 8000, 'provider list');
+await r.until((t) => t.includes('Choose a provider'), 8000, 'provider list');
 for (let i = 0; i < 9; i++) { r.send('\x1b[B'); await r.wait(120); }
 console.log(r.screen().filter((l) => l.includes('All providers')).map((l) => l.trim()).join('\n'));
 r.send('\r');

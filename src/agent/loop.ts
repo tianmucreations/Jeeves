@@ -25,6 +25,7 @@ import { startJob, endJob, reportStepCost, withinLimits } from './spending.js';
 import { getAddress } from '../platform/config.js';
 import { startTurnCheckpoints } from '../checkpoints/index.js';
 import { noteSkipRequest } from './research-gate.js';
+import { turns } from '../core/turn-machine.js';
 
 // Added to the rulebook when the chosen model cannot use tools, so a task request
 // gets a plain answer instead of a pretend attempt.
@@ -58,11 +59,53 @@ export function endsMidIntention(text: string): boolean {
 const CONTINUE_NUDGE =
   'You stopped after describing something you were about to do, without doing it and without saying the task is finished. Either do it now, with a tool call in this turn, or say plainly that the task is done.';
 
-// OpenCode's graceful step cap (max-steps.ts): a long job that reaches the step
-// limit gets one last reply with the tools off, told to wrap up plainly - never a
-// dead stop the person has to puzzle over.
-const STEP_CAP_REQUEST =
-  'This task has used up the steps allowed for one go, so there are no more tools now. Reply with a short, plain summary for the person: what is done and where it is, what is not done, and the one thing to type next to carry on. Do not apologise and do not describe your working.';
+// ─────────────────────────────────────────────────────────────────────────────
+// THE JOB CARRIES ON BY ITSELF (2 Oct). He ran a long job and got FOUR stops,
+// each asking him to type "continue fixing the lanes until the checker passes"
+// — a huge waste of his time. Claude Code runs a job until it is done; the
+// brakes are the person's Esc, permission questions and the money limit, never
+// a step count. So when the model stops early — an internal step budget ran
+// out, or it trailed off describing what it was "about to do", or it literally
+// told him to type a continuation — Jeeves now nudges it back to work
+// IMMEDIATELY, in the same turn, and the person sees the work simply continue.
+const STEP_CONTINUE_NUDGE =
+  'Carry on with the task now, from where you left off. Do not report progress, do not ask whether to continue, and never tell the person to type anything - keep working with your tools until the task is finished, or until you need my permission for something.';
+
+// The stop wording his screenshot caught, verbatim pattern: the reply's last
+// sentence hands the job back with "type: continue ..." / "say the word".
+const TYPE_TO_CONTINUE =
+  /(?:to carry on[^.!?]*[.!?]?\s*|[^.!?]*\b(?:type|enter|press|say)\s+(?:the word|continue|carry on|go on|again)[^.!?]*[.!?]?\s*)$/i;
+
+export function tellsPersonToContinue(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return TYPE_TO_CONTINUE.test(trimmed.slice(-300));
+}
+
+// One mechanism for every early stop: budget reached, trailing off, or a
+// "type: continue" instruction. Runs until the job genuinely ends, the person
+// stops it, or an unreachable safety net trips (each continue is a full turn
+// of steps; the doom-loop guard and the silence limiter catch real loops).
+const MAX_STEP_CONTINUES = 40;
+
+async function continueUntilDone(turn: Turn): Promise<void> {
+  for (let continues = 0; continues < MAX_STEP_CONTINUES; continues++) {
+    if (turn.stop.signal.aborted) return;
+    const text = turn.result.text ?? '';
+    if (!(turn.result.hitStepCap || endsMidIntention(text) || tellsPersonToContinue(text))) return;
+    reportNewCosts(turn);
+    turn.countedSteps = 0;
+    const messages = [...turn.allMessages, { role: 'user' as const, content: STEP_CONTINUE_NUDGE }];
+    const next = await askAgain(turn, messages);
+    turn.allMessages = [...messages, ...next.messages];
+    turn.result = {
+      ...next,
+      text: text && next.text ? `${text}\n\n${next.text}` : next.text || text,
+      stepCosts: [...(turn.result.stepCosts ?? []), ...(next.stepCosts ?? [])],
+      finishReason: next.finishReason,
+    };
+  }
+}
 
 // Claude Code's withheld max-output-tokens recovery: a reply cut off by the
 // model's own size limit is resumed directly - no apology, no recap. Offered
@@ -104,6 +147,9 @@ interface Turn {
   auto: boolean;
   autoState: ReturnType<typeof newAutoTurnState>;
   stop: AbortController;
+  // This job's number in the turn machine - every state note carries it, so a
+  // stale job can never move the machine (see core/turn-machine.ts).
+  generation: number;
   // Where this job's lines start in the conversation (for the double-check).
   turnStart: number;
   // How many of the steps' costs have been reported.
@@ -137,12 +183,15 @@ async function beginTurn(input: string): Promise<boolean> {
 }
 
 // Quiet housekeeping: old tool output is cleared, and a long conversation summarised.
-async function tidyConversation(): Promise<string> {
+// The summary runs under the job's stop signal, so Esc ends it too (it used to be
+// uninterruptible and kept spending after the person stopped the job).
+async function tidyConversation(signal: AbortSignal): Promise<string> {
+  if (signal.aborted) return workingModelId(session.model);
   const cleared = clearOldToolResults(session.history);
   if (cleared.freedTokens > 0) session.setHistory(cleared.messages);
   const modelId = workingModelId(session.model);
   if (summaryDue(session.estimateContextTokens(), contextLimitFor(modelId, session.models))) {
-    await summariseHistory();
+    await summariseHistory(signal);
   }
   return modelId;
 }
@@ -211,6 +260,8 @@ function buildStreamOptions(turn: Turn, tools: StreamOptions['tools'], note: str
     instructions: getSystemPrompt(turn.modelId) + note,
     abortSignal: stop.signal,
     beforeStep: async ({ stepFailures, stepCosts, messages: stepMessages }) => {
+      // Each step of the job runs in the machine's "processing" state.
+      turns.to('processing', turn.generation);
       for (const cost of stepCosts.slice(turn.countedSteps)) reportStepCost(cost);
       turn.countedSteps = stepCosts.length;
       if (!(await withinLimits())) {
@@ -238,15 +289,21 @@ function buildStreamOptions(turn: Turn, tools: StreamOptions['tools'], note: str
       return { modelId: stepModel, messages: tidied.freedTokens > 0 ? tidied.messages : undefined };
     },
     onToken: (token) => {
+      // The machine's fine state follows the real work: the model is writing.
+      turns.to('streaming', turn.generation);
       session.setThinking(false);
       if (turn.assistantId === null) turn.assistantId = session.startAssistant();
       session.appendToken(turn.assistantId, token);
     },
     onReasoning: (delta) => {
+      // The model is thinking privately before writing.
+      turns.to('thinking', turn.generation);
       session.setThinking(true);
       if (session.verbose) session.appendReasoning(delta);
     },
     onToolCall: () => {
+      // A tool is about to run - the job is in its working steps.
+      turns.to('processing', turn.generation);
       session.setThinking(false);
       // Hide pre-tool chatter so only the final answer stays visible (spec 2.3). The
       // entry is removed, not just emptied, so the final answer appears below the
@@ -281,7 +338,7 @@ async function firstReply(turn: Turn): Promise<void> {
     if (turn.stop.signal.aborted || plainError(error, session.providerId).kind !== 'context') throw error;
     const cleared = clearOldToolResults(session.history);
     if (cleared.freedTokens > 0) session.setHistory(cleared.messages);
-    await summariseHistory();
+    await summariseHistory(turn.stop.signal);
     session.setStatus('working');
     turn.messages = buildTurnMessages(session.history, turn.input, turn.images);
     turn.result = await askAgain(turn, turn.messages);
@@ -303,23 +360,6 @@ async function resumeIfCutOff(turn: Turn): Promise<void> {
     text: (turn.result.text ?? '') + (resumed.text ?? ''),
     stepCosts: [...(turn.result.stepCosts ?? []), ...(resumed.stepCosts ?? [])],
     finishReason: resumed.finishReason,
-  };
-}
-
-// A long job that reached the step cap ends with a plain summary, not a dead stop (OpenCode's
-// max-steps prefill): one last reply, tools off.
-async function wrapUpIfStepCap(turn: Turn): Promise<void> {
-  if (turn.stop.signal.aborted || !turn.result.hitStepCap) return;
-  reportNewCosts(turn);
-  turn.countedSteps = 0;
-  const capMessages = [...turn.allMessages, { role: 'user' as const, content: STEP_CAP_REQUEST }];
-  const capped = await askAgain(turn, capMessages, { tools: {} });
-  turn.allMessages = [...capMessages, ...capped.messages];
-  turn.result = {
-    ...capped,
-    text: turn.result.text && capped.text ? `${turn.result.text}\n\n${capped.text}` : capped.text || turn.result.text,
-    stepCosts: [...(turn.result.stepCosts ?? []), ...(capped.stepCosts ?? [])],
-    finishReason: capped.finishReason,
   };
 }
 
@@ -347,19 +387,6 @@ async function reviewIfNeeded(turn: Turn): Promise<void> {
   }
 }
 
-// Caught once, regardless of Auto: a reply that trails off describing an intention it never carried
-// out gets one real chance to finish, instead of being shown to the person as if the job had simply
-// stopped.
-async function finishIfTrailingOff(turn: Turn): Promise<void> {
-  if (turn.stop.signal.aborted || !endsMidIntention(turn.result.text)) return;
-  reportNewCosts(turn);
-  turn.countedSteps = 0;
-  const continueMessages = [...turn.allMessages, { role: 'user' as const, content: CONTINUE_NUDGE }];
-  const continued = await askAgain(turn, continueMessages);
-  turn.allMessages = [...continueMessages, ...continued.messages];
-  turn.result = { ...continued, text: turn.result.text && continued.text ? `${turn.result.text}\n\n${continued.text}` : turn.result.text || continued.text };
-}
-
 // The answer is shown, remembered and paid for; the job is over.
 function completeTurn(turn: Turn): void {
   if (turn.assistantId === null) turn.assistantId = session.startAssistant();
@@ -375,7 +402,8 @@ function completeTurn(turn: Turn): void {
   reportNewCosts(turn);
   session.setPlanResetAt(null);
   closeTurn(turn);
-  session.setStatus('idle');
+  // The return to idle happens once, in runTurn's exit door (release) - a job
+  // can no longer stamp "idle" while it is still tearing down.
   saveConversation();
 }
 
@@ -385,7 +413,6 @@ function failTurn(turn: Turn, error: unknown): void {
   if (turn.stop.signal.aborted) {
     if (turn.assistantId !== null) session.finishAssistant(turn.assistantId);
     session.addNotice('Stopped, as you asked - nothing more will be spent on this.');
-    session.setStatus('idle');
     saveConversation();
     return;
   }
@@ -401,60 +428,92 @@ function failTurn(turn: Turn, error: unknown): void {
   if (plain.resetAt !== undefined) session.setPlanResetAt(plain.resetAt);
   // The technical text stays off screen unless Show every step is on.
   if (session.verbose && plain.detail) session.addNotice(`Technical details: ${plain.detail}`);
-  session.setStatus(DISCONNECTING.has(plain.kind) ? 'disconnected' : 'idle');
+  // A broken account or connection stays flagged on screen ("disconnected") until
+  // the person tries again; every other failure lands back on idle through the
+  // exit door in runTurn.
+  if (DISCONNECTING.has(plain.kind)) session.setStatus('disconnected');
   saveConversation();
 }
 
 // One message from the person: a typed command, or a job for the model.
+//
+// THE BACKGROUND CONTRACT (owner's order: "deterministic state machine ... roll
+// back to the last safe state"):
+//   1. THE GATE — the turn machine reserves the single job slot atomically. A
+//      message arriving in any window where a job already lives is QUEUED, never
+//      run side by side (the old code had a race window that could start a second
+//      job inside the first and clobber its stop handle and spending meter).
+//   2. THE EXIT DOOR — release() runs in a finally, so however the job ends
+//      (finished, declined at the spending question, stopped, failed, crashed)
+//      the machine ends it exactly once and the window returns to idle. The old
+//      code returned early on a declined spending question and left the window
+//      stuck on "working" forever — his "text box missing" screenshot.
 export async function runTurn(input: string, attached: ImageAttachment[] = []): Promise<void> {
   if (await runCommand(input)) return;
-  if (!(await beginTurn(input))) return;
-  const modelId = await tidyConversation();
-  const auto = isAuto(session.model);
+  const generation = turns.reserve();
+  if (generation === null) {
+    // Another job holds the slot: the message waits its turn, exactly as if the
+    // window had queued it (Claude Code's queue-while-busy).
+    session.queueMessage(input, attached);
+    return;
+  }
+  // The stop handle is armed the moment the slot is ours, so Esc works from the
+  // very first instant - including against a spending question (before, the
+  // window ignored Esc until the model request had actually started).
   const stop = new AbortController();
   currentStop = stop;
-  session.setActiveModel(auto ? workerModel() : null);
-  session.beginTurn();
-  resetDoomLoop();
-  session.setStatus('working');
-  const turn = {
-    input,
-    images: [],
-    modelId,
-    auto,
-    autoState: newAutoTurnState(),
-    stop,
-    turnStart: session.transcript.length,
-    countedSteps: 0,
-    assistantId: null,
-    uncheckedNotice: false,
-  } as unknown as Turn;
   try {
-    turn.provider = getActiveProvider();
-    // A note from Undo travels with the next message, so the model knows files changed back.
-    const note_ = session.pendingContextNote;
-    session.pendingContextNote = null;
-    if ((await resolvePictures(turn, attached)) === 'abandoned') {
-      closeTurn(turn);
-      session.setStatus('idle');
-      saveConversation();
-      return;
+    if (!(await beginTurn(input))) return;
+   
+    const modelId = await tidyConversation(stop.signal);
+    const auto = isAuto(session.model);
+    session.setActiveModel(auto ? workerModel() : null);
+    session.beginTurn();
+    resetDoomLoop();
+    session.setStatus('working');
+    const turn = {
+      input,
+      images: [],
+      modelId,
+      auto,
+      autoState: newAutoTurnState(),
+      stop,
+      generation,
+      turnStart: session.transcript.length,
+      countedSteps: 0,
+      assistantId: null,
+      uncheckedNotice: false,
+    } as unknown as Turn;
+    try {
+      turn.provider = getActiveProvider();
+      // A note from Undo travels with the next message, so the model knows files changed back.
+      const note_ = session.pendingContextNote;
+      session.pendingContextNote = null;
+      if ((await resolvePictures(turn, attached)) === 'abandoned') {
+        closeTurn(turn);
+        saveConversation();
+        return;
+      }
+      session.setHistory(clearOldImages(session.history));
+      turn.messages = buildTurnMessages(session.history, note_ ? `${note_}\n\n${input}` : input, turn.images);
+      // Models without tool support get a tool-free chat mode automatically (spec 4.2).
+      const currentModel = session.models.find((model) => model.id === turn.modelId);
+      const toolCapable = !currentModel || isToolCapable(currentModel);
+      const tools = toolCapable ? { ...getTools(), ...(auto ? { askExpert: createAskExpertTool(turn.autoState) } : {}) } : {};
+      const note = !toolCapable ? CHAT_ONLY_NOTE : auto ? AUTO_NOTE.replaceAll('{{ADDRESS}}', getAddress() ?? 'Sir') : '';
+      turn.streamOptions = buildStreamOptions(turn, tools, note);
+      await firstReply(turn);
+      await resumeIfCutOff(turn);
+      await continueUntilDone(turn);
+      await reviewIfNeeded(turn);
+      completeTurn(turn);
+    } catch (error) {
+      failTurn(turn, error);
     }
-    session.setHistory(clearOldImages(session.history));
-    turn.messages = buildTurnMessages(session.history, note_ ? `${note_}\n\n${input}` : input, turn.images);
-    // Models without tool support get a tool-free chat mode automatically (spec 4.2).
-    const currentModel = session.models.find((model) => model.id === turn.modelId);
-    const toolCapable = !currentModel || isToolCapable(currentModel);
-    const tools = toolCapable ? { ...getTools(), ...(auto ? { askExpert: createAskExpertTool(turn.autoState) } : {}) } : {};
-    const note = !toolCapable ? CHAT_ONLY_NOTE : auto ? AUTO_NOTE.replaceAll('{{ADDRESS}}', getAddress() ?? 'Sir') : '';
-    turn.streamOptions = buildStreamOptions(turn, tools, note);
-    await firstReply(turn);
-    await resumeIfCutOff(turn);
-    await wrapUpIfStepCap(turn);
-    await reviewIfNeeded(turn);
-    await finishIfTrailingOff(turn);
-    completeTurn(turn);
-  } catch (error) {
-    failTurn(turn, error);
+  } finally {
+    // THE EXIT DOOR: exactly one ending per job, whatever happened above.
+    if (currentStop === stop) currentStop = null;
+   
+    turns.release(generation);
   }
 }

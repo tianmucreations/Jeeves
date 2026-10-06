@@ -17,7 +17,7 @@ import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mous
 
 // The folder, service and model are changed between tasks only, as their own screens are.
 function busy(): boolean {
-  if (session.status !== 'working' && !session.approvalPending) return false;
+  if (!session.busy()) return false;
   session.addNotice('That can be changed between tasks - try again when I have finished.');
   return true;
 }
@@ -58,8 +58,8 @@ export function runSettingsAction(action: SettingsAction): void {
       session.pickerStart = { provider: action.provider, full: true };
       session.openPicker();
       return;
-    case 'ai':
-      // The provider list, then that provider's models, then how to connect - the full lists.
+    case 'providers':
+      // Step 2: the provider list (then that provider's models, then how to connect).
       session.pickerStart = null;
       session.openPicker();
       return;

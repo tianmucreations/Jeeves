@@ -13,31 +13,52 @@ export const askQuestionSchema = z.object({
     .describe('Your recommended choice first, its label ending "(Recommended)". No "Other": typing is always offered.'),
 });
 
+// One question on screen at a time, and a QUEUE behind it (the race fix, 3 Oct):
+// two tool calls asking at once used to overwrite each other, leaving the first
+// job's promise hanging forever and the job wedged until Esc. Now the second
+// question waits its turn, and Stop/Esc cancels the whole queue.
 let pending: ((answer: string) => void) | null = null;
+let waiting: { input: z.output<typeof askQuestionSchema>; resolve: (answer: string) => void }[] = [];
 
 export function questionOpen(): boolean {
   return pending !== null;
 }
 
+function display(input: z.output<typeof askQuestionSchema>, resolve: (answer: string) => void): void {
+  pending = resolve;
+  session.setQuestion({ question: input.question, options: input.options, highlight: 0 });
+}
+
 export function askQuestion(input: z.output<typeof askQuestionSchema>): Promise<string> {
-  return new Promise((resolve) => {
-    pending = resolve;
-    session.setQuestion({ question: input.question, options: input.options, highlight: 0 });
-  });
+  if (pending === null) return new Promise((resolve) => display(input, resolve));
+  return new Promise((resolve) => waiting.push({ input, resolve }));
 }
 
 // A button, a number, or typed words: all land here.
 export function answerQuestion(answer: string): void {
   const resolve = pending;
   if (!resolve) return;
-  pending = null;
-  session.setQuestion(null);
+  const next = waiting.shift();
+  if (next) {
+    // The queued question becomes the one on screen; nothing hangs.
+    display(next.input, next.resolve);
+  } else {
+    pending = null;
+    session.setQuestion(null);
+  }
   resolve(answer);
 }
 
-// Stop / Esc: the job is over, so nobody is waiting for an answer.
+// Stop / Esc: the job is over, so nobody is waiting for an answer - the one on
+// screen AND any queued behind it, all released at once (nothing is promoted to
+// the screen on a stop; the window goes quiet in one clean step).
 export function cancelQuestion(): void {
-  if (pending) answerQuestion('');
+  const current = pending;
+  const rest = waiting.splice(0);
+  pending = null;
+  session.setQuestion(null);
+  current?.('');
+  for (const item of rest) item.resolve('');
 }
 
 export function answerOption(index: number): boolean {

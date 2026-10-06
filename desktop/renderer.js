@@ -122,8 +122,17 @@ function renderInfo(s) {
   s.segments.forEach((seg, i) => {
     if (i > 0) els.segments.appendChild(Object.assign(document.createElement('span'), { className: 'sep', textContent: '·' }));
     const span = document.createElement('span');
-    span.className = `seg ${seg.color ?? ''}`;
-    span.textContent = seg.text;
+    // The "/tasks" note in the bar is a door, not a dead end: clicking it opens
+    // (or closes) the tasks panel above the typing box.
+    const isTaskNote = /task(s)? running/.test(seg.text);
+    if (isTaskNote) {
+      span.className = 'seg cyan link';
+      span.textContent = seg.text;
+      span.addEventListener('click', () => window.jeeves.toggleTasks());
+    } else {
+      span.className = `seg ${seg.color ?? ''}`;
+      span.textContent = seg.text;
+    }
     els.segments.appendChild(span);
   });
 }
@@ -148,15 +157,37 @@ function render(s) {
   els.chat.hidden = false;
   renderTranscript(s.transcript);
 
-  // The job's checklist above the typing box while steps are left.
+  // The job's checklist above the typing box while steps are left: ONE line
+  // naming the step in progress (the bullet-point boxes are gone - owner, 3 Oct).
   const todosEl = document.getElementById('todos');
-  todosEl.hidden = !s.todos?.length;
+  todosEl.hidden = !(s.todos?.length);
   todosEl.textContent = '';
   for (const line of s.todos ?? []) {
     const row = document.createElement('div');
     row.textContent = line;
-    row.className = line.startsWith('●') ? 'now' : line.startsWith('✓') || line.startsWith('✗') ? 'done' : '';
+    row.className = 'now';
     todosEl.appendChild(row);
+  }
+
+  // The background-tasks panel: the door behind the "/tasks" note in the info
+  // bar. Each task gets its own Stop button.
+  const tasksEl = document.getElementById('tasks');
+  tasksEl.hidden = !s.tasksOpen || !s.tasks?.length;
+  tasksEl.textContent = '';
+  for (const task of s.tasks ?? []) {
+    if (!s.tasksOpen) break;
+    const row = document.createElement('div');
+    row.className = 'now';
+    const label = document.createElement('span');
+    const seconds = Math.max(0, Math.round((Date.now() - task.startedAt) / 1000));
+    label.textContent = `#${task.id} ${task.plain} · ${seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`} — `;
+    const stop = document.createElement('button');
+    stop.className = 'btn';
+    stop.textContent = 'Stop';
+    stop.addEventListener('click', () => window.jeeves.stopTask(task.id));
+    row.appendChild(label);
+    row.appendChild(stop);
+    tasksEl.appendChild(row);
   }
 
   // A question with choices: a button each; typed words in the box are an answer too.

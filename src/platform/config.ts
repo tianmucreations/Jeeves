@@ -35,12 +35,13 @@ interface JeevesConfig {
 // Tests run against their own settings file so they never touch - or race on - the real one.
 // THE SETTINGS FILE IS READ ONCE, NOT ON EVERY LOOK (6 Oct). `conf` re-reads and
 // re-parses the whole file on every single get(), and the typing box and the info
-// bar read settings every time they draw - dozens of times a second while an answer
-// streams. Measured with a CPU profile: ~10 of 22 seconds went on reading this
-// file, which starved the keyboard (typed letters arrived seconds late or never).
-// Now the parsed file is kept in memory and re-read only when the file itself
-// changes (another window, the desktop app, or our own set()). Values come back as
-// copies, so a caller can never change the cached copy by accident.
+// bar read settings every time they draw - and they draw dozens of times a second
+// while an answer streams. Measured with a CPU profile of a streaming answer:
+// ~10 of 22 seconds went on reading this file, which starved the keyboard (typed
+// letters arrived seconds late or not at all). Now the parsed file is kept in
+// memory and re-read only when the file itself changes (another window, the
+// desktop app, or our own set()). Values come back as copies, so a caller can
+// never change the cached copy by accident.
 class CachedConf<T extends Record<string, any>> extends Conf<T> {
   private cachedStore: T | null = null;
   private cachedStamp = '';

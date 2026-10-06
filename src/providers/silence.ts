@@ -27,8 +27,11 @@ export function silenceGuard(outer?: AbortSignal, ms = SILENCE_MS): SilenceGuard
     // A finished or stopped reply never keeps Jeeves (or a test run) waiting on this timer.
     timer.unref();
   };
+  // The outside (job) signal is bridged in; the bridge is dismantled in stop(),
+  // so a long conversation never collects one dead listener per reply.
+  const onOuterAbort = () => controller.abort(outer?.reason);
   if (outer?.aborted) controller.abort(outer.reason);
-  else outer?.addEventListener('abort', () => controller.abort(outer.reason), { once: true });
+  else outer?.addEventListener('abort', onOuterAbort, { once: true });
   return {
     signal: controller.signal,
     onPart(part) {
@@ -38,6 +41,7 @@ export function silenceGuard(outer?: AbortSignal, ms = SILENCE_MS): SilenceGuard
     },
     stop() {
       clearTimeout(timer);
+      outer?.removeEventListener('abort', onOuterAbort);
       if (controller.signal.aborted && !outer?.aborted) throw controller.signal.reason;
     },
   };

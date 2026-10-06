@@ -10,7 +10,7 @@ import { readFileSchema, runReadFile } from './readFile.js';
 import { writeFileSchema, runWriteFile } from './writeFile.js';
 import { editFileSchema, runEditFile, editRefusal, editedContent } from './editFile.js';
 import { listDirSchema, runListDir } from './listDir.js';
-import { runBashSchema, runRunBash } from './runBash.js';
+import { runBashSchema, runRunBash, bareCdTarget } from './runBash.js';
 import { presentPlanSchema, runPresentPlan, offerPlanSchema, runOfferPlan } from '../agent/plan.js';
 import { askQuestionSchema, askQuestion } from '../agent/question.js';
 import { memorySchema, runMemory } from './memory.js';
@@ -363,17 +363,19 @@ export const TOOLS: ToolSet = {
   }),
   runBash: defineTool({
     name: 'runBash',
-    description: 'Run a shell command and return its output.',
+    description:
+      'Run a shell command and return its output. The working directory carries over between commands (a bare `cd <folder>` moves it, silently); you never need `cd x && command` - just `cd x` once, then run commands.',
     schema: runBashSchema,
     // Read-only commands never ask (the allowlist lives in permissions.ts);
     // command kinds the person has already allowed in this folder don't ask
     // either - but only while the command stays inside this project folder
-    // (see runBashNeedsPermission).
-    permission: (input) => runBashNeedsPermission(input.command),
-    changes: (input) => !isReadOnlyBashCommand(input.command),
+    // (see runBashNeedsPermission). A bare `cd` is not a command the person
+    // needs to know about at all: it moves the remembered working directory.
+    permission: (input) => bareCdTarget(input.command) === null && runBashNeedsPermission(input.command),
+    changes: (input) => bareCdTarget(input.command) === null && !isReadOnlyBashCommand(input.command),
     approvalCommand: (input) => input.command,
     warningInline: true,
-    quiet: (input) => isReadOnlyBashCommand(input.command),
+    quiet: (input) => bareCdTarget(input.command) !== null || isReadOnlyBashCommand(input.command),
     summarize: (input) => {
       const described = describeCommand(input.command);
       // No "(outside this project)" tail either (owner, 26 Sept: neither Claude Code
@@ -382,8 +384,11 @@ export const TOOLS: ToolSet = {
       return described;
     },
     label: (input) => describeDone(input.command),
-    run: async (input) => {
-      const output = await runRunBash(input);
+    run: async (input, signal) => {
+      // The job's stop signal reaches the shell command now: Esc ends the command
+      // actually running, not just the loop around it (3 Oct).
+      const output = await runRunBash(input, signal);
+      if (bareCdTarget(input.command) !== null) return output;
       // Looking around (a search that finds nothing exits 1) is not a problem to research.
       if (isReadOnlyBashCommand(input.command)) return output;
       const exit = output.match(/^exit code: (\d+|unknown)$/m)?.[1];
@@ -391,15 +396,22 @@ export const TOOLS: ToolSet = {
       return note ? output + note : output;
     },
     hold: (input) =>
-      holdUntilReproduced('runBash', input.command, commandEditsFiles(input.command)) ??
-      (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
-    changesFiles: (input) => !isReadOnlyBashCommand(input.command),
+      bareCdTarget(input.command) !== null
+        ? null
+        : holdUntilReproduced('runBash', input.command, commandEditsFiles(input.command)) ??
+          (isReadOnlyBashCommand(input.command) ? null : holdForCommand(input.command)),
+    changesFiles: (input) => bareCdTarget(input.command) === null && !isReadOnlyBashCommand(input.command),
     warning: (input) =>
-      !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
-        ? 'outside the project folder'
-        : null,
+      bareCdTarget(input.command) !== null
+        ? null
+        : !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command)
+          ? 'outside the project folder'
+          : null,
     alreadyTrustedElsewhere: (input) =>
-      !isReadOnlyBashCommand(input.command) && commandMayReachOutside(input.command) && isCommandTrusted(input.command),
+      bareCdTarget(input.command) === null &&
+      !isReadOnlyBashCommand(input.command) &&
+      commandMayReachOutside(input.command) &&
+      isCommandTrusted(input.command),
   }),
 };
 

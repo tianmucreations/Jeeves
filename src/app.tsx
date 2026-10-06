@@ -14,8 +14,9 @@ import { ModelPicker } from './components/ModelPicker.js';
 import { KeysManager } from './components/KeysManager.js';
 import { HelpView } from './components/HelpView.js';
 import { SettingsView } from './components/SettingsView.js';
-import { todoLines, todosUnfinished } from './tools/todoList.js';
+import { todoHeadline } from './tools/todoList.js';
 import { questionPanelLines, answerOption } from './agent/question.js';
+import { stopBackgroundById } from './tools/background.js';
 import { ChatsView } from './components/ChatsView.js';
 import { MemoryView } from './components/MemoryView.js';
 import { RewindView } from './components/RewindView.js';
@@ -56,15 +57,26 @@ export function App() {
   // What sits between the conversation and the typing box: a question with choices
   // waiting for the person, else the job's checklist while steps are left. The
   // conversation gives up its rows (and one more for the line above).
-  const panel: { text: string; kind: 'question' | 'choice' | 'hint' | 'todo'; option?: number }[] = s.question
+  const panel: { text: string; kind: 'question' | 'choice' | 'hint' | 'todo' | 'task'; option?: number; taskId?: number }[] = s.question
     ? questionPanelLines(s.question, inner - 4).map((line, index, all) => ({
         text: line.text,
         kind: line.option !== undefined ? ('choice' as const) : index === all.length - 1 ? ('hint' as const) : ('question' as const),
         option: line.option,
       }))
-    : todosUnfinished(s.todos) && !s.approvalPending
-      ? todoLines(s.todos, Math.min(6, Math.max(0, rows - 14))).map((text) => ({ text, kind: 'todo' as const }))
-      : [];
+    : s.approvalPending
+      ? []
+      : [
+          // ONE line for the job's checklist (the bullet-point boxes are gone),
+          // and - when /tasks is open - one line per background task with Stop.
+          ...(todoHeadline(s.todos) ? [{ text: `▣ ${todoHeadline(s.todos)}`, kind: 'todo' as const }] : []),
+          ...(s.tasksOpen
+            ? s.backgroundTasks.map((task) => ({
+                text: `#${task.id} ${task.plain}`,
+                kind: 'task' as const,
+                taskId: task.id,
+              }))
+            : []),
+        ];
   const midHeight = Math.max(1, rows - 6 - inputRows - (panel.length > 0 ? panel.length + 1 : 0));
   // A click on one of the choices: the panel starts on the row after the separator
   // under the conversation (border 1, header 1, conversation, separator).
@@ -74,6 +86,14 @@ export function App() {
     const line = panel[row - first];
     if (col < 2 || col > inner + 1 || line?.option === undefined) return false;
     answerOption(line.option);
+    return true;
+  };
+  // A click on a background task's Stop button (its right end), in the panel.
+  session.tasksClick = (col: number, row: number) => {
+    const first = 4 + midHeight;
+    const line = panel[row - first];
+    if (line?.kind !== 'task' || line.taskId === undefined || col < columns - 9 || col > columns - 2) return false;
+    stopBackgroundById(line.taskId);
     return true;
   };
   const inputSideLeft = Array.from({ length: inputRows }, () => '│ ').join('\n');
@@ -114,9 +134,9 @@ export function App() {
   const onConversation = !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.spendingOpen || s.settingsOpen || s.addressOpen || s.launchStage !== 'ready');
   // Settings has nothing to copy, so it keeps the mouse too: the wheel or trackpad
   // scrolls its list and a click chooses (owner, 23 Sept).
-  // The address question has buttons too: its own mouse switch-on used to be undone by this
-  // line a moment later (the window turned the mouse off again), so Sir and Ma'am were dead.
-  const wantsMouse = onConversation || ((s.settingsOpen || s.chatsOpen || s.memoryOpen || s.rewindOpen || s.addressOpen || s.launchStage === 'address') && !(s.wizardActive || s.keysOpen || s.pickerOpen || s.helpOpen));
+  // Every screen with buttons or lists needs the mouse (clicks); only the screens
+  // with text worth copying (help, spending) leave it to the terminal.
+  const wantsMouse = onConversation || !(s.helpOpen || s.spendingOpen);
   // On the setup screens Ctrl+C is only for quitting - still twice, never at once.
   // (The conversation screen's typing box handles its own.)
   useInput((input, key) => {
@@ -254,15 +274,24 @@ export function App() {
               <Box key={index} height={1}>
                 <Text dimColor>│</Text>
                 <Box width={inner} paddingLeft={1} paddingRight={1}>
-                  <Text
-                    wrap="truncate-end"
-                    bold={line.kind === 'question'}
-                    inverse={chosen}
-                    color={line.kind === 'todo' && line.text.startsWith('●') ? 'yellow' : line.kind === 'choice' ? 'yellow' : undefined}
-                    dimColor={line.kind === 'hint' || (line.kind === 'todo' && (line.text.startsWith('✓') || line.text.startsWith('✗')))}
-                  >
-                    {line.text}
-                  </Text>
+                  {line.kind === 'task' ? (
+                    <Box width={inner - 2} justifyContent="space-between">
+                      <Text wrap="truncate-end">{line.text}</Text>
+                      <Text color="yellow" inverse>
+                        {' Stop '}
+                      </Text>
+                    </Box>
+                  ) : (
+                    <Text
+                      wrap="truncate-end"
+                      bold={line.kind === 'question'}
+                      inverse={chosen}
+                      color={line.kind === 'choice' ? 'yellow' : undefined}
+                      dimColor={line.kind === 'hint' || line.kind === 'todo'}
+                    >
+                      {line.text}
+                    </Text>
+                  )}
                 </Box>
                 <Text dimColor>│</Text>
               </Box>

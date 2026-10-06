@@ -3,9 +3,7 @@
 import { Rig } from './pty-rig.mjs';
 async function run(how: 'click' | 'number' | 'typed' | 'enter') {
   const r = new Rig(100, 32, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123' });
-  await r.until((t) => t.includes('Just chat - no project folder'), 15000);
-  r.send('\r');
-  await r.until((t) => t.includes('Settings'), 15000, 'conversation');
+  await r.bootConversation();
   await r.wait(1200);
   r.send('QUESTIONTEST please'); await r.wait(300); r.send('\r');
   await r.until((t) => t.includes('Which folder should I put'), 20000, 'question');
