@@ -3,7 +3,7 @@
 // "reading history" and the top rows never move). Counts distinct pictures.
 import { Rig } from './pty-rig.mjs';
 const r = new Rig(100, 32, { ...(process.env.JEEVES_ZAI_BASE_URL ? { JEEVES_ZAI_BASE_URL: process.env.JEEVES_ZAI_BASE_URL } : {}), ...(process.env.HEARTBEAT ? { NODE_OPTIONS: `--require ${process.env.HEARTBEAT}` } : {}) });
-await r.until((t) => t.includes('Just chat - no project'), 15000);
+await r.until((t) => t.includes('Just chat - no project folder'), 15000);
 r.send('\r');
 await r.until((t) => t.includes('Settings'), 15000, 'conversation');
 await r.wait(1200);

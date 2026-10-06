@@ -10,14 +10,54 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
   const registry = await engine('models/registry.js');
   const { isToolCapable } = await engine('models/filter.js');
   const { isModelUnreliable } = await engine('agent/model-health.js');
-  const { isDirectService, directService, CUSTOM_SERVICE_ID } = await engine('providers/direct-services.js');
-  const { loadDirectModels } = await engine('providers/catalogue.js');
+  const { isDirectService, directService, compatibleServices, CUSTOM_SERVICE_ID } = await engine('providers/direct-services.js');
+  const { loadDirectModels, loadCatalogue } = await engine('providers/catalogue.js');
   const { autoRowFor, noAutoNote } = await engine('agent/auto.js');
   const { ZAI_MODELS } = await engine('providers/zai.js');
   const { listLocalOllamaModels, isOllamaOnline } = await engine('providers/ollama.js');
   const { keyLooksValid } = await engine('commands/keys.js');
   const { signInWithOpenRouter, WAITING_STEPS } = await engine('providers/openrouter-signin.js');
   const { noCreditNote } = await engine('providers/openrouter.js');
+  const { signInWithChatGpt } = await engine('providers/chatgpt.js');
+
+  const chats = await engine('platform/conversations.js');
+  const { COMMANDS } = await engine('commands/help.js');
+  const memory = await engine('platform/memory.js');
+  const checkpoints = await engine('checkpoints/index.js');
+  const { spendingLines } = await engine('commands/spending.js');
+  const { KEY_STORE, KEY_STORE_SUBJECT } = await engine('platform/wording.js');
+
+  // Earlier conversations of the folder in use, as the terminal's list shows them.
+  ipcMain.handle('conversations', () => chats.listConversations().map((chat) => ({ id: chat.id, title: chat.title, when: chats.ago(chat.updated) })));
+  // What Jeeves remembers (the terminal's "What I remember"): each note can be removed.
+  // Going back to an earlier point (the terminal's "Go back to an earlier point").
+  ipcMain.handle('rewind-points', async () => (await checkpoints.rewindPoints()).map((point) => ({ id: point.id, label: point.label, when: chats.ago(point.createdAt) })));
+  ipcMain.handle('rewind-to', async (_event, id) => {
+    if (session.status === 'working' || session.approvalPending) return 'busy';
+    const outcome = await checkpoints.rewindTo(String(id));
+    session.addNotice(outcome.message);
+    if (outcome.historyNote) session.pendingContextNote = outcome.historyNote;
+    onChange();
+    return 'ok';
+  });
+  // What has been spent, in the same plain lines as the terminal's "What I've spent".
+  ipcMain.handle('spending', () => spendingLines());
+  ipcMain.handle('memory-notes', () => memory.allNotes().map((note) => ({ id: note.id, text: note.text, about: note.about })));
+  ipcMain.handle('forget-note', (_event, id) => {
+    memory.removeNote(String(id));
+    return true;
+  });
+  ipcMain.handle('resume-conversation', (_event, id) => {
+    if (session.status === 'working' || session.approvalPending) return 'busy';
+    const ok = chats.resumeConversation(String(id));
+    session.addNotice(ok ? 'Carrying on from where we stopped - go ahead.' : "That conversation couldn't be opened - it may have been damaged.");
+    onChange();
+    return ok ? 'ok' : 'failed';
+  });
+  ipcMain.handle('delete-conversation', (_event, id) => {
+    chats.deleteConversation(String(id));
+    return true;
+  });
 
   const labelOf = (id) => providers.PROVIDER_ROWS.find((row) => row.id === id)?.label ?? id;
   const row = (model, blurb = '') => ({
@@ -29,6 +69,9 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
   });
 
   ipcMain.handle('settings', async () => ({
+    // The other AI companies come from the public list; on the very first opening, wait a few
+    // seconds for it (a day's copy is kept after that).
+    _catalogue: await Promise.race([loadCatalogue().then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 4000))]),
     services: await Promise.all(
       providers.PROVIDER_ROWS.map(async (service) => ({
         ...service,
@@ -39,14 +82,27 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
         keyPage: isDirectService(service.id) ? `https://${directService(service.id).keyPage}` : service.id === 'zai' ? 'https://z.ai/manage-apikey/apikey-list' : service.id === 'openrouter' ? 'https://openrouter.ai/keys' : null,
       })),
     ),
-    current: { provider: session.providerId, model: session.model },
+    // Every other AI company in the public catalogue (OpenCode's "Providers" list).
+    more: compatibleServices().map((service) => ({
+      id: service.id,
+      label: service.label,
+      description: 'API key',
+      ready: providers.hasCredentialsFor(service.id),
+      keyPage: `https://${service.keyPage}`,
+    })),
+    keyStore: KEY_STORE,
+    // The buttons under "More", from the one table of commands (the same as the terminal's Settings).
+    commands: COMMANDS.filter((entry) => entry.place).map(({ command, label, description }) => ({ command, label, description })),
+    current: { provider: providers.rowFor(session.providerId), model: session.model },
     dailyLimit: session.dailyLimit,
     address: config.getAddress(),
     busy: session.status === 'working' || session.status === 'awaiting-approval',
   }));
 
   // The models a service offers: the recommended few first where the list is long.
-  ipcMain.handle('models', async (_event, provider) => {
+  ipcMain.handle('models', async (_event, rowId) => {
+    // OpenAI's row runs on the ChatGPT plan or the API key, whichever is connected.
+    const provider = providers.serviceFor(rowId);
     const note = noAutoNote(provider, labelOf(provider));
     if (provider === 'openrouter') {
       const recommended = registry.resolveCurated(session.models).map((pick) => row(pick.model, pick.blurb));
@@ -67,7 +123,8 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
   });
 
   // ModelPicker.tsx applyModel, step for step.
-  ipcMain.handle('choose-model', (_event, provider, modelId) => {
+  ipcMain.handle('choose-model', (_event, rowId, modelId) => {
+    const provider = providers.serviceFor(rowId);
     if (session.status === 'working' || session.status === 'awaiting-approval') return 'busy';
     session.setProvider(provider);
     session.setModel(modelId);
@@ -95,25 +152,29 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
     if (provider === 'openrouter' || provider === 'zai') {
       const saved = provider === 'openrouter' ? await providers.storeOpenRouterKey(key) : await providers.storeZaiKey(key);
       onChange();
-      if (!saved) return { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+      if (!saved) return { ok: false, message: `${KEY_STORE_SUBJECT} was not reachable - try again.` };
       const credit = provider === 'openrouter' ? await noCreditNote(key) : '';
-      return { ok: true, message: `Your key is saved securely in your Mac keychain.${credit ? ' ' + credit : ''}` };
+      return { ok: true, message: `Your key is saved securely in ${KEY_STORE}.${credit ? ' ' + credit : ''}` };
     }
     if (isDirectService(provider)) {
       const label = directService(provider).label;
       const result = await providers.storeDirectKey(provider, key);
       onChange();
       if (result === 'rejected') return { ok: false, message: `${label} didn't accept that key - paste it again.` };
-      if (result === 'keychain') return { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+      if (result === 'keychain') return { ok: false, message: `${KEY_STORE_SUBJECT} was not reachable - try again.` };
       const unchecked = result === 'saved-unchecked' ? ` ${label} couldn't be reached to check it just now.` : '';
-      return { ok: true, message: `Your ${label} key is saved securely in your Mac keychain.${unchecked}` };
+      return { ok: true, message: `Your ${label} key is saved securely in ${KEY_STORE}.${unchecked}` };
     }
     return { ok: false, message: 'Set this one up in the terminal Jeeves for now.' };
   });
 
   ipcMain.handle('remove-key', async (_event, provider) => {
     if (provider === 'openrouter') await providers.removeOpenRouterKey();
-    else await providers.removeServiceKey(provider);
+    else {
+      await providers.removeServiceKey(provider);
+      // OpenAI's row covers both ways of connecting: removing it signs out of the plan too.
+      if (provider === 'openai') await providers.removeServiceKey('chatgpt');
+    }
     if (session.providerId === provider) session.setStatus('disconnected');
     onChange();
     return true;
@@ -132,11 +193,36 @@ export async function registerSettings(engine, onChange, notify = () => {}) {
     }
     const saved = await providers.storeOpenRouterKey(result.key);
     onChange();
-    if (!saved) return { ok: false, message: 'The Mac keychain was not reachable - try again.' };
+    if (!saved) return { ok: false, message: `${KEY_STORE_SUBJECT} was not reachable - try again.` };
     const credit = await noCreditNote(result.key);
-    return { ok: true, message: `Signed in - your OpenRouter key is saved in your Mac keychain.${credit ? ' ' + credit : ''}` };
+    return { ok: true, message: `Signed in - your OpenRouter key is saved in ${KEY_STORE}.${credit ? ' ' + credit : ''}` };
   });
   ipcMain.on('openrouter-sign-in-cancel', () => signingIn?.abort());
+
+  // "Sign in with ChatGPT": approve in the browser, no key (the terminal's ChatGptConnect).
+  let chatGptSigningIn = null;
+  ipcMain.handle('chatgpt-sign-in', async () => {
+    chatGptSigningIn?.abort();
+    chatGptSigningIn = new AbortController();
+    const result = await signInWithChatGpt({ signal: chatGptSigningIn.signal });
+    chatGptSigningIn = null;
+    if (!result.ok) {
+      const message =
+        result.reason === 'cancelled'
+          ? ''
+          : result.reason === 'timeout'
+            ? 'No approval arrived after five minutes, so I stopped waiting - press the button to try again.'
+            : result.reason === 'busy'
+              ? 'Another program (such as the ChatGPT Codex app) is using the sign-in door. Close it and try again.'
+              : "ChatGPT didn't complete the sign-in - press the button to try again.";
+      return { ok: false, message };
+    }
+    const saved = await providers.storeChatGptTokens(result.tokens);
+    onChange();
+    if (!saved) return { ok: false, message: `${KEY_STORE_SUBJECT} was not reachable - try again.` };
+    return { ok: true, message: `Connected - Jeeves will use your ChatGPT plan. The sign-in is saved securely in ${KEY_STORE}.` };
+  });
+  ipcMain.on('chatgpt-sign-in-cancel', () => chatGptSigningIn?.abort());
 
   ipcMain.handle('set-limit', (_event, raw) => {
     const value = Number(String(raw).trim().replace(/^\$/, ''));

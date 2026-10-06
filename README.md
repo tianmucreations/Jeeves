@@ -2,7 +2,7 @@
 
 **Your personal assistant in the terminal — built for non-coders and coders alike. Say what you need in plain English; Jeeves does the work, carefully, and tells you what it cost.**
 
-Jeeves reads and writes your files, tidies folders, builds web pages, fixes programs and checks facts on the web — all from one calm window, in ordinary language. He asks before changing anything, can put things back with `/undo`, and keeps an eye on your costs. No commands to learn, no settings to fiddle with — and if you do code, every model and every detail is there when you want it.
+Jeeves reads and writes your files, tidies folders, builds web pages, fixes programs and checks facts on the web — all from one calm window, in ordinary language. He asks before changing anything, can put things back, remembers what you tell him, and keeps an eye on your costs. No commands to learn — every choice is a button — and if you do code, every model and every detail is there when you want it.
 
 ```
 npm install -g @tianmucreations/jeeves
@@ -24,15 +24,21 @@ Needs [Node.js](https://nodejs.org) 22.12 or newer, and a key from an AI service
 
 ## Why people choose Jeeves
 
-**Built for people who don't code.** Every screen is a list you move through with the arrow keys and Enter. Open a recent project or create a new one from a list — no typing folder locations, no jargon, no hidden shortcuts. Errors come in plain English ("OpenAI didn't accept the key — type /keys to check or replace it"), never as codes.
+**Built for people who don't code.** Every screen is a list you move through with the arrow keys and Enter. Open a recent project or create a new one from a list — no typing folder locations, no jargon, no hidden shortcuts. Errors come in plain English ("OpenAI didn't accept the key — click Settings, then Manage keys, to check or replace it"), never as codes.
 
-**A butler, not a chatbot.** Jeeves is polite, unflappable and discreet, in the tradition of P.G. Wodehouse — and he calls you whatever you like (he asks on first launch; `/address` changes it). He answers questions directly, gets on with jobs when asked, and says plainly when something is done.
+**A butler, not a chatbot.** Jeeves is polite, unflappable and discreet, in the tradition of P.G. Wodehouse — and he calls you whatever you like (he asks on first launch, and you can change it in Settings). He answers questions directly, gets on with jobs when asked, and says plainly when something is done.
 
 **Auto: the right model, without thinking about it.** Choose Auto and Jeeves works with a fast, inexpensive model, calls in an expert model when a job gets hard, and has the expert double-check finished programs and documents before telling you they're done. The expert must show a concrete example of any problem, and Jeeves must see the problem for himself before changing anything, so good work is never "fixed" into bad work. If the job still proves difficult, he asks before using the strongest (and dearest) model.
 
 **He doesn't guess.** Facts about the outside world are looked up on the web, read from the most official page, and given with their source. Before building something new, he checks what already exists and shows you a short research note: use an existing tool, adapt one (licence permitting), or build new — and why. If the same problem happens twice, he researches the cause instead of patching blindly.
 
-**Safe to say yes to.** Anything that changes your computer asks first — or answer **a** once to always allow changes inside that project folder (`/ask` turns asking back on). Before any change in your project folder he quietly takes a backup, so `/undo` puts the folder back — changed and deleted files return, new ones disappear. Changes outside the folder always ask, with a warning, because they can't be undone.
+**Safe to say yes to.** Anything that changes your computer asks first — or answer **a** once to always allow changes inside that project folder (Settings, then Ask before changes, turns asking back on). Before any change in your project folder he quietly takes a backup, so Settings, then Undo last change, puts the folder back — changed and deleted files return, new ones disappear. **Go back to an earlier point** goes back further than the last change. Changes outside the folder always ask, with a warning, because they can't be undone.
+
+**He remembers, and picks up where you left off.** Every conversation is saved; Settings, then *Earlier conversations*, carries one on exactly where it stopped. Tell him "remember that I prefer short answers" and he keeps the note for next time — *What I remember* lists every note, each with a Delete button.
+
+**He plans big jobs with you.** Before a large or unclear job he asks "Want me to plan it first?" — Yes and he shows the plan and waits for your OK before changing anything. On any job of three steps or more, a checklist appears above the typing box and ticks off as he goes. When a decision is yours, he asks with buttons.
+
+**Pictures.** Click **Picture**, paste a screenshot, or drop a picture file onto the window, and he looks at it.
 
 **Type while he works.** Your message box grows as you type, and anything you send while Jeeves is busy waits its turn and goes as soon as he finishes. Your own messages sit on a soft grey band, so they're easy to find when you scroll back.
 
@@ -49,7 +55,8 @@ Needs [Node.js](https://nodejs.org) 22.12 or newer, and a key from an AI service
 ## For people who do code
 
 - **Any model, your choice.** Turn Auto off and pick from 400+ models through OpenRouter, with search, favourites, prices, memory sizes and a free-models list.
-- **Direct connections** with your own key: Anthropic, OpenAI, Google, xAI (Grok), Mistral and Groq — each company's live model list, with costs worked out from its price list. Plus **any OpenAI-compatible service** (paste its address and key), **Ollama** for models on your own machine, and **Z.ai's GLM Coding Plan** at a flat monthly price.
+- **Direct connections** with your own key: Anthropic, OpenAI, Google, xAI (Grok), Mistral and Groq — each company's live model list, with costs worked out from its price list — plus **about 175 more AI companies** from the public models.dev list (Settings, then *AI provider and model*, then *All providers*), **any OpenAI-compatible service** (paste its address and key), **Ollama** for models on your own machine, and **Z.ai's GLM Coding Plan** at a flat monthly price. **Sign in with ChatGPT** uses a ChatGPT Plus or Pro plan you already pay for (new — tried against a pretend service only; not yet with a real account).
+- **Search inside files, find files by name, small edits, background commands, and read-only helpers** for big searches — the same tools the leading coding assistants use.
 - **Prompt caching** where it matters: sticky routing on OpenRouter, and cache markers on Anthropic, so long conversations cost a fraction of the fresh price.
 - **Runs your real tools** — tests, builds, git — and reads the results before claiming a job is done.
 - **Tested on every change** on macOS, Windows and Linux.
@@ -65,19 +72,9 @@ Needs [Node.js](https://nodejs.org) 22.12 or newer, and a key from an AI service
 
 Auto is offered only where a pairing has been measured doing everyday and difficult jobs well — Jeeves's name is on every result. Everywhere else, the model list says so in one line.
 
-## Everyday commands
+## Everything is a button
 
-| Type | What it does |
-|---|---|
-| `/model` | Choose a service and a model (or Auto), and set your daily limit |
-| `/keys` | Add, replace or remove keys |
-| `/undo` | Put the project folder back to before your last request |
-| `/ask` | Ask before every change in this project folder again (after choosing "always allow") |
-| `/clear` | Start a fresh conversation |
-| `/address` | Change how Jeeves addresses you |
-| `/verbose` | Show the technical details as well |
-| `/help` | See everything in plain English |
-| `/exit` | Leave, with your terminal exactly as it was |
+Click **Settings** (bottom left) for everything: a new conversation, earlier conversations, what he remembers, plan first, copy his last answer, save the conversation as a document, undo, go back to an earlier point, what you've spent, the AI and model, your project folder, keys, spending limits, and how he addresses you. Nothing needs typing and nothing needs remembering. (Typed commands such as `/undo` and `/plan` still work for people who like them.)
 
 Arrow keys and the trackpad scroll the conversation; `Page Up` / `Page Down` jump a screen; `End` returns to the newest. `Ctrl+R` shows the model's reasoning for the last answer.
 

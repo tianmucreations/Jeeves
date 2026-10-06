@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getShell } from '../platform/shell.js';
 import { stripHeredoc } from '../agent/command-family.js';
 import { stripQuotes } from '../agent/permissions.js';
+import { startBackground, killBackgroundTasks } from './background.js';
+import { terminate } from './terminate.js';
 
 
 // Claude Code's limits (utils/timeouts.ts): 2 minutes unless the model asks for
@@ -17,6 +19,10 @@ export const runBashSchema = z.object({
     .number()
     .optional()
     .describe(`How long the command may run, in milliseconds - up to ${MAX_COMMAND_MS} (10 minutes). Without it: ${DEFAULT_COMMAND_MS} (2 minutes). Ask for more for downloads, installs and builds.`),
+  background: z
+    .boolean()
+    .optional()
+    .describe('true: start it and carry on without waiting, for a server or watcher that keeps running. Look at it later with the backgroundTask tool.'),
 });
 
 // Every running command is registered so the exit paths (Ctrl+C, /exit, kill
@@ -24,15 +30,17 @@ export const runBashSchema = z.object({
 // a command the user has already abandoned.
 const running = new Set<ResultPromise>();
 
-export function killAllRunningCommands(): void {
-  for (const child of running) {
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // Already-exited children must not break the shutdown path.
-    }
-  }
+// Ends the commands a job is waiting on. Commands left running in the background are
+// not touched (see background.ts): Esc stops the job, not the website preview.
+export function killForegroundCommands(): void {
+  for (const child of running) terminate(child, { group: true });
   running.clear();
+}
+
+// Leaving Jeeves: everything goes, background tasks included.
+export function killAllRunningCommands(): void {
+  killForegroundCommands();
+  killBackgroundTasks();
 }
 
 // Full-screen interactive programs cannot work through this tool: they need the
@@ -64,6 +72,10 @@ export async function runRunBash(input: z.output<typeof runBashSchema>): Promise
       `${refusal} needs an interactive terminal, which this tool does not provide - it was not run. Use a non-interactive alternative (for example cat or grep) instead.`
     );
   }
+  if (input.background) {
+    const task = startBackground(input.command);
+    return `Started in the background as task #${task.id}. It keeps running while we carry on; use the backgroundTask tool (action "read" or "stop", id ${task.id}) to look at it or end it.`;
+  }
   // A hard ceiling per command: anything still running after this is killed and
   // reported to the model, which continues the conversation.
   const limit = Math.min(Math.max(input.timeout ?? DEFAULT_COMMAND_MS, 1_000), MAX_COMMAND_MS);
@@ -73,13 +85,20 @@ export async function runRunBash(input: z.output<typeof runBashSchema>): Promise
     // stdin is /dev/null: a command that reads input gets an immediate end-of-file
     // instead of sitting forever waiting for keystrokes that will never come.
     stdin: 'ignore',
-    timeout: limit,
-    forceKillAfterDelay: 2_000,
+    // Its own process group, so ending it reaches the programs it started as well (a
+    // program left holding the output open kept a stopped command "running").
+    detached: process.platform !== 'win32',
   });
   running.add(child);
+  // The time limit is kept here (not by execa) so that it ends the whole group, politely and then by force.
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    terminate(child, { group: true });
+  }, limit);
   try {
     const result = await child;
-    if (result.timedOut === true) {
+    if (timedOut) {
       throw new Error(
         `that command didn't finish in ${describeLimit(limit)} - it may be waiting for input, or need longer (up to 10 minutes can be asked for). It was stopped.`
       );
@@ -89,6 +108,7 @@ export async function runRunBash(input: z.output<typeof runBashSchema>): Promise
     if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
     return parts.join('\n\n');
   } finally {
+    clearTimeout(timer);
     running.delete(child);
   }
 }

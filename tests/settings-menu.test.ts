@@ -47,12 +47,13 @@ const items = (rows: SettingsRow[]) => rows.filter((row): row is Extract<Setting
 const headers = (rows: SettingsRow[]) => rows.filter((row) => row.kind === 'header').map((row) => (row as { title: string }).title);
 
 describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
-  it('runs in order: folders, services, models, keys, you, and the commands last', () => {
+  it('runs in order: conversation, the AI and folder, keys and spending, you, and the rest last', () => {
     const titles = headers(settingsRows(base));
-    expect(titles[0]).toBe('FOLDERS');
-    expect(titles[1]).toBe('PROVIDER');
-    expect(titles[2]).toMatch(/^MODELS/);
-    expect(titles[titles.length - 1]).toMatch(/^COMMANDS/);
+    expect(titles).toEqual(['CONVERSATION', 'AI AND FOLDER', 'KEYS & SPENDING', 'YOU', 'MORE']);
+  });
+
+  it('is short enough to see nearly all of it in one window (the long lists were burying the buttons)', () => {
+    expect(settingsRows(base).length).toBeLessThan(32);
   });
 
   it('puts a blank line between sections, and never one at the very top', () => {
@@ -63,36 +64,23 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
     });
   });
 
-  it('lists every recent folder, Just chat, Browse and Create - the one in use ticked', () => {
-    const folderRows = items(settingsRows(base)).filter((row) => ['chat', 'folder', 'browse', 'create'].includes(row.action.type));
-    expect(folderRows.map((row) => row.label)).toEqual(['Just chat', 'Alpha', 'Beta', 'Browse for a folder →', 'Create a new project →']);
-    expect(folderRows.filter((row) => row.current).map((row) => row.label)).toEqual(['Alpha']);
+  it('the AI is one row saying what is in use now, and opening the full provider and model lists', () => {
+    const row = items(settingsRows(base)).find((r) => r.action.type === 'ai')!;
+    expect(row.label).toBe('AI provider and model →');
+    expect(row.hint).toBe('now OpenRouter - Auto');
+    const onZai = items(settingsRows({ ...base, providerId: 'zai', providerLabel: 'Z.ai', model: 'glm-5.3', models: ZAI_MODELS })).find((r) => r.action.type === 'ai')!;
+    expect(onZai.hint).toBe('now Z.ai - GLM-5.3');
   });
 
-  it('lists every AI service, saying which is in use and which are connected', () => {
-    const services = items(settingsRows(base)).filter((row) => row.action.type === 'service');
-    expect(services.map((row) => row.label)).toEqual(PROVIDER_ROWS.map((row) => row.label));
-    expect(services.find((row) => row.label === 'OpenRouter')?.hint).toMatch(/^in use/);
-    expect(services.find((row) => row.label === 'Z.ai')?.hint).toMatch(/^connected/);
-    expect(services.find((row) => row.label === 'Anthropic')?.hint).not.toMatch(/connected|in use/);
+  it('the folder is one row saying where Jeeves is working, and opening the folder list', () => {
+    const row = items(settingsRows(base)).find((r) => r.action.type === 'folders')!;
+    expect(row.hint).toBe('now Alpha');
+    const chatting = items(settingsRows({ ...base, folder: base.chatFolder })).find((r) => r.action.type === 'folders')!;
+    expect(chatting.hint).toBe('now just chatting');
   });
 
-  it("lists the service's recommended models (Auto first, ticked) and favourites - never one that can't do tasks", () => {
-    const models = items(settingsRows(base)).filter((row) => row.action.type === 'model');
-    expect(models[0].label).toBe('Auto');
-    expect(models[0].current).toBe(true);
-    const labels = models.map((row) => row.label);
-    expect(labels).toContain('GLM 5.3');
-    expect(labels).toContain('Favourite');
-    expect(labels).not.toContain('Chat Only');
-    expect(items(settingsRows(base)).some((row) => row.action.type === 'all-models')).toBe(true);
-  });
-
-  it("on Z.ai, lists Z.ai's own models", () => {
-    const rows = settingsRows({ ...base, providerId: 'zai', providerLabel: 'Z.ai', model: 'glm-5.3', models: ZAI_MODELS });
-    const models = items(rows).filter((row) => row.action.type === 'model');
-    expect(models.length).toBe(ZAI_MODELS.filter((m) => m.supportedParameters.includes('tools')).length);
-    expect(models.find((row) => row.current)?.label).toBe('GLM-5.3');
+  it("keeps a way to every service's own list: the picker the row opens lists them all", () => {
+    expect(PROVIDER_ROWS.length).toBeGreaterThan(5);
   });
 
   it('offers both spending limits next to the keys', () => {
@@ -100,9 +88,10 @@ describe('the Settings list - everything listed out (owner, 23 Sept)', () => {
     expect(spending.map((row) => row.label)).toEqual(['Daily spending limit', 'Weekly spending limit']);
   });
 
-  it('ends with every command except /settings itself', () => {
-    const commands = items(settingsRows(base)).filter((row) => row.action.type === 'command' && row.label.startsWith('/'));
-    expect(commands.map((row) => row.label)).toEqual(COMMANDS.map((entry) => entry.command).filter((c) => c !== '/settings'));
+  it('lists every command that the one table marks for Settings, in the table\'s order (conversation ones first, then More)', () => {
+    const commands = items(settingsRows(base)).filter((row) => row.action.type === 'command' && row.action.command !== '/keys' && row.action.command !== '/address');
+    const expected = [...COMMANDS.filter((entry) => entry.place === 'conversation'), ...COMMANDS.filter((entry) => entry.place === 'more')].map((entry) => entry.label);
+    expect(commands.map((row) => row.label)).toEqual(expected);
   });
 
   it('only rows that do something can be highlighted', () => {

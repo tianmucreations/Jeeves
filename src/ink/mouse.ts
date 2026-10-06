@@ -105,6 +105,52 @@ const MULTI_CLICK_MS = 500;
 const lastClick = { time: 0, col: -1, row: -1, count: 0 };
 let multiClickSelection = false;
 
+// Drag past the top or bottom edge of the conversation and it keeps scrolling by
+// itself, two rows every 50 ms, extending the selection as it goes - Claude Code's
+// useDragToScroll (ScrollKeybindingHandler.tsx: AUTOSCROLL_LINES 2, INTERVAL 50 ms,
+// capped at 200 ticks in case the release is lost). Mouse reports only arrive when
+// the pointer moves, so a timer carries on while it is held still at the edge.
+const AUTOSCROLL_LINES = 2;
+const AUTOSCROLL_INTERVAL_MS = 50;
+const AUTOSCROLL_MAX_TICKS = 200;
+let autoTimer: NodeJS.Timeout | null = null;
+let autoTicks = 0;
+let autoDir: -1 | 1 | 0 = 0;
+let autoAt = { col: 1, row: 1 };
+let autoLast = 0;
+
+function stopAutoScroll(): void {
+  if (autoTimer) clearInterval(autoTimer);
+  autoTimer = null;
+  autoDir = 0;
+}
+
+function autoScrollTick(): void {
+  const current = session.selection;
+  if (!current || autoDir === 0 || ++autoTicks > AUTOSCROLL_MAX_TICKS) return stopAutoScroll();
+  // While Jeeves is drawing, ticks arrive late; the rows a late tick missed are made
+  // up so the speed stays two rows per 50 ms of real time (at most 10 ticks' worth).
+  const now = Date.now();
+  const due = Math.max(1, Math.min(10, Math.floor((now - autoLast) / AUTOSCROLL_INTERVAL_MS)));
+  autoLast = now;
+  session.scrollTranscript((autoDir < 0 ? 1 : -1) * AUTOSCROLL_LINES * due);
+  const point = pointAt(autoAt.col, autoAt.row, true);
+  if (point) session.setSelection({ anchor: current.anchor, focus: point });
+}
+
+function updateAutoScroll(row: number): void {
+  const view = session.transcriptView;
+  if (!view) return stopAutoScroll();
+  const want: -1 | 0 | 1 = row < view.top ? -1 : row >= view.top + view.height ? 1 : 0;
+  if (want === 0) return stopAutoScroll();
+  if (want === autoDir) return;
+  stopAutoScroll();
+  autoDir = want;
+  autoTicks = 0;
+  autoLast = Date.now();
+  autoTimer = setInterval(autoScrollTick, AUTOSCROLL_INTERVAL_MS);
+}
+
 export function handleMouseInput(input: string): void {
   const event = parseMouseSequence(input);
   if (event === null) return;
@@ -117,6 +163,7 @@ export function handleMouseInput(input: string): void {
   }
   if (event.button !== 0) return;
   if (event.kind === 'press') {
+    stopAutoScroll();
     const point = pointAt(event.col, event.row);
     const now = Date.now();
     const near = now - lastClick.time < MULTI_CLICK_MS && Math.abs(event.col - lastClick.col) <= 1 && Math.abs(event.row - lastClick.row) <= 1;
@@ -136,6 +183,7 @@ export function handleMouseInput(input: string): void {
     // Outside the conversation: a click answers a pending question if one is on
     // screen, otherwise it places the cursor in the typing box.
     if (!point) {
+      if (session.questionClick?.(event.col, event.row)) return;
       if (session.footerClick?.(event.col, event.row)) return;
       if (session.approvalPending) session.approvalClick?.(event.col, event.row);
       else session.inputClick?.(event.col, event.row);
@@ -152,9 +200,12 @@ export function handleMouseInput(input: string): void {
     return;
   }
   const current = session.selection;
-  if (!current) return;
+  if (!current) return stopAutoScroll();
   const point = pointAt(event.col, event.row, true);
   if (point) session.setSelection({ anchor: current.anchor, focus: point });
+  autoAt = { col: event.col, row: event.row };
+  if (event.kind === 'drag') updateAutoScroll(event.row);
+  else stopAutoScroll();
   if (event.kind === 'release') {
     const moved = point && (point.line !== current.anchor.line || point.ch !== current.anchor.ch);
     if (moved) void copySelection();

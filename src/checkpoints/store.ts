@@ -240,6 +240,19 @@ export class CheckpointStore {
     return { checkpoint, restored: restored.sort(), removed: removed.sort(), failed: failed.sort() };
   }
 
+  // Going back further than the last change (Claude Code's /rewind, OpenCode's revert to a message):
+  // the folder is put back to how it was at this checkpoint, and every later change point is dropped
+  // (it describes a future that no longer exists). The safety copy taken first is kept.
+  async restoreTo(checkpoint: Checkpoint, now = Date.now()): Promise<UndoResult> {
+    const result = await this.restore(checkpoint, now);
+    for (const later of await this.list()) {
+      if (later.kind === 'turn' && later.createdAt > checkpoint.createdAt) {
+        await fs.rm(path.join(this.checkpointsDir(), `${later.id}.json`), { force: true });
+      }
+    }
+    return result;
+  }
+
   // The most recent checkpoint that /undo would go back to.
   async latestUndoable(): Promise<Checkpoint | undefined> {
     return (await this.list()).filter((checkpoint) => checkpoint.kind !== 'before-undo').at(-1);

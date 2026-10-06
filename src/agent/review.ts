@@ -38,7 +38,7 @@ function writtenPath(summary: string): string {
 export function jobNeedsReview(entries: TranscriptEntry[]): boolean {
   return entries.some((entry) => {
     if (entry.kind !== 'tool' || entry.data.state !== 'done') return false;
-    if (entry.data.tool === 'writeFile') {
+    if (entry.data.tool === 'writeFile' || entry.data.tool === 'editFile') {
       const file = writtenPath(entry.data.summary);
       return isProgramFile(file) || isDocumentFile(file);
     }
@@ -154,11 +154,11 @@ export const REPRODUCE_HOLD =
 // itself an edit counts as reproducing; a change before that is held.
 export function holdUntilReproduced(tool: string, detail: string, editsFiles: boolean): string | null {
   if (!reproducing) return null;
-  if (tool === 'readFile' || tool === 'listDir' || (tool === 'runBash' && !editsFiles)) {
+  if (tool === 'readFile' || tool === 'listDir' || tool === 'searchFiles' || tool === 'findFiles' || tool === 'helper' || (tool === 'runBash' && !editsFiles)) {
     reproducing = false;
     return null;
   }
-  if (tool === 'writeFile' || (tool === 'runBash' && editsFiles)) return REPRODUCE_HOLD;
+  if (tool === 'writeFile' || tool === 'editFile' || (tool === 'runBash' && editsFiles)) return REPRODUCE_HOLD;
   void detail;
   return null;
 }

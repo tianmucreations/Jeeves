@@ -16,8 +16,12 @@ export { getSystemPrompt };
 
 // Builds the message list for one turn; automatic summarisation of older turns (spec 3.3)
 // is deferred until long-conversation handling lands.
-export function buildTurnMessages(history: ModelMessage[], userText: string): ModelMessage[] {
-  const userMessage: ModelMessage = { role: 'user', content: userText };
+export function buildTurnMessages(history: ModelMessage[], userText: string, images: { mediaType: string; data: string }[] = []): ModelMessage[] {
+  // Pictures travel with the words as extra parts of the same message.
+  const userMessage: ModelMessage =
+    images.length > 0
+      ? { role: 'user', content: [{ type: 'text', text: userText }, ...images.map((image) => ({ type: 'file' as const, data: image.data, mediaType: image.mediaType }))] }
+      : { role: 'user', content: userText };
   return [...history, userMessage];
 }
 

@@ -1,3 +1,5 @@
+import { planBlock } from './plan.js';
+import { memoryBlock } from '../platform/memory.js';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -73,11 +75,9 @@ Avoid giving time estimates.
 
 Using Your Tools
 
-You have seven tools: readFile, listDir, writeFile, runBash, webSearch, readWebPage, noteResearch.
-When a dedicated tool exists, use it instead of runBash. Listing files → listDir. Reading a file → readFile. Writing a file → writeFile. Reserve runBash for genuine system commands (git, npm, tests, builds) — not for ls, cat, pwd, or echo.
-Read-only shell commands run without asking.
-When multiple independent pieces of information are needed, call tools in parallel.
-Never use placeholders or guess missing parameters in tool calls.
+Use the dedicated tool, not runBash: listDir to list, searchFiles for words inside files, findFiles for files by name, readFile to read, writeFile for a new file, editFile to change part of a file (never rewrite a whole file for a small change). Keep runBash for real system commands (git, npm, tests, builds), not ls, cat, pwd or echo.
+Read-only commands run without asking. Call independent tools in parallel. Never guess missing parameters.
+Three or more steps: keep a todoList checklist (one step in progress, each ticked when truly done). A decision that is the person's to make: askQuestion (two to four options, your pick first). A big or unclear job (new, many files, several approaches, hard to undo): offerPlan first; small clear jobs go straight ahead. A search that would take many looks (several folders, many files, several web sources): send helper(s) - they only look, and report back briefly. Asked to remember or forget something, or told a lasting preference: use memory, and say so in one line.
 
 Researching the Web
 
@@ -221,5 +221,5 @@ export function buildSystemPrompt(
 
 // The address the user saved on first launch; "Sir" until one is saved.
 export function getSystemPrompt(modelId?: string): string {
-  return buildSystemPrompt(getAddress() ?? 'Sir', localISODate(), partOfDay(), modelId);
+  return buildSystemPrompt(getAddress() ?? 'Sir', localISODate(), partOfDay(), modelId) + memoryBlock() + planBlock();
 }

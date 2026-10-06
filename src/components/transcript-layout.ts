@@ -105,7 +105,7 @@ function wrapWithPrefix(s: string, width: number, prefix: string, indent: string
 // The tools' everyday names on screen; the internal names are for the model only.
 // runBash's summaries are full plain phrases of their own ("Create folder X"),
 // so they carry no tool name - the phrase IS the question.
-const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', writeFile: 'Write', runBash: '', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
+const TOOL_NAMES: Record<string, string> = { readFile: 'Read', listDir: 'List', searchFiles: 'Search', findFiles: 'Find', helper: 'Helper', writeFile: 'Write', editFile: 'Edit', runBash: '', webSearch: 'Search', readWebPage: 'Read', askExpert: 'Expert', noteResearch: 'Research' };
 
 export function toolName(tool: string): string {
   return TOOL_NAMES[tool] ?? tool;

@@ -12,6 +12,7 @@ import { repairToolCall } from './repair.js';
 import { prepareStepFor, type FinishedStep } from './step-control.js';
 import { directService, serviceNameFor, CUSTOM_SERVICE_ID, type DirectServiceId } from './direct-services.js';
 import { estimateCost, priceOf, type StepUsage } from './catalogue.js';
+import { chatGptModelFactory, currentChatGptStore } from './chatgpt.js';
 
 const MAX_TOOL_STEPS = 25;
 
@@ -41,6 +42,14 @@ export function modelFactory(serviceId: DirectServiceId, apiKey: string): (model
     case 'groq': {
       const client = createGroq({ apiKey });
       return (id) => client.languageModel(id);
+    }
+    case 'chatgpt':
+      // No key: the person's ChatGPT plan, its tokens kept fresh by the store (chatgpt.ts).
+      return chatGptModelFactory(currentChatGptStore());
+    default: {
+      // Every other company in the catalogue: the OpenAI request format at its address.
+      const client = createOpenAICompatible({ name: serviceId, baseURL: directService(serviceId)?.baseURL ?? '', apiKey, includeUsage: true });
+      return (id) => client.chatModel(id);
     }
   }
 }
@@ -72,7 +81,9 @@ function streamWith(
   name: string,
   modelFor: (modelId: string) => LanguageModel,
   costOf: (modelId: string, usage: StepUsage) => number,
-  caching: boolean
+  caching: boolean,
+  // ChatGPT's own address wants the rulebook in its own field, not as a system message, and nothing stored.
+  codex = false
 ): Provider {
   return {
     id,
@@ -84,7 +95,8 @@ function streamWith(
         caching && instructions ? { role: 'system', content: instructions, providerOptions: ANTHROPIC_CACHE } : instructions;
       const guard = silenceGuard(abortSignal);
       const result = streamText({
-        instructions: system,
+        instructions: codex ? undefined : system,
+        providerOptions: codex ? { openai: { instructions: instructions ?? '', store: false } } : undefined,
         // The same limits on silence as the other services (see openrouter.ts).
         // Silence while the model answers is watched by silenceGuard (it pauses while a
         // command runs or waits for the person); the first piece still has 2 minutes.
@@ -160,7 +172,8 @@ export function createDirectProvider(serviceId: DirectServiceId, apiKey: string)
     service.label,
     modelFactory(serviceId, apiKey),
     (modelId, usage) => estimateCost(priceOf(serviceId, modelId), usage),
-    serviceId === 'anthropic'
+    serviceId === 'anthropic',
+    serviceId === 'chatgpt'
   );
 }
 

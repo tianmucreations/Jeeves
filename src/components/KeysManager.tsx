@@ -19,7 +19,11 @@ import { everydayModel } from '../providers/catalogue.js';
 import { setDefaultModel, setDefaultProvider } from '../platform/config.js';
 import { setKey, deleteKey } from '../keys/store.js';
 import { keyLooksValid } from '../commands/keys.js';
-import { isMouseSequence } from '../ink/mouse.js';
+import { isMouseSequence, parseMouseSequence, subscribeMouse } from '../ink/mouse.js';
+import { useMouseCapture } from '../ink/use-mouse-capture.js';
+import { HOW_IT_CONNECTS } from '../commands/settings.js';
+import { ChatGptConnect } from './ChatGptConnect.js';
+import { OpenAIConnect } from './OpenAIConnect.js';
 import { OpenRouterConnect } from './OpenRouterConnect.js';
 import { COPY_KEYS, KEY_STORE, KEY_STORE_SUBJECT } from '../platform/wording.js';
 
@@ -33,6 +37,8 @@ type Phase =
   | { kind: 'ask' }
   | { kind: 'list' }
   | { kind: 'openrouter' }
+  | { kind: 'chatgpt' }
+  | { kind: 'openai-method' }
   | { kind: 'enter-key'; provider: string; label: string }
   | { kind: 'confirm-remove'; provider: string; label: string }
   | { kind: 'saved'; message: string };
@@ -41,10 +47,39 @@ function rowLabel(id: string): string {
   return KEY_ROWS.find((row) => row.id === id)?.label ?? id;
 }
 
+// The first-run question's two buttons (row 6 of the screen: title, blank, two lines, blank).
+const ASK_YES = ' Yes, set one up ';
+const ASK_NO = ' Not now ';
+const ASK_ROW = 6;
+
 export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'; rows: number; columns: number }) {
   const s = useSession();
   const [phase, setPhase] = useState<Phase>(mode === 'wizard' ? { kind: 'ask' } : { kind: 'list' });
   const [cursor, setCursor] = useState(0);
+  // The question at the start has buttons: the mouse is on for it, and off again after.
+  useMouseCapture(phase.kind === 'ask');
+  const answerAsk = (yes: boolean) => {
+    if (yes) {
+      setCursor(0);
+      setPhase({ kind: 'list' });
+    } else {
+      finishWizard('Not connected yet - click Settings any time to connect an AI service. It takes about a minute.', false, true);
+    }
+  };
+  const answerAskRef = React.useRef(answerAsk);
+  answerAskRef.current = answerAsk;
+  const phaseRef = React.useRef(phase);
+  phaseRef.current = phase;
+  useEffect(
+    () =>
+      subscribeMouse((report) => {
+        const event = parseMouseSequence(report);
+        if (!event || event.kind !== 'press' || event.button !== 0 || phaseRef.current.kind !== 'ask' || event.row !== ASK_ROW) return;
+        if (event.col >= 1 && event.col <= ASK_YES.length) answerAskRef.current(true);
+        else if (event.col >= ASK_YES.length + 3 && event.col < ASK_YES.length + 3 + ASK_NO.length) answerAskRef.current(false);
+      }),
+    []
+  );
   const visibleRows = mode === 'wizard' ? WIZARD_ROWS : KEY_ROWS;
   const [hidden, setHidden] = useState('');
   const [stored, setStored] = useState<string[]>([]);
@@ -61,7 +96,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   function statusFor(rowId: string): string {
     if (rowId === 'openrouter') {
       if (getKeySource() === 'keychain') return `key stored in ${KEY_STORE}`;
-      if (getKeySource() === 'env') return 'key in a local file - add it with /keys to store it safely';
+      if (getKeySource() === 'env') return 'key in a local file - add it under Manage keys to store it safely';
       return stored.includes('openrouter') ? `key stored in ${KEY_STORE}` : 'no key';
     }
     if (rowId === 'openrouter-management') {
@@ -74,7 +109,12 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     }
     if (rowId === 'ollama') return 'runs on this computer - no key needed';
     if (rowId === CUSTOM_SERVICE_ID) {
-      return stored.includes(rowId) ? `${customServiceName()} - address and key stored` : 'add it in /model, under Other service';
+      return stored.includes(rowId) ? `${customServiceName()} - address and key stored` : 'add it under Settings, All providers';
+    }
+    if (rowId === 'openai') {
+      const plan = stored.includes('chatgpt');
+      const key = stored.includes('openai');
+      return plan && key ? 'signed in with your ChatGPT plan, and an API key' : plan ? 'signed in with your ChatGPT plan' : key ? 'API key stored' : 'not connected';
     }
     return stored.includes(rowId) ? 'key stored - direct connection ready' : 'no key';
   }
@@ -113,7 +153,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
         return;
       }
       refreshStored();
-      const message = 'Your Z.ai key is saved. Pick Z.ai in /model to use the GLM Coding Plan.';
+      const message = 'Your Z.ai key is saved. Click Settings and choose Z.ai to use the GLM Coding Plan.';
       if (mode === 'wizard') {
         finishWizard(message, true);
       } else {
@@ -145,9 +185,9 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           setDefaultProvider(provider);
           setDefaultModel(model);
         }
-        finishWizard(`Your ${label} key is saved.${unchecked} Jeeves will use ${model ?? 'its everyday model'} - type /model to change.`, true);
+        finishWizard(`Your ${label} key is saved.${unchecked} Jeeves will use ${model ?? 'its everyday model'} - click Settings to change.`, true);
       } else {
-        setPhase({ kind: 'saved', message: `Your ${label} key is saved.${unchecked} Choose ${label} in /model to use it.` });
+        setPhase({ kind: 'saved', message: `Your ${label} key is saved.${unchecked} Click Settings and choose ${label} to use it.` });
       }
       return;
     }
@@ -201,23 +241,22 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       return;
     }
     await removeServiceKey(provider);
+    // OpenAI's row covers both ways of connecting: removing it signs out of the plan too.
+    if (provider === 'openai') await removeServiceKey('chatgpt');
     refreshStored();
-    if (session.providerId === provider) session.setStatus('disconnected');
+    if (session.providerId === provider || (provider === 'openai' && session.providerId === 'chatgpt')) session.setStatus('disconnected');
     setPhase({ kind: 'saved', message: `The saved key for ${rowLabel(provider)} was removed.` });
   }
 
   useInput((input, key) => {
     if (isMouseSequence(input)) return;
-    // The OpenRouter screen handles its own keys.
-    if (phase.kind === 'openrouter') return;
+    // The OpenRouter and ChatGPT screens handle their own keys.
+    if (phase.kind === 'openrouter' || phase.kind === 'chatgpt' || phase.kind === 'openai-method') return;
         if (phase.kind === 'ask') {
+      // Enter, or Y, says yes; N says not now (the buttons do the same by click).
       const answer = input.toLowerCase();
-      if (answer === 'y') {
-        setCursor(0);
-        setPhase({ kind: 'list' });
-      } else if (answer === 'n') {
-        finishWizard('Not connected yet - type /keys any time to connect an AI service. It takes about a minute.', false, true);
-      }
+      if (answer === 'y' || key.return) answerAsk(true);
+      else if (answer === 'n') answerAsk(false);
       return;
     }
     if (phase.kind === 'saved') {
@@ -275,7 +314,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
     // phase: list
     if (key.escape) {
       if (mode === 'wizard') {
-        finishWizard('Not connected yet - type /keys any time to connect an AI service. It takes about a minute.', false, true);
+        finishWizard('Not connected yet - click Settings any time to connect an AI service. It takes about a minute.', false, true);
       } else {
         session.closeKeys();
       }
@@ -304,14 +343,15 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
       setNote('');
       setHidden('');
       // OpenRouter gets the explained choice: sign in through the browser, or paste a key.
-      setPhase(row.id === 'openrouter' ? { kind: 'openrouter' } : { kind: 'enter-key', provider: row.id, label: row.label });
+      // OpenAI asks how to connect (plan or key), as OpenCode does.
+      setPhase(row.id === 'openrouter' ? { kind: 'openrouter' } : row.id === 'openai' ? { kind: 'openai-method' } : { kind: 'enter-key', provider: row.id, label: row.label });
       return;
     }
     const answer = input.toLowerCase();
     if (answer === 'd') {
       const row = visibleRows[cursor];
       if (!row) return;
-      const hasStored = stored.includes(row.id) || (row.id === 'openrouter' && getKeySource() !== null);
+      const hasStored = stored.includes(row.id) || (row.id === 'openai' && stored.includes('chatgpt')) || (row.id === 'openrouter' && getKeySource() !== null);
       if (hasStored) {
         setPhase({ kind: 'confirm-remove', provider: row.id, label: row.label });
         setNote('');
@@ -334,7 +374,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
 
   const hint =
     phase.kind === 'ask'
-      ? 'y = yes, set it up · n = not now'
+      ? 'click one, or press Enter to set one up'
       : phase.kind === 'enter-key'
         ? 'paste the key · Enter save · Esc back'
         : phase.kind === 'confirm-remove'
@@ -342,9 +382,47 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
           : phase.kind === 'saved'
             ? 'press any key to continue'
             : mode === 'wizard'
-              ? '↑↓ move · Enter choose · Esc back'
+              ? '↑↓ move · Enter choose · Esc back · more AI companies are in Settings'
               : '↑↓ move · Enter add or replace · d remove · Esc close';
 
+  if (phase.kind === 'openai-method') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <OpenAIConnect
+          onPlan={() => setPhase({ kind: 'chatgpt' })}
+          onKey={() => setPhase({ kind: 'enter-key', provider: 'openai', label: 'OpenAI' })}
+          onBack={() => setPhase({ kind: 'list' })}
+        />
+      </Box>
+    );
+  }
+  if (phase.kind === 'chatgpt') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <ChatGptConnect
+          onBack={() => setPhase({ kind: 'list' })}
+          onDone={(message) => {
+            refreshStored();
+            void (async () => {
+              if (mode === 'wizard') {
+                // First launch: start straight away on the plan's everyday model.
+                const model = await everydayModel('chatgpt', '');
+                if (model) {
+                  session.setProvider('chatgpt');
+                  session.setModel(model);
+                  setDefaultProvider('chatgpt');
+                  setDefaultModel(model);
+                }
+                finishWizard(message, true);
+              } else {
+                setPhase({ kind: 'saved', message: `${message} Click Settings and choose ChatGPT to use it.` });
+              }
+            })();
+          }}
+        />
+      </Box>
+    );
+  }
   if (phase.kind === 'openrouter') {
     return (
       <Box flexDirection="column" height={rows}>
@@ -364,13 +442,18 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
   return (
     <Box flexDirection="column" height={rows}>
       <Text dimColor>{title}</Text>
-      <Box flexDirection="column" flexGrow={1} justifyContent="center">
+      <Box flexDirection="column" flexGrow={1} justifyContent={phase.kind === 'ask' ? 'flex-start' : 'center'}>
+        {phase.kind === 'ask' && <Text> </Text>}
         {phase.kind === 'ask' && (
           <>
             <Text>Jeeves needs an AI service to think with - the company that runs the AI models.</Text>
             <Text>You connect one account once, and pay that service only for what you use.</Text>
             <Text> </Text>
-            <Text>Set one up now? (y/n)</Text>
+            <Text>
+              <Text color="yellow" inverse>{ASK_YES}</Text>
+              {'  '}
+              <Text color="yellow" inverse>{ASK_NO}</Text>
+            </Text>
           </>
         )}
         {phase.kind === 'list' &&
@@ -378,7 +461,7 @@ export function KeysManager({ mode, rows, columns }: { mode: 'wizard' | 'manage'
             <Text key={row.id} inverse={index === cursor}>
               {` ${row.label}`.padEnd(21)}
               {/* First run: what each service is (as the /model list says), not "no key". */}
-              <Text dimColor>{mode === 'wizard' && 'description' in row && !stored.includes(row.id) ? row.description : statusFor(row.id)}</Text>
+              <Text dimColor>{mode === 'wizard' && 'description' in row && !stored.includes(row.id) ? `${HOW_IT_CONNECTS[row.id] ? HOW_IT_CONNECTS[row.id] + ' - ' : ''}${row.description}` : statusFor(row.id)}</Text>
             </Text>
           ))}
         {phase.kind === 'enter-key' && (

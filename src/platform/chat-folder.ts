@@ -22,6 +22,11 @@ export function ensureChatFolder(): string | null {
   }
 }
 
+// The first line after a folder is chosen: what to do now, in plain words.
+export function readyLine(): string {
+  return 'What can I do for you?';
+}
+
 export function chatNotice(address: string): string {
-  return `Just chatting, ${address} - anything I save for you goes in Documents/${CHAT_FOLDER_NAME}. Type /folder any time to work in a folder instead.`;
+  return `Just chatting, ${address} - anything I save for you goes in Documents/${CHAT_FOLDER_NAME}. Click Settings any time to work in a folder instead.`;
 }

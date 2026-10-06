@@ -19,6 +19,7 @@ import { applyModelChoice } from '../models/choose.js';
 import {
   hasCredentials,
   hasCredentialsFor,
+  openaiRoute,
   storeZaiKey,
   PROVIDER_ROWS,
   storeOpenRouterKey,
@@ -28,11 +29,13 @@ import {
   serviceKey,
   customServiceName,
 } from '../providers/index.js';
-import { directService, isDirectService, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
-import { loadDirectModels, checkCustomService } from '../providers/catalogue.js';
+import { directService, isDirectService, compatibleServices, CUSTOM_SERVICE_ID } from '../providers/direct-services.js';
+import { loadDirectModels, loadCatalogue, checkCustomService } from '../providers/catalogue.js';
 import { autoRowFor, noAutoNote } from '../agent/auto.js';
 import { getCustomService } from '../platform/config.js';
 import { OpenRouterConnect } from './OpenRouterConnect.js';
+import { ChatGptConnect } from './ChatGptConnect.js';
+import { OpenAIConnect } from './OpenAIConnect.js';
 import { keyLooksValid } from '../commands/keys.js';
 import { listLocalOllamaModels, isOllamaOnline } from '../providers/ollama.js';
 import { ZAI_MODELS } from '../providers/zai.js';
@@ -75,14 +78,14 @@ type Phase = 'browse' | 'tool-warning';
 // Key entry happens inside the picker so a new user never leaves the flow.
 // Simple thing first: providers, then a curated shortlist (big catalogs), then the full list on request.
 // The compatible service asks for its address first, then its key.
-type Step = 'providers' | 'curated' | 'full' | 'key' | 'address' | 'limit';
+type Step = 'providers' | 'more' | 'openai-method' | 'curated' | 'full' | 'key' | 'address' | 'limit';
 // Which provider's catalog the picker is browsing: openrouter, zai, ollama, a
 // model maker's id (a direct connection), or custom (the compatible service).
 type ProviderChoice = string;
 
 function providerLabel(provider: string): string {
   if (provider === CUSTOM_SERVICE_ID) return customServiceName();
-  return PROVIDER_LABELS[provider] ?? provider;
+  return PROVIDER_LABELS[provider] ?? directService(provider)?.label ?? provider;
 }
 
 function groupModels(models: ModelInfo[]): Map<string, ModelInfo[]> {
@@ -188,6 +191,23 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   // True while the limit screen is editing the weekly limit instead of the daily one.
   const [limitWeekly, setLimitWeekly] = useState(false);
   const [keyNote, setKeyNote] = useState('');
+  // The full provider list (OpenCode's Providers group): typed letters narrow it.
+  const [moreQuery, setMoreQuery] = useState('');
+  const [moreCursor, setMoreCursor] = useState(0);
+
+  // The other AI companies come from a public list downloaded in the background; if they are not
+  // here yet when this list opens, it is asked for again and the screen fills in when it arrives.
+  const [, setCatalogueTick] = useState(0);
+  useEffect(() => {
+    if (compatibleServices().length > 0) return;
+    let cancelled = false;
+    void loadCatalogue().then(() => {
+      if (!cancelled) setCatalogueTick((n) => n + 1);
+    }, () => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,8 +232,15 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       setStep('limit');
       return;
     }
+    if (start.step === 'more') {
+      setStep('more');
+      return;
+    }
     const index = PROVIDER_ROWS.findIndex((row) => row.id === start.provider);
-    if (index < 0) return;
+    if (index < 0) {
+      if (start.provider && isDirectService(start.provider)) chooseProviderId(start.provider);
+      return;
+    }
     setProviderCursor(index);
     // Ollama is only known to be running a moment later, so it stays highlighted to choose.
     if (start.provider === 'ollama') return;
@@ -295,6 +322,13 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
     return row.description;
   }
 
+  // Every catalogue provider not already on the first list, narrowed by what was typed.
+  function moreList() {
+    const shown = new Set<string>(PROVIDER_ROWS.map((row) => row.id));
+    const words = moreQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    return compatibleServices().filter((service) => !shown.has(service.id) && words.every((word) => `${service.label} ${service.id}`.toLowerCase().includes(word)));
+  }
+
   function askForKey(service: string): void {
     setKeyFor(service);
     setKeyValue('');
@@ -341,8 +375,15 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
   }
 
   function chooseProvider(index = providerCursor): void {
-    // The row under the services: the daily spending limit.
+    // The row under the services: every other provider, in a list of their own.
     if (index === PROVIDER_ROWS.length) {
+      setMoreQuery('');
+      setMoreCursor(0);
+      setStep('more');
+      return;
+    }
+    // The row under that: the daily spending limit.
+    if (index === PROVIDER_ROWS.length + 1) {
       setLimitReturn('providers');
       setLimitValue('');
       setLimitNote('');
@@ -350,7 +391,21 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     const row = PROVIDER_ROWS[index];
-    if (!row) return;
+    if (row) chooseProviderId(row.id);
+  }
+
+  function chooseProviderId(id: string): void {
+    // OpenAI is one entry in the lists: on the ChatGPT plan or an API key, whichever is connected;
+    // if neither, the person is asked how they want to connect (as OpenCode does).
+    if (id === 'openai') {
+      const route = openaiRoute();
+      if (!route) {
+        setStep('openai-method');
+        return;
+      }
+      return enterDirectStep(route);
+    }
+    const row = { id };
     if (row.id === 'openrouter') {
       if (!hasCredentialsFor('openrouter')) return askForKey('openrouter');
       enterModelStep('openrouter');
@@ -496,23 +551,9 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       return;
     }
     // OpenRouter's key step is its own explained screen, which handles its own keys.
-    if (step === 'key' && keyFor === 'openrouter') return;
-    if (step === 'key' && keyFor === 'openrouter') {
-    return (
-      <Box flexDirection="column" height={rows}>
-        <OpenRouterConnect
-          hasKey={false}
-          onBack={() => setStep('providers')}
-          onDone={(message) => {
-            // Said in the conversation too - including "no credit yet" for a new account.
-            s.addNotice(message);
-            if (s.status === 'disconnected') s.setStatus('idle');
-            enterModelStep('openrouter');
-          }}
-        />
-      </Box>
-    );
-  }
+    // ChatGPT's sign-in is its own explained screen too, and handles its own keys.
+    if (step === 'openai-method') return;
+    if (step === 'key' && (keyFor === 'openrouter' || keyFor === 'chatgpt')) return;
   if (step === 'key') {
       if (checking) {
         if (key.escape && signInAbort.current) signInAbort.current.abort();
@@ -650,6 +691,26 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
       }
       return;
     }
+    if (step === 'more') {
+      const list = moreList();
+      if (key.escape) {
+        setStep('providers');
+      } else if (key.upArrow) {
+        setMoreCursor((current) => Math.max(0, current - 1));
+      } else if (key.downArrow) {
+        setMoreCursor((current) => Math.min(list.length - 1, current + 1));
+      } else if (key.return) {
+        const chosen = list[Math.min(moreCursor, list.length - 1)];
+        if (chosen) chooseProviderId(chosen.id);
+      } else if (key.backspace || key.delete) {
+        setMoreQuery((current) => current.slice(0, -1));
+        setMoreCursor(0);
+      } else if (input && !key.ctrl && !key.meta) {
+        setMoreQuery((current) => current + input);
+        setMoreCursor(0);
+      }
+      return;
+    }
     if (step === 'providers') {
       if (key.escape) {
         s.closePicker();
@@ -660,7 +721,7 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
         return;
       }
       if (key.downArrow) {
-        setProviderCursor((current) => Math.min(PROVIDER_ROWS.length, current + 1));
+        setProviderCursor((current) => Math.min(PROVIDER_ROWS.length + 1, current + 1));
         return;
       }
       if (key.return) {
@@ -724,11 +785,38 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           })}
           <Text> </Text>
           <Text inverse={providerCursor === PROVIDER_ROWS.length}>
+            {column(' All providers', 16)}
+            <Text dimColor>{compatibleServices().length > 0 ? `${compatibleServices().length}+ more - type to search` : 'more appear once online'}</Text>
+          </Text>
+          <Text inverse={providerCursor === PROVIDER_ROWS.length + 1}>
             {column(' Daily limit', 16)}
             <Text dimColor>${s.dailyLimit.toFixed(2)} a day - Enter to change</Text>
           </Text>
         </Box>
         <Text dimColor>↑↓ move · Enter choose · Esc close</Text>
+      </Box>
+    );
+  }
+
+  if (step === 'more') {
+    const list = moreList();
+    const cursor = Math.min(moreCursor, Math.max(0, list.length - 1));
+    const height = Math.max(3, rows - 3);
+    const first = Math.max(0, Math.min(cursor - Math.floor(height / 2), list.length - height));
+    return (
+      <Box flexDirection="column" height={rows}>
+        <Text dimColor>All providers - type to search</Text>
+        <Text>{` Search: ${moreQuery}`}</Text>
+        <Box flexDirection="column" flexGrow={1}>
+          {list.length === 0 ? <Text dimColor>{' Nothing matches.'}</Text> : null}
+          {list.slice(first, first + height).map((service, offset) => (
+            <Text key={service.id} inverse={first + offset === cursor}>
+              {column((hasCredentialsFor(service.id) ? ' ✓ ' : '   ') + service.label, 34)}
+              <Text dimColor>API key</Text>
+            </Text>
+          ))}
+        </Box>
+        <Text dimColor>↑↓ move · Enter choose · Esc back</Text>
       </Box>
     );
   }
@@ -777,6 +865,52 @@ export function ModelPicker({ rows, columns }: { rows: number; columns: number }
           <Text dimColor>Its documentation gives it, for example https://api.together.xyz/v1</Text>
         </Box>
         {keyNote ? <Text color="yellow">{keyNote}</Text> : <Text dimColor>paste the address · Enter next · Esc back</Text>}
+      </Box>
+    );
+  }
+
+  if (step === 'openai-method') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <OpenAIConnect
+          onPlan={() => {
+            setKeyFor('chatgpt');
+            setStep('key');
+          }}
+          onKey={() => askForKey('openai')}
+          onBack={() => setStep('providers')}
+        />
+      </Box>
+    );
+  }
+
+  if (step === 'key' && keyFor === 'openrouter') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <OpenRouterConnect
+          hasKey={false}
+          onBack={() => setStep('providers')}
+          onDone={(message) => {
+            // Said in the conversation too - including "no credit yet" for a new account.
+            s.addNotice(message);
+            if (s.status === 'disconnected') s.setStatus('idle');
+            enterModelStep('openrouter');
+          }}
+        />
+      </Box>
+    );
+  }
+  if (step === 'key' && keyFor === 'chatgpt') {
+    return (
+      <Box flexDirection="column" height={rows}>
+        <ChatGptConnect
+          onBack={() => setStep('providers')}
+          onDone={(message) => {
+            s.addNotice(message);
+            if (s.status === 'disconnected') s.setStatus('idle');
+            enterDirectStep('chatgpt');
+          }}
+        />
       </Box>
     );
   }

@@ -58,6 +58,32 @@ export function runSettingsAction(action: SettingsAction): void {
       session.pickerStart = { provider: action.provider, full: true };
       session.openPicker();
       return;
+    case 'ai':
+      // The provider list, then that provider's models, then how to connect - the full lists.
+      session.pickerStart = null;
+      session.openPicker();
+      return;
+    case 'folders':
+      if (busy()) return;
+      session.folderPickerStart = 'list';
+      session.openFolderPicker();
+      return;
+    case 'chats':
+      session.openChats();
+      return;
+    case 'memory':
+      session.openMemory();
+      return;
+    case 'rewind':
+      session.openRewind();
+      return;
+    case 'spending':
+      session.openSpending();
+      return;
+    case 'more-providers':
+      session.pickerStart = { step: 'more' };
+      session.openPicker();
+      return;
     case 'limit':
       session.pickerStart = { step: 'limit' };
       session.openPicker();

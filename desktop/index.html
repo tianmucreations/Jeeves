@@ -36,7 +36,7 @@
         <p class="note" id="address-note"></p>
       </div>
       <div id="choose-start">
-      <button class="just-chat" id="just-chat">Just chat <span>no project needed</span></button>
+      <button class="just-chat" id="just-chat">Just chat <span>no project folder needed</span></button>
       <p class="or-folder">or work in a folder</p>
       <div class="projects" id="projects"></div>
       <button class="choose" id="choose">Choose another folder…</button>
@@ -66,6 +66,12 @@
     </div>
     <div class="dock">
       <div class="column">
+        <div class="todos" id="todos" hidden></div>
+        <div class="approval choose" id="question" hidden>
+          <div class="approval-text" id="question-text"></div>
+          <div class="approval-buttons" id="question-options"></div>
+          <div class="muted">Pick one, or type your own answer below and press Enter.</div>
+        </div>
         <div class="approval" id="approval" hidden>
           <div class="approval-text" id="approval-text"></div>
           <pre class="approval-detail" id="approval-detail" hidden></pre>
@@ -75,11 +81,14 @@
             <button class="btn deny" data-answer="n">Decline</button>
           </div>
         </div>
+        <div class="pics" id="pics" hidden></div>
         <div class="composer" id="composer">
           <textarea id="input" rows="1" spellcheck="true" placeholder=""></textarea>
+          <button class="attach" id="attach" title="Show Jeeves a picture">Picture</button>
+          <input type="file" id="attach-file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
           <button class="stop" id="stop" title="Stop (Esc)" hidden><span></span></button>
         </div>
-        <div class="hint" id="hint">Enter to send · Shift + Enter for a new line · /undo puts the last change back</div>
+        <div class="hint" id="hint">Enter to send · Shift + Enter for a new line · Settings, then Undo last change, puts it back</div>
       </div>
     </div>
   </main>
@@ -93,6 +102,9 @@
       <section>
         <h3>AI service</h3>
         <div class="services" id="services"></div>
+        <h3>All providers</h3>
+        <input class="filter" id="more-search" placeholder="Type to search every other AI company" autocomplete="off">
+        <div class="services more" id="more-services"></div>
       </section>
       <section id="service-detail"></section>
       <section>
@@ -101,10 +113,33 @@
         <p class="note" id="address-setting-note"></p>
       </section>
       <section>
+        <h3>What I've spent</h3>
+        <dl class="spending" id="spending"></dl>
+      </section>
+      <section>
         <h3>Daily spending limit</h3>
         <p class="muted">Jeeves stops and asks before spending more than this in a day.</p>
         <form class="inline" id="limit-form"><span class="prefix">$</span><input id="limit" inputmode="decimal" autocomplete="off"><button class="btn">Save</button></form>
         <p class="note" id="limit-note"></p>
+      </section>
+      <section>
+        <h3>Earlier conversations</h3>
+        <p class="muted" id="chats-empty">Nothing saved yet in this folder - conversations are kept here as you go.</p>
+        <div class="services" id="chats"></div>
+      </section>
+      <section>
+        <h3>Go back to an earlier point</h3>
+        <p class="muted" id="rewind-empty">Nothing to go back to yet - a point is kept each time I change something in this folder.</p>
+        <div class="services" id="rewind-points"></div>
+      </section>
+      <section>
+        <h3>What I remember</h3>
+        <p class="muted" id="memory-empty">Nothing yet. Tell me "remember that ..." and I will keep it for next time.</p>
+        <div class="services" id="memory-notes"></div>
+      </section>
+      <section>
+        <h3>More</h3>
+        <div class="services" id="commands"></div>
       </section>
     </div>
   </aside>
@@ -124,18 +159,13 @@
         <dt>Allow / Always Allow / Decline</dt><dd>Jeeves asks before changing anything. "Always Allow" stops the questions for changes inside this folder.</dd>
         <dt>Square button, or Esc</dt><dd>Stops what Jeeves is doing.</dd>
       </dl>
-      <h3>Things you can type</h3>
-      <dl>
-        <dt>/undo</dt><dd>Puts the folder back to how it was before Jeeves's last change.</dd>
-        <dt>/ask</dt><dd>Ask before every change again, after "Always allow".</dd>
-        <dt>/clear</dt><dd>Start a fresh conversation.</dd>
-        <dt>/folder</dt><dd>Work in a different folder (the same as clicking the folder label).</dd>
-      </dl>
+      <h3>Also in Settings</h3>
+      <dl id="help-commands"></dl>
       <h3>Keys</h3>
       <dl>
         <dt>Enter</dt><dd>Send. Shift + Enter starts a new line.</dd>
         <dt>Y / A / N</dt><dd>Answer a question: yes, always allow, or no.</dd>
-        <dt>Copying</dt><dd>Select any text and press Cmd + C, or right-click and choose Copy.</dd>
+        <dt>Copying</dt><dd>Select any text and press Ctrl + C (Cmd + C on a Mac), or right-click and choose Copy.</dd>
       </dl>
     </div>
   </aside>

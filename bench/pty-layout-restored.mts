@@ -1,0 +1,21 @@
+// Proof of the restored window: border, typing area, bottom bar; Settings and Picture buttons click.
+import { Rig } from './pty-rig.mjs';
+import { writeFileSync } from 'node:fs';
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+writeFileSync('/private/tmp/jv-chosen.png', PNG);
+const R = 32;
+const r = new Rig(100, R, { JEEVES_ZAI_BASE_URL: 'http://127.0.0.1:4123', JEEVES_PICKER_FILE: '/private/tmp/jv-chosen.png' });
+await r.bootConversation();
+await r.wait(1200);
+console.log(r.screen().join('\n'));
+const barRow = r.screen().findIndex((l) => l.includes('Settings') && l.includes('Picture')) + 1;
+console.log('bar row', barRow, 'of', R);
+r.mouse('press', 5, barRow); r.mouse('release', 5, barRow);
+await r.wait(1500);
+console.log('--- after Settings click ---\n' + r.screen().slice(0, 8).join('\n'));
+r.send('\x1b'); await r.wait(1000);
+const picCol = r.screen()[barRow - 1].indexOf('Picture') + 2;
+r.mouse('press', picCol, barRow); r.mouse('release', picCol, barRow);
+await r.until((t) => t.includes('[Image 1]'), 8000, 'picture added');
+console.log('picture joined the message:', r.text().includes('[Image 1]'));
+r.kill(); await r.wait(300); process.exit(0);

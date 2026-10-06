@@ -160,3 +160,41 @@ describe('warnings for changes /undo cannot reverse', () => {
     }
   });
 });
+
+describe('going back further than the last change (Claude Code /rewind, OpenCode revert)', () => {
+  it('puts the folder back to before a chosen message, drops the later points, and keeps a safety copy', async () => {
+    write('letter.txt', 'version 0');
+    const store = new CheckpointStore(storeRoot, folder);
+    await store.create('first request', 1_000);
+    write('letter.txt', 'version 1');
+    write('extra.txt', 'made by the first request');
+    await store.create('second request', 2_000);
+    write('letter.txt', 'version 2');
+    await store.create('third request', 3_000);
+    write('letter.txt', 'version 3');
+    const second = (await store.list()).find((c) => c.label === 'second request')!;
+    const result = await store.restoreTo(second, 4_000);
+    // Back to how it was BEFORE "second request": version 1 with the extra file.
+    expect(read('letter.txt')).toBe('version 1');
+    expect(read('extra.txt')).toBe('made by the first request');
+    expect(result.restored).toContain('letter.txt');
+    const left = (await store.list()).map((c) => `${c.kind}:${c.label}`);
+    // The first request's point stays; the second (used up) and third (a future that is gone) do not;
+    // the safety copy taken just before is kept.
+    expect(left).toContain('turn:first request');
+    expect(left).not.toContain('turn:second request');
+    expect(left).not.toContain('turn:third request');
+    expect(left.some((l) => l.startsWith('before-undo:'))).toBe(true);
+  });
+  it('the safety copy means going back can itself be recovered', async () => {
+    write('a.txt', 'one');
+    const store = new CheckpointStore(storeRoot, folder);
+    await store.create('req', 1_000);
+    write('a.txt', 'two');
+    await store.restoreTo((await store.latestUndoable())!, 2_000);
+    expect(read('a.txt')).toBe('one');
+    const safety = (await store.list()).find((c) => c.kind === 'before-undo')!;
+    await store.restore(safety, 3_000);
+    expect(read('a.txt')).toBe('two');
+  });
+});

@@ -1,7 +1,9 @@
 import type { ModelInfo } from '../models/registry.js';
-import { DIRECT_SERVICES, directService, type DirectServiceId } from './direct-services.js';
+import { DIRECT_SERVICES, directService, registerCompatible, compatibleServices, type CompatibleProvider, type DirectServiceId } from './direct-services.js';
 import { getDirectCatalogue, setDirectCatalogue } from '../platform/config.js';
 import { MODELS_SNAPSHOT } from './models-snapshot.js';
+import { chatGptModelAllowed } from './chatgpt.js';
+import { PROVIDERS_SNAPSHOT } from './providers-snapshot.js';
 
 // Model lists and prices for the direct connections.
 // - What each model can do and costs comes from models.dev (MIT licence), the open
@@ -29,20 +31,40 @@ export interface CatalogueModel {
   released: string;
   context: number;
   cost?: PriceList;
+  // Whether it takes pictures in (models.dev modalities.input).
+  image?: boolean;
 }
 
 // Company id -> its usable models: tools, text in and out, not retired, room to work.
-export type Catalogue = Partial<Record<DirectServiceId, CatalogueModel[]>>;
+export type Catalogue = Record<string, CatalogueModel[]>;
 
 function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 // Keeps only what Jeeves needs from the full models.dev file (about 5 MB, 200+ services).
+// The catalogue's OpenAI-compatible companies that have one fixed address (a few need
+// an account name in it; those are left out), as OpenCode lists them.
+export function compatibleProviders(body: unknown): CompatibleProvider[] {
+  const out: CompatibleProvider[] = [];
+  if (typeof body !== 'object' || body === null) return out;
+  for (const [id, raw] of Object.entries(body as Record<string, any>)) {
+    if (raw?.npm !== '@ai-sdk/openai-compatible' || typeof raw.api !== 'string' || raw.api.includes('${')) continue;
+    if (typeof raw.name !== 'string' || typeof raw.models !== 'object') continue;
+    const doc = typeof raw.doc === 'string' ? raw.doc.replace(/^https?:\/\//, '') : '';
+    out.push({ id, name: raw.name, baseURL: raw.api, keyPage: doc });
+  }
+  return out.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+}
+
 export function trimCatalogue(body: unknown): Catalogue {
   const out: Catalogue = {};
   if (typeof body !== 'object' || body === null) return out;
-  for (const service of DIRECT_SERVICES) {
+  const extras = compatibleProviders(body);
+  registerCompatible(extras);
+  const wanted = [...DIRECT_SERVICES.map((service) => service.id), ...extras.map((item) => item.id)];
+  for (const id of wanted) {
+    const service = { id };
     const entry = (body as Record<string, unknown>)[service.id] as { models?: Record<string, unknown> } | undefined;
     if (!entry || typeof entry.models !== 'object' || entry.models === null) continue;
     const models: CatalogueModel[] = [];
@@ -63,6 +85,7 @@ export function trimCatalogue(body: unknown): Catalogue {
         name: typeof m.name === 'string' && m.name ? m.name : m.id,
         released: typeof m.release_date === 'string' ? m.release_date : '',
         context,
+        image: input.includes('image'),
         ...(inputPrice !== undefined && outputPrice !== undefined
           ? {
               cost: {
@@ -77,18 +100,32 @@ export function trimCatalogue(body: unknown): Catalogue {
     }
     out[service.id] = models;
   }
+  // A company with no model that can do tasks is not offered.
+  registerCompatible(extras.filter((item) => (out[item.id] ?? []).length > 0));
   return out;
 }
 
 let loaded: Catalogue | null = null;
 
+// The companies from the last saved catalogue, known at once at start-up (no waiting
+// for a download), so keys saved for them are found.
+export function registerSavedProviders(): void {
+  // The last downloaded list, else the copy built into Jeeves - so the list of other companies is never empty.
+  registerCompatible((getDirectCatalogue()?.providers as CompatibleProvider[] | undefined) ?? PROVIDERS_SNAPSHOT);
+}
+
 // The catalogue: today's saved copy, else a fresh download, else the last saved copy,
 // else the copy built into Jeeves. Never fails.
+// When the last download failed (the copy in use is then an older one); another try is made a minute later,
+// so a failed first download does not leave the other AI companies missing until Jeeves is reopened.
+let lastFailure = 0;
+
 export async function loadCatalogue(now = Date.now()): Promise<Catalogue> {
-  if (loaded) return loaded;
+  if (loaded && !(lastFailure > 0 && now - lastFailure > 60_000)) return loaded;
   const saved = getDirectCatalogue();
-  if (saved && now - saved.fetchedAt < DAY_MS) {
+  if (saved && saved.providers !== undefined && now - saved.fetchedAt < DAY_MS) {
     loaded = saved.catalogue as Catalogue;
+    registerCompatible((saved.providers as CompatibleProvider[] | undefined) ?? PROVIDERS_SNAPSHOT);
     return loaded;
   }
   try {
@@ -96,9 +133,12 @@ export async function loadCatalogue(now = Date.now()): Promise<Catalogue> {
     if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
     const trimmed = trimCatalogue(await response.json());
     if (Object.keys(trimmed).length === 0) throw new Error('models.dev returned no models');
-    setDirectCatalogue(trimmed, now);
+    setDirectCatalogue(trimmed, now, compatibleServices().map((item) => ({ id: item.id, name: item.label, baseURL: item.baseURL!, keyPage: item.keyPage })));
     loaded = trimmed;
+    lastFailure = 0;
   } catch {
+    lastFailure = now;
+    registerCompatible((saved?.providers as CompatibleProvider[] | undefined) ?? PROVIDERS_SNAPSHOT);
     loaded = (saved?.catalogue as Catalogue | undefined) ?? MODELS_SNAPSHOT;
   }
   return loaded;
@@ -107,6 +147,7 @@ export async function loadCatalogue(now = Date.now()): Promise<Catalogue> {
 // For tests.
 export function resetCatalogue(): void {
   loaded = null;
+  lastFailure = 0;
 }
 
 // The price list of one model, once the catalogue has loaded (for cost estimates).
@@ -151,6 +192,7 @@ export function toModelInfo(serviceId: string, model: CatalogueModel): ModelInfo
     supportedParameters: ['tools'],
     provider: serviceId,
     ...(model.cost ? {} : { priceLabel: 'price not listed' }),
+    ...(model.image !== undefined ? { acceptsImages: model.image } : {}),
   };
 }
 
@@ -178,6 +220,8 @@ export function modelListRequest(serviceId: DirectServiceId, key: string): ListR
       return { url: 'https://api.mistral.ai/v1/models', headers: bearer };
     case 'groq':
       return { url: 'https://api.groq.com/openai/v1/models', headers: bearer };
+    default:
+      return { url: `${directService(serviceId)?.baseURL ?? ''}/models`, headers: bearer };
   }
 }
 
@@ -203,6 +247,8 @@ export function isRejection(status: number, text: string): boolean {
 }
 
 export async function checkKey(serviceId: DirectServiceId, key: string): Promise<KeyCheck> {
+  // The ChatGPT plan has no model list to ask: the sign-in itself was the check.
+  if (serviceId === 'chatgpt') return { ok: true, ids: new Set() };
   const request = modelListRequest(serviceId, key);
   try {
     const response = await fetch(request.url, { headers: request.headers, signal: AbortSignal.timeout(15_000) });
@@ -220,12 +266,13 @@ export async function checkKey(serviceId: DirectServiceId, key: string): Promise
 // list otherwise (a model the key can't use then fails with a plain message).
 export function directModelList(serviceId: DirectServiceId, catalogue: Catalogue, available: Set<string> | null): ModelInfo[] {
   const service = directService(serviceId);
-  const all = catalogue[serviceId] ?? [];
+  // The ChatGPT plan offers OpenAI's newer models at no per-use price (they are in the plan).
+  const all = serviceId === 'chatgpt' ? (catalogue.openai ?? []).filter((model) => chatGptModelAllowed(model.id)).map((model) => ({ ...model, cost: undefined })) : (catalogue[serviceId] ?? []);
   const usable = available && available.size > 0 ? all.filter((model) => available.has(model.id)) : all;
   const sorted = [...usable].sort((a, b) => b.released.localeCompare(a.released));
   const everyday = service?.defaults.find((id) => sorted.some((model) => model.id === id));
   const ordered = everyday ? [sorted.find((model) => model.id === everyday)!, ...sorted.filter((model) => model.id !== everyday)] : sorted;
-  return ordered.map((model) => toModelInfo(serviceId, model));
+  return ordered.map((model) => (serviceId === 'chatgpt' ? { ...toModelInfo(serviceId, model), priceLabel: 'in your plan' } : toModelInfo(serviceId, model)));
 }
 
 const liveLists = new Map<string, Set<string>>();
