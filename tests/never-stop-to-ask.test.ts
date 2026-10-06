@@ -32,8 +32,8 @@ describe('a job never stops to ask the person to type "continue" (2 Oct)', () =>
 describe('the shell working directory carries over; a bare cd is silent and never asks (2 Oct)', () => {
   it('recognises a bare cd, with or without a target', () => {
     setShellCwd('/tmp');
-    // path.resolve: on Windows the same folder is written with backslashes.
-    expect(bareCdTarget('cd /private/tmp')).toBe(path.resolve('/private/tmp'));
+    // path.normalize: on Windows the same folder is written with backslashes.
+    expect(bareCdTarget('cd /private/tmp')).toBe(path.normalize('/private/tmp'));
     expect(bareCdTarget('cd "folder with spaces"')).toBe(expandPath('folder with spaces', '/tmp'));
     expect(bareCdTarget('cd')).toBe(expandPath('~'));
   });
