@@ -1,6 +1,8 @@
 # Jeeves
 
 > ### 🚧 COMING SOON
+
+[![Jeeves on StartupScores](https://startupscores.com/badge/jeeves.svg?style=shield&v=combo&theme=dark)](https://startupscores.com/open-source/jeeves)
 > **Jeeves is being rebuilt from the ground up and is not ready for use.**
 > The features described below were built for an earlier version (0.3.x) that has
 > been withdrawn. The npm package is deprecated — please don't install it.
